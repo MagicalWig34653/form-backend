@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin-API – Formular-Backend</title>
+<meta name="description" content="Referenz der umgesetzten Verwaltungs-Endpunkte: Anmeldung, Formulare, Entwürfe, Bestätigung, Veröffentlichung, Fehlercodes.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/site.css">
+<script src="./assets/theme-init.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="./"><img src="./assets/icon.svg" alt="" width="28" height="28"><span>Formular-Backend</span></a>
+    <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="site-nav">Menü</button>
+    <nav id="site-nav" aria-label="Hauptnavigation">
+<a href="./">Start</a>
+<a href="./einrichtung.html">Einrichtung</a>
+<a href="./benutzung.html">Benutzung</a>
+<a href="./sdk.html">PHP-SDK</a>
+<a href="./api.html" aria-current="page">Admin-API</a>
+<a href="./sicherheit.html">Sicherheit</a>
+<a href="./architektur.html">Architektur</a>
+<a href="./status.html">Stand & Roadmap</a>
+<a href="./entwicklung.html">Entwicklung</a>
+    </nav>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Design wechseln"><span aria-hidden="true">◐</span></button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="toc" aria-label="Auf dieser Seite"><div class="toc-inner"><p>Auf dieser Seite</p><ul id="toc-list"></ul></div></aside>
+  <main id="main" tabindex="-1">
+<h1>Admin-API</h1>
+<p class="lead">Die Verwaltungsschnittstelle unter <code>/admin/api/v1</code>. Diese Seite beschreibt vorhandene Routen auf main (03.11.2026); offene Prüfungen und Freigaben stehen bei den jeweiligen Funktionen. Das vollständige Zielbild (weitere Operationen) steht im Vertrag <code>contracts/auth/admin-api.openapi.yaml</code> im Repository.</p>
+
+<h2>Grundregeln</h2>
+<ul>
+  <li><strong>Sitzung per Cookie</strong> <code>__Host-admin_session</code> (<code>Secure; HttpOnly; SameSite=Lax; Path=/</code>). Es gibt keine Token-Anmeldung für Verwaltungsaktionen.</li>
+  <li><strong>CSRF:</strong> Jede ändernde Anfrage (<code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code>) braucht den Header <code>X-CSRF-Token</code> (Wert aus <code>GET /auth/session</code>) <em>und</em> den Header <code>Origin</code>, der genau der konfigurierten Verwaltungsherkunft entspricht. Sonst: <code>403 csrf_invalid</code>.</li>
+  <li><strong>Antworten</strong> sind <code>application/json</code>, nie im Cache (<code>Cache-Control: no-store</code>). Eingaben müssen <code>Content-Type: application/json</code> haben. Die Formular-, Entwurfs-, Bestätigungs- und Veröffentlichungs-Endpunkte lehnen unbekannte Felder ab.</li>
+  <li><strong>Kennungen</strong> sind kleingeschriebene UUIDs.</li>
+  <li><strong>Begrenzung:</strong> 120 Anfragen/Minute und IP, Anmelde-Endpunkte 10/Minute und IP. Bei Überschreitung <code>429</code> mit <code>Retry-After</code>.</li>
+</ul>
+
+<h2>Anmeldung</h2>
+<table>
+  <tr><th>Anfrage</th><th>Zweck</th></tr>
+  <tr><td><code>GET /auth/session</code></td><td>Legt bei Bedarf eine anonyme Sitzung an (Set-Cookie) und liefert <code>{state, csrfToken, subjectId?, expiresAt}</code>. <code>state</code>: <code>anonymous</code>, <code>factor_pending</code>, <code>authenticated</code>.</td></tr>
+  <tr><td><code>POST /auth/passkey/options</code></td><td>Liefert Challenge und WebAuthn-Optionen: <code>{challengeId, publicKey{challenge, rpId, timeout, userVerification:"required", allowCredentials:[]}, expiresAt}</code>. Die Challenge gilt 120 Sekunden und genau einmal.</td></tr>
+  <tr><td><code>POST /auth/passkey/verify</code></td><td>Body <code>{challengeId, credential{id, rawId, type:"public-key", response{authenticatorData, clientDataJSON, signature, userHandle?}}}</code>, alle Binärwerte base64url ohne Padding, höchstens 16 KiB. Erfolg: Sitzung wechselt zu <code>factor_pending</code> (neues Cookie, neuer CSRF-Token).</td></tr>
+  <tr><td><code>POST /auth/second-factor/password</code></td><td>Body <code>{"method":"password","password":"…"}</code>. Erfolg: <code>authenticated</code> (neues Cookie).</td></tr>
+  <tr><td><code>POST /auth/enrollment/options</code></td><td>Einrichtung mit Einmal-Token (anonyme Sitzung): Body <code>{"token":"…"}</code>, liefert WebAuthn-Erstellungsoptionen <code>{challengeId, publicKey{challenge, rp, user, pubKeyCredParams, excludeCredentials, …}, expiresAt}</code>.</td></tr>
+  <tr><td><code>POST /auth/enrollment/verify</code></td><td>Body <code>{token, challengeId, label, credential{id, rawId, type, response{attestationObject, clientDataJSON}}}</code>. Erfolg <code>{"status":"registered"}</code>. Jeder Fehler (Token, Challenge, Schlüssel, Duplikat) ergibt dieselbe Antwort <code>422 registration_failed</code>.</td></tr>
+  <tr><td><code>POST /auth/passkeys/options</code> / <code>/verify</code></td><td>Weiteren Passkey zum eigenen Konto hinzufügen (volle Sitzung, CSRF, frische Anmeldung ≤ 5 Minuten, sonst <code>403 reauthentication_required</code>). Gleiche Bodies wie oben, ohne <code>token</code>.</td></tr>
+  <tr><td><code>POST /auth/logout</code></td><td>Beendet die Sitzung, <code>204</code>, Cookie wird gelöscht.</td></tr>
+</table>
+<p>Jeder Fehler beim Passkey oder Passwort ergibt <strong>dieselbe</strong> Antwort <code>401 authentication_failed</code>; Status, Text und Header unterscheiden sich nicht nach Ursache.</p>
+
+<h2>Formulare, Entwürfe, Veröffentlichung</h2>
+<p>Alle Pfade beginnen mit <code>/tenants/{tenantId}/forms</code>. Es gelten die Rechte aus <a href="benutzung.html#rechte">Benutzung</a>.</p>
+<table>
+  <tr><th>Anfrage</th><th>Recht</th><th>Beschreibung</th></tr>
+  <tr><td><code>GET /tenants/{t}/forms?limit=&amp;cursor=</code></td><td><code>form.read</code></td><td>Liste, nach Kennung sortiert, <code>limit</code> 1–100 (50), <code>nextCursor</code> für die nächste Seite. Zeigt nur Formulare, die Sie lesen dürfen.</td></tr>
+  <tr><td><code>POST /tenants/{t}/forms</code></td><td><code>form.create</code></td><td>Body <code>{"name":"…"}</code>. <code>201 {id, status:"created", revision:1}</code>. Legt inaktiv und mit Standard-Entwurf an.</td></tr>
+  <tr><td><code>GET /tenants/{t}/forms/{f}</code></td><td><code>form.read</code></td><td><code>{id, name, active, currentReleaseId, currentReleaseVersion, draftIds}</code>.</td></tr>
+  <tr><td><code>POST …/{f}/drafts</code></td><td><code>draft.write</code></td><td>Optional <code>{"baseReleaseId":"…"}</code>. Ohne Angabe: aus dem aktuellen Release, sonst Standarddokument. <code>201</code> mit <code>{id, revision, hash, document}</code> und <code>ETag</code>.</td></tr>
+  <tr><td><code>GET …/{f}/drafts/{d}</code></td><td><code>form.read</code></td><td>Entwurf mit <code>ETag: "&lt;revision&gt;"</code>.</td></tr>
+  <tr><td><code>PATCH …/{f}/drafts/{d}</code></td><td><code>draft.write</code></td><td>Ersetzt das Dokument. Header <code>If-Match: "&lt;revision&gt;"</code> ist Pflicht: fehlt er <code>428</code>, ist er veraltet <code>412</code>. Dokument ungültig: <code>422</code>. Größe höchstens 1 MiB.</td></tr>
+  <tr><td><code>POST …/{f}/publication-confirmations</code></td><td><code>release.publish</code></td><td>Body <code>{draftId, revision, hash, confirm:true}</code>. Frische Anmeldung nötig. <code>201 {confirmationId, expiresAt}</code>.</td></tr>
+  <tr><td><code>POST …/{f}/releases</code></td><td><code>release.publish</code></td><td>Header <code>Idempotency-Key</code> (1–190 Byte). Body <code>{draftId, revision, hash, confirmationId}</code>. <code>201</code> mit dem Release; Wiederholung mit gleichem Schlüssel und Inhalt <code>200</code> mit demselben Release.</td></tr>
+</table>
+<p>Der <code>hash</code> eines Entwurfs ist SHA-256 über die kanonische JSON-Form nach RFC 8785 (nur ganze Zahlen). Der Server berechnet ihn selbst; Ihr Wert dient nur zum Abgleich.</p>
+
+<h3>Ablauf einer Veröffentlichung</h3>
+<pre><code>GET  /admin/api/v1/auth/session                      → csrfToken
+POST /admin/api/v1/tenants/{t}/forms                 {"name":"Kontakt"}              → 201 id
+GET  /admin/api/v1/tenants/{t}/forms/{id}            → draftIds[0]
+GET  /admin/api/v1/tenants/{t}/forms/{id}/drafts/{d} → revision, hash
+POST /admin/api/v1/tenants/{t}/forms/{id}/publication-confirmations
+     {"draftId":"{d}","revision":1,"hash":"…","confirm":true}                        → 201 confirmationId
+POST /admin/api/v1/tenants/{t}/forms/{id}/releases   Idempotency-Key: &lt;zufällig&gt;
+     {"draftId":"{d}","revision":1,"hash":"…","confirmationId":"…"}                  → 201 Release</code></pre>
+<p>Alle <code>POST</code> senden Cookie, <code>X-CSRF-Token</code> und <code>Origin</code>. Das Anmelden selbst braucht einen Browser mit Passkey; die Sitzung kann dort nicht ohne Weiteres in ein Skript übernommen werden.</p>
+
+<h2>Schlüssel und SDK-Zugangsdaten</h2>
+<p>Damit eine Webseite einsenden kann, braucht der Kunde einen Datenschlüssel und jedes Formular einen Signaturschlüssel. Beides läuft über diese Endpunkte (<span class="badge warn">Entwurf</span>: das Verfahren ist noch nicht endgültig im Vertrag festgeschrieben).</p>
+<table>
+  <tr><th>Anfrage</th><th>Recht</th><th>Beschreibung</th></tr>
+  <tr><td><code>PUT /tenants/{t}/customer-key</code></td><td><code>key.manage</code>, frische Anmeldung</td><td>Body <code>{"publicKey":"…"}</code>: öffentlicher X25519-Schlüssel des Kunden (32 Byte, base64url). <code>201 {keyId, publicKey, generation}</code>. Es gibt genau eine aktive Generation; ein zweiter Aufruf liefert <code>409</code> (Rotation ist noch nicht umgesetzt). <strong>Den privaten Schlüssel erzeugt und behält der Kunde.</strong></td></tr>
+  <tr><td><code>GET /tenants/{t}/customer-key</code></td><td><code>form.read</code></td><td>Aktiver öffentlicher Schlüssel und <code>keyId</code>.</td></tr>
+  <tr><td><code>POST /tenants/{t}/forms/{f}/sdk-credentials</code></td><td><code>key.manage</code>, frische Anmeldung</td><td>Erzeugt den Signaturschlüssel des Formulars und liefert die SDK-Konfiguration: <code>{formId, tenantId, submitPath, customerKeyId, customerPublicKey, signingSeed, signingPublicKey, signingGeneration}</code>. <strong>Der <code>signingSeed</code> wird nur in dieser Antwort ausgegeben und nicht gespeichert.</strong> Jeder weitere Aufruf rotiert: der bisherige Schlüssel gilt noch 1 Stunde (für den Wechsel auf dem Kundensystem), der davor wird ungültig.</td></tr>
+  <tr><td><code>GET /tenants/{t}/forms/{f}/entries?limit=&amp;cursor=</code></td><td><code>content.read</code></td><td>Eingegangene Einsendungen, neueste zuerst: <code>{items:[{id, receivedAt, state, releaseId, keyId}], nextCursor}</code>. Nur Metadaten, <code>Cache-Control: no-store</code>.</td></tr>
+  <tr><td><code>GET /tenants/{t}/forms/{f}/entries/{e}/ciphertext</code></td><td><code>content.read</code> + <code>content.decrypt</code>, frische Anmeldung</td><td>Das versiegelte <code>KUBUS-AEAD:2</code>-Paket: <code>{id, tenantId, formId, generationId, keyId, format, package}</code>. Der Server entschlüsselt nie; der Abruf wird im Audit festgehalten. Unbekannte oder fremde Einsendung: 404.</td></tr>
+</table>
+<p>Das Schlüsselpaar des Kunden können Sie zum Beispiel so erzeugen (privat bleibt in <code>kunde.key</code>):</p>
+<pre><code>openssl genpkey -algorithm X25519 -out kunde.key
+openssl pkey -in kunde.key -pubout -outform DER | tail -c 32 | basenc --base64url | tr -d '=' </code></pre>
+<p>Das Ergebnis der zweiten Zeile ist der Wert für <code>publicKey</code>. Browser-Schlüsselverwaltung mit Passkey-PRF und Wiederherstellung ist vorhanden; Datenschlüsselrotation samt Hold-Rewrap ist noch nicht auf main.</p>
+
+<h2>Mail-Verbindungen und Zustellstatus</h2>
+<p>Mails mit Inhalt (<a href="benutzung.html#e-mail-versand">Benutzung</a>) brauchen eine Verbindung zu einem Mailserver. Diese verwaltet ein <strong>Systemadministrator</strong> (Recht <code>system.manage</code> im Systembereich, frische Anmeldung); alle anderen erhalten <code>404</code>. <span class="badge warn">Entwurf</span> Die Operationen stehen noch nicht im OpenAPI-Vertrag.</p>
+<table>
+  <tr><th>Anfrage</th><th>Beschreibung</th></tr>
+  <tr><td><code>POST /connections</code></td><td>Body <code>{"kind":"smtp"|"mail-proxy","name":"…","config":{…},"credential":"…"}</code>. SMTP: <code>config</code> = <code>{host, port, security:"tls"|"starttls", username?, verifyCertificate?, clientName?}</code>, <code>credential</code> = Passwort (gehört zu <code>username</code>). Mail-Proxy: <code>config</code> = <code>{"url":"https://…"}</code>, <code>credential</code> = ACODE (Pflicht). Das Geheimnis wird verschlüsselt gespeichert und nie ausgegeben. <code>201 {id}</code>.</td></tr>
+  <tr><td><code>GET /connections</code></td><td>Liste mit Art, Name, Konfiguration und <code>hasCredential</code>; niemals Geheimnisse.</td></tr>
+  <tr><td><code>POST /connections/{id}/test</code></td><td>Verbindet und meldet sich an, sendet nichts. <code>200 {"ok":true}</code> oder <code>{"ok":false,"code":"…"}</code> (z. B. <code>tls_failed</code>, <code>auth_failed</code>, <code>target_blocked</code>, <code>connect_failed</code>, <code>timeout</code>). Höchstens 10 pro Minute.</td></tr>
+  <tr><td><code>PUT /tenants/{t}/connections/{id}</code></td><td>Stellt die Verbindung dem Kunden zur Verfügung (Systemadministrator). <code>204</code>.</td></tr>
+  <tr><td><code>PUT /tenants/{t}/forms/{f}/mail-connection</code></td><td>Body <code>{"connectionId":"…"}</code>. Wählt die Verbindung des Formulars (Recht <code>release.publish</code>, frische Anmeldung). Sie muss dem Kunden zugeordnet sein, sonst <code>422</code>. Das ist Betriebskonfiguration und wird <em>nicht</em> mit dem Release versioniert.</td></tr>
+  <tr><td><code>GET /tenants/{t}/forms/{f}/mail-deliveries?limit=</code></td><td>Recht <code>form.read</code>. Zustand der Mails: <code>{id, submissionId, kind:"organisation"|"confirmation", state, attempts, errorCode?, transport, createdAt, updatedAt}</code>, <strong>ohne jeden Inhalt</strong>.</td></tr>
+</table>
+<p>Zustände: <code>leased</code> (wird gerade gesendet), <code>smtp-accepted</code> (vom Mailserver angenommen; kein Lesebeleg), <code>waiting-manual</code> (fehlgeschlagen, wartet auf manuellen Wiederversand), <code>abandoned</code> (nicht versendbar, z. B. ungültige Empfängeradresse), <code>uncertain</code> (Ausgang unbekannt, etwa nach einem Absturz).</p>
+
+<h2>Das Entwurfsdokument</h2>
+<p><code>{ "form": …, "flow": …, "views": [ … ] }</code>. Der Server akzeptiert derzeit nur einen eng umrissenen Umfang und lehnt alles andere ausdrücklich ab:</p>
+<ul>
+  <li><code>form</code>: Felder (Art <code>text</code>, <code>email</code>, <code>date</code>, <code>number</code>, <code>boolean</code>, <code>choice</code>, <code>file</code>), Sicherheit (<code>encryptionProfile: "hpke-v2"</code>, <code>specialCategories</code> als Pflicht-Boolean), versionierte Speicherung <code>db</code> mit <code>maxSubmissionBytes</code> bis 32 MiB. Kennung und <code>tenantId</code> müssen zum Pfad passen.</li>
+  <li><code>flow</code>: nur der einfachste Ablauf <code>entry → end</code>. Blöcke, Skripte und Module sind noch nicht freigegeben.</li>
+  <li><code>form.mail</code> (optional): Versand von Mails mit Inhalt, siehe <a href="benutzung.html#e-mail-versand">Benutzung</a>. Adressen, Vorlagen und Feldverweise werden beim Speichern des Entwurfs geprüft.</li>
+  <li><code>views</code>: 1 bis 20 Ansichten; jede verweist auf Formular, Version und Prüfwert des Formulars und nur auf vorhandene Felder.</li>
+</ul>
+<p>Ein Beispiel finden Sie im Repository unter <code>contracts/flow/examples/</code>; der Standard-Entwurf eines neuen Formulars ist ebenfalls ein gültiges Muster.</p>
+
+<h2>Fehlercodes</h2>
+<table>
+  <tr><th>Status</th><th><code>code</code></th><th>Bedeutung</th></tr>
+  <tr><td>400</td><td><code>bad_request</code></td><td>Formatfehler (Kennung, Cursor, Feld, Body).</td></tr>
+  <tr><td>401</td><td><code>unauthenticated</code> / <code>authentication_failed</code></td><td>Keine oder zu schwache Sitzung / Anmeldung fehlgeschlagen.</td></tr>
+  <tr><td>403</td><td><code>forbidden</code>, <code>csrf_invalid</code>, <code>reauthentication_required</code></td><td>Recht fehlt / CSRF oder Origin falsch / erneute Anmeldung nötig.</td></tr>
+  <tr><td>404</td><td><code>not_found</code></td><td>Existiert nicht oder ist für Sie nicht sichtbar.</td></tr>
+  <tr><td>409</td><td><code>conflict</code></td><td>Stand abweichend, Schlüssel mit anderem Inhalt, Version existiert mit anderem Inhalt, Bestätigung bereits verwendet.</td></tr>
+  <tr><td>410</td><td><code>confirmation_expired</code></td><td>Bestätigung abgelaufen.</td></tr>
+  <tr><td>412 / 428</td><td><code>precondition_failed</code> / <code>precondition_required</code></td><td><code>If-Match</code> veraltet / fehlt.</td></tr>
+  <tr><td>413 / 415</td><td><code>payload_too_large</code> / <code>unsupported_media_type</code></td><td>Zu groß / kein JSON.</td></tr>
+  <tr><td>422</td><td><code>validation_failed</code> / <code>registration_failed</code></td><td>Dokument ungültig (Meldung nennt Ort und Regel, nie Ihre Werte) / Passkey-Registrierung abgelehnt (immer dieselbe Antwort).</td></tr>
+  <tr><td>429</td><td><code>rate_limited</code></td><td>Zu viele Anfragen, <code>Retry-After</code> in Sekunden.</td></tr>
+  <tr><td>503</td><td><code>unavailable</code></td><td>Dienst vorübergehend nicht verfügbar.</td></tr>
+</table>
+<p>Fehlerkörper: <code>{"code":"…","message":"…","requestId":"…"}</code>. Die <code>requestId</code> steht auch im Header <code>X-Request-Id</code>; nennen Sie sie bei Rückfragen.</p>
+
+<h2>Weitere Endpunkte</h2>
+<table>
+  <tr><th>Anfrage</th><th>Zweck</th></tr>
+  <tr><td><code>GET /health</code></td><td>Lebenszeichen, ohne Datenbank.</td></tr>
+  <tr><td><code>GET /ready</code></td><td>Bereitschaft: Datenbank antwortet (Zeitlimit 2 s).</td></tr>
+  <tr><td><code>POST /api/v2/submit/?f={formId}</code></td><td>Eingang für Einsendungen: <code>application/x-www-form-urlencoded</code>, Header <code>X-Kubus-Timestamp</code> und <code>X-Kubus-Signature</code> (Ed25519, ±5 Minuten), optional <code>Idempotency-Key</code>. Antwort <code>200 {"submission":{"id":"…"}}</code>; unsigniert oder falsch signiert <code>403</code>, unbekanntes oder inaktives Formular <code>404</code>. Das Formular braucht ein veröffentlichtes Release, einen Datenschlüssel des Kunden und SDK-Zugangsdaten, sonst <code>503</code>. Multipart-Dateien sind unterstützt und werden einzeln versiegelt; SDK und Backend binden Dateiinhalte an die Signatur.</td></tr>
+</table>
+
+<h2>Ergänzungen auf main (03.11.2026)</h2>
+<p>Die folgenden Pfade sind aus den registrierten Backend-Routen abgeglichen. Alle relativen Pfade beginnen mit <code>/admin/api/v1</code>; <code>F</code> steht nachfolgend für <code>/tenants/{t}/forms/{f}</code>. Änderungen benötigen Sitzung, CSRF und exakte Origin. „Frisch“ bedeutet Anmeldung höchstens fünf Minuten alt. Die OpenAPI-Entwürfe bilden noch nicht jede implementierte Operation vollständig ab.</p>
+<h2>Datenschutz, Anhänge und Wiederversand</h2>
+<table>
+<tr><th>Anfrage</th><th>Recht / Verhalten</th></tr>
+<tr><td><code>GET F/retention</code></td><td><code>content.read</code>; <code>{days: Zahl|null}</code>.</td></tr>
+<tr><td><code>PUT F/retention</code></td><td><code>privacy.manage</code> am Kunden, frisch; <code>{days:1…3650|null}</code>. Berechnet vorhandene Fälligkeiten neu; null schaltet automatische Löschung aus.</td></tr>
+<tr><td><code>PUT F/entries/{e}/hold</code></td><td><code>content.hold</code>, frisch; <code>{held:true|false}</code>. Blockiert manuelle und automatische Löschung. Kein neuer Hold während begonnener Löschung.</td></tr>
+<tr><td><code>DELETE F/entries/{e}</code></td><td><code>content.delete</code>, frisch; 204 gelöscht, 409 gehalten, 202 externe Löschung ausstehend, 404 nicht gefunden.</td></tr>
+<tr><td><code>POST F/entries/delete</code></td><td>Gleiche Rechte; <code>{ids:[…]}</code>, 1–100 UUIDs. Antwort <code>{deleted,held,missing,pending}</code>; Ergebnislisten einzeln auswerten.</td></tr>
+<tr><td><code>GET F/export?limit=&amp;cursor=</code></td><td><code>content.export</code> und <code>content.read</code>, frisch. Bis 100 Chiffrate je Seite: <code>{format,items:[{id,receivedAt,keyId,generationId,package,attachments}],nextCursor}</code>. Kein Klartext, <code>no-store</code>.</td></tr>
+<tr><td><code>GET F/entries/{e}/attachments/{ordinal}</code></td><td>Versiegelter Anhang; <code>content.read</code> und <code>content.decrypt</code>, frisch, Audit. Entschlüsselung im Browser.</td></tr>
+<tr><td><code>POST F/entries/{e}/resends</code></td><td><code>content.resend</code> und <code>content.decrypt</code>, frisch. <code>{deliveryId,contentKey,confirmUncertain?,expectedFence?}</code>; Inhaltsschlüssel 32 Byte base64url. Bei unklarem Ausgang ausdrückliche Bestätigung mit genauem Fence. Verwendet Originalpaket und gebundene Mailkonfiguration.</td></tr>
+</table>
+<p>Gelöschte Einsendungen belegen ihren Idempotenzschlüssel weiter: Replay liefert 409. Löschbelege und Metadaten bleiben gemäß ADR 0012 erhalten. Externe Speicher erweitern Löschung um ausstehende, wiederholbare Arbeit (ADR 0019).</p>
+<h2>Domains und Statistik</h2>
+<table>
+<tr><th>Anfrage</th><th>Vertrag</th></tr>
+<tr><td><code>GET /domains?tenantId=…</code>, <code>POST /domains</code>, <code>PATCH /domains/{id}</code>, <code>DELETE /domains/{id}</code></td><td><code>domain.manage</code> am Kunden, frisch. POST/PATCH: <code>{hostname,tenantId,formId,viewId,releaseId,mode,enabled,confirm}</code>. Neu nur testing/inaktiv. Mutationen brauchen menschliches <code>confirm:true</code>, PATCH/DELETE zusätzlich <code>If-Match</code>. Vor Entfernen deaktivieren.</td></tr>
+<tr><td><code>GET /api-hosts?tenantId=…</code>, <code>POST /api-hosts</code></td><td>Gleiche Autorisierung und Bestätigung. POST: <code>{hostname,formIds,enabled,expectedRevision,releaseBindings?,confirm}</code>. Releasebindungen: <code>{formId,releaseId,expectedBindingRevision}</code>. Neue Hosts inaktiv und ungebunden; Formularliste additiv.</td></tr>
+<tr><td><code>DELETE /api-hosts/{id}/forms/{formId}</code></td><td>Eigene Freigabe entfernen, Bestätigung und If-Match der Bindung. Keine Veränderung fremder Kundenbindungen.</td></tr>
+<tr><td><code>GET F/statistics?days=30</code></td><td><code>statistics.read</code>; days 1–366. UTC-Tage, Produktion; <code>visits,begins,submits,abandons,conversion</code> gesamt und pro Tag. Conversion ohne Besuche null; <code>total/count</code> sind Submit-Aliasse.</td></tr>
+<tr><td><code>DELETE F/statistics</code></td><td><code>statistics.delete</code> am Kunden, frisch, CSRF/Audit. Entfernt Ereignisse aller Umgebungen und sperrt den Legacy-Einsendungszählpfad bis zur Löschgrenze; importierte Altstatistik bleibt erhalten.</td></tr>
+</table>
+<p>Öffentlich: <code>POST /api/v2/statistics/events</code> (JSON, höchstens 8 KiB) und zugehöriges OPTIONS. Nur <code>source=client</code> mit visit/begin/abandon; Abbruch verlangt client-signal. Die genaue Ereignisstruktur steht im <a href="https://github.com/MagicalWig34653/form-backend/blob/main/contracts/flow/statistics-event.schema.json">Ereignisschema</a>. Verifizierte Proxyheader, exakte Origin und aktive Host-/Release-/Ansichtsbindung sind Pflicht. Keine Formularwerte, IP, UA oder URLs. Zufälliges Pseudonym: 16–32 Bytes als kleines Hex; Ereigniszeit ±5 Minuten.</p>
+<p>Submit kommt ausschließlich aus dem signierten Eingang über das Formularfeld <code>_statistics</code>, einen JSON-String mit genau <code>domainAlias,viewId,visitPseudonym</code>. Ab 03.11.2026, 00:00 UTC, zählt eine neue Einsendung ohne diesen Kontext nicht zur Ereignisstatistik. Aufbewahrung: 13 Kalendermonate. SDK/Ansicht müssen diese Instrumentierung ausdrücklich liefern (ADR 0015).</p>
+<h2 id="webhooks">Webhooks</h2>
+<p><code>GET/POST F/webhooks</code> sowie <code>PUT/DELETE F/webhooks/{id}</code> benötigen <code>key.manage</code> am Kunden und frische Anmeldung; Mutationen zusätzlich CSRF. POST: <code>{targetURL,active?}</code>; PUT nur <code>{active}</code>. Die URL bleibt nach Anlage unveränderlich. POST liefert öffentlichen Schlüssel und einmalig den privaten 32-Byte-Seed als Standard-Base64; GET gibt keine Secrets aus. Löschen entfernt auch Outbox und Secret.</p>
+<p>Payload: <code>{event:"anfrage.eingegangen",deliveryUUID,formularUUID,anfrageUUID,eingegangenAm}</code>, ohne Inhalte. Signaturheader: <code>X-Kubus-Webhook-Timestamp</code> und <code>X-Kubus-Webhook-Signature</code> (Ed25519, Standard-Base64). Signaturtext ohne abschließenden Zeilenumbruch:</p>
+<pre><code>KUBUS-WEBHOOK
+POST
+&lt;gespeicherte vollständige Ziel-URL&gt;
+&lt;Unixzeit dezimal&gt;
+&lt;SHA256 der tatsächlich gesendeten JSON-Bytes, lowercase hex&gt;</code></pre>
+<p>Nur HTTPS, keine Redirects. Empfänger müssen Zeitfenster und Delivery-Deduplizierung selbst prüfen. Maximal acht Versuche mit Backoff; 2xx gilt als Erfolg. Abgelaufene Leases werden <code>uncertain</code>, ohne automatische Wiederholung oder Reparatur-API. Standardquoten: 5 aktive Ziele/Formular, 20/Kunde, 1000 ausstehende Zustellungen/Kunde; bei vollem Rückstau bleibt die Einsendung angenommen, die Delivery wird <code>failed-terminal</code>. Einstellbar über <code>FORM_WEBHOOK_MAX_PER_FORM</code>, <code>FORM_WEBHOOK_MAX_PER_CUSTOMER</code> und <code>FORM_WEBHOOK_MAX_BACKLOG_PER_CUSTOMER</code> (ADR 0013).</p>
+<h2>Speicherrichtlinien</h2>
+<p><code>GET/PUT /tenants/{t}/storage</code> und <code>GET/PUT F/storage</code> benötigen <code>system.manage</code>; PUT zusätzlich frische Anmeldung, CSRF und Audit. Body: <code>{connectionId:UUID|null,data:Bool,attachmentThreshold:Int|null}</code>. Schwelle 0–64 MiB, gemessen in ursprünglichen Anhangbytes und strikt überschritten. <code>{connectionId:null,data:false,attachmentThreshold:null}</code> wählt DB. Formularrichtlinien ersetzen die Kundenrichtlinie vollständig; bestehende Daten bleiben an ihrem Speicherort.</p>
+<p>Verbindungen werden wie Mailverbindungen unter <code>/connections</code> angelegt und Kunden zugewiesen. S3: <code>kind:"s3"</code>, Konfiguration mit <code>endpoint,region,bucket,pathStyle</code>; Credential als JSON-String mit <code>accessKeyId,secretAccessKey</code>, keine Session-Tokens. SFTP benötigt zusätzlich <code>root</code> und <code>hostKeySha256</code>, Passwort als verschlüsseltes Credential. Geheimnisse werden nicht zurückgegeben.</p>
+<p><code>POST /tenants/{t}/connections/{id}/probe</code> prüft eine aktive zugeordnete S3-/SFTP-Verbindung mit PUT/GET/HEAD/DELETE. Systemrecht, frische Anmeldung, CSRF; Antwort mit <code>ok,cleanupConfirmed</code>. Ein fehlendes Cleanup kann einen synthetischen Probegegenstand zurücklassen. Nur unversionierte S3-Buckets; Sicherheitsreview und Bestandsupgrade sind offen (ADR 0019).</p>
+<h2>SDK-Installationsziele</h2>
+<table>
+<tr><th>Anfrage</th><th>Verhalten</th></tr>
+<tr><td><code>GET F/sdk-target</code></td><td><code>form.read</code>; Ziel, Versionen und Verlauf ohne Geheimnisse.</td></tr>
+<tr><td><code>PUT F/sdk-target</code></td><td><code>key.manage</code> am Kunden, frisch; <code>{connectionId,remoteDir,autoUpdate}</code>. Absolutes verwaltetes Zielverzeichnis; FTP-/SFTP-Verbindung muss aktiv und kundenzugeordnet sein.</td></tr>
+<tr><td><code>POST F/sdk-target/install</code>, <code>POST F/sdk-target/rollback</code></td><td>Gleiches Kundenrecht, frisch, CSRF. Manuelle Installation/Update bzw. Wechsel zur einen Vorversion. Ergebnis <code>{ok,from?,to?,errorCode?}</code>.</td></tr>
+<tr><td><code>POST /connections/probe-sftp</code></td><td>Systemadministration: angebotenen Host-Key-Fingerabdruck ermitteln; vor Speicherung unabhängig verifizieren.</td></tr>
+</table>
+<p>FTPS/SFTP, Staging und SHA-256-Rückleseprüfung sind implementiert. Klartext-FTP nur im Entwicklungsmodus. Auto-Updates bleiben standardmäßig aus und wegen offener Reviewpunkte nicht freigegeben. Kundenzugangsdateien gehören außerhalb des verwalteten Verzeichnisses (ADR 0011).</p>
+<p>Datenschlüsselrotation, Engine, MCP und Altdatenmigration sind noch nicht auf main. Diese Seite beschreibt vorhandene Routen, keine Produktions- oder Sicherheitsabnahme.</p>
+
+  </main>
+</div>
+<footer class="foot">
+  <p>Formular-Backend · AGPL-3.0-only · <a href="https://github.com/MagicalWig34653/form-backend">Quellcode auf GitHub</a></p>
+  <p class="muted">Projekt in früher Entwicklung. Aussagen auf diesen Seiten beschreiben den tatsächlichen Stand; Geplantes ist als solches gekennzeichnet.</p>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

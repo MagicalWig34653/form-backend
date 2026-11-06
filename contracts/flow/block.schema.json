@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/flow/0.1.0/block.schema.json",
+  "title": "Ablaufbausteinvertrag",
+  "description": "P2-4; Vertragsentwurf 0.1.0, VORGESCHLAGEN. Bestätigte Anforderungen siehe README.md.",
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.1.0"
+    },
+    "proposalStatus": {
+      "const": "VORGESCHLAGEN"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "module": {
+      "$ref": "common.schema.json#/$defs/reference"
+    },
+    "title": {
+      "$ref": "common.schema.json#/$defs/localized"
+    },
+    "inputSchema": {
+      "$ref": "common.schema.json#/$defs/jsonSchema"
+    },
+    "outputSchema": {
+      "$ref": "common.schema.json#/$defs/jsonSchema"
+    },
+    "configSchema": {
+      "$ref": "common.schema.json#/$defs/jsonSchema"
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/location"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      },
+      "uniqueItems": true
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/connection"
+      },
+      "uniqueItems": true
+    },
+    "plaintext": {
+      "$ref": "common.schema.json#/$defs/plaintext"
+    },
+    "limits": {
+      "$ref": "common.schema.json#/$defs/limits"
+    },
+    "effectKind": {
+      "enum": [
+        "none",
+        "mail",
+        "webhook",
+        "storage",
+        "other"
+      ]
+    },
+    "idempotency": {
+      "enum": [
+        "pure",
+        "receiver-key",
+        "reconcile",
+        "manual-on-uncertain"
+      ]
+    },
+    "retry": {
+      "$ref": "common.schema.json#/$defs/retry"
+    },
+    "debug": {
+      "type": "object",
+      "properties": {
+        "valuePolicy": {
+          "const": "masked-only"
+        },
+        "sensitiveInputPointers": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/pointer"
+          },
+          "uniqueItems": true
+        },
+        "sensitiveOutputPointers": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/pointer"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "valuePolicy",
+        "sensitiveInputPointers",
+        "sensitiveOutputPointers"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contractVersion",
+    "proposalStatus",
+    "id",
+    "version",
+    "module",
+    "title",
+    "inputSchema",
+    "outputSchema",
+    "configSchema",
+    "locations",
+    "permissions",
+    "connections",
+    "plaintext",
+    "limits",
+    "effectKind",
+    "idempotency",
+    "retry",
+    "debug"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "effectKind": {
+            "const": "mail"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "never",
+                  "manual-authorized"
+                ]
+              }
+            }
+          },
+          "idempotency": {
+            "const": "manual-on-uncertain"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "plaintext": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "never",
+                  "manual-authorized"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

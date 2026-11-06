@@ -1,0 +1,3025 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+openapi: 3.1.0
+info:
+  title: form-backend Eingang / Legacy – P2-1
+  version: 0.1.0
+  description: Vertragsdokument, keine implementierte API oder Produktionsfreigabe. README ist normativer Bestandteil.
+    VORGESCHLAGEN-Werte benötigen Bestätigung. Keine realen Schlüssel/Daten. ADR 0004 und legacy-adapter.md/../crypto/transport.md
+    sind ergänzende Vertragsgrundlagen. Gemeinsame API-Hosts nur über signiertes Formular; Ansichtshost eindeutig.
+    418/424 und Scannerfehler-Altverhalten gelten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.
+  license:
+    name: GNU AGPLv3
+    identifier: AGPL-3.0-only
+servers:
+- url: https://ingest.example.invalid
+  description: Synthetischer Platzhalter; Admin muss API-/Formulardomains konfigurieren.
+paths:
+  /endpoint/:
+    post:
+      operationId: submitV1
+      summary: Einsendung annehmen
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/Gclid'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFields'
+      responses:
+        '200':
+          description: Angenommen oder identischer abgeschlossener Replay; ursprüngliche Identität.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 200 - OK
+                - ''
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 400 - Bad Request
+                - ''
+              example: 400 - Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 401 - Unauthorized
+                - ''
+              example: 401 - Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 403 - Forbidden
+                - ''
+              example: 403 - Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 404 - Not Found
+                - ''
+              example: 404 - Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 405 - Method Not Allowed
+                - ''
+              example: 405 - Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '406':
+          description: Botprüfung negativ.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 406 - Not Acceptable
+                - ''
+              example: 406 - Not Acceptable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 409 - Conflict
+                - ''
+              example: 409 - Conflict
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '412':
+          description: Pflichtdaten/Validierung/Bot-Token fehlen oder ungültig.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 412 - Precondition Failed
+                - ''
+              example: 412 - Precondition Failed
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 413 - Payload Too Large
+                - ''
+              example: 413 - Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 415 - Unsupported Media Type
+                - ''
+              example: 415 - Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 429 - Too Many Requests
+                - ''
+              example: 429 - Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '451':
+          description: Malwaretreffer, Legacycode ohne rechtliche Aussage.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 451 - Unavailable For Legal Reasons
+                - ''
+              example: 451 - Unavailable For Legal Reasons
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 500 - Internal Server Error
+                - ''
+              example: 500 - Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 503 - Service Unavailable
+                - ''
+              example: 503 - Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '501':
+          description: 'Legacy: kein ausführbarer Handler/Feldschema vorhanden (generisch.php:39-46).'
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 501 - Not Implemented
+                - ''
+              example: 501 - Not Implemented
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '418':
+          description: 'Legacy-Bewerbungshandler: Zustimmung ungleich String true; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Legacy-Statuskurztext oder leere Antwort gemäß README.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '424':
+          description: 'Legacy-Bewerbungshandler: Proxyzweigfehler; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Legacy-Statuskurztext oder leere Antwort gemäß README.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: null
+      x-authentication: Legacyfassade; ADR-0001-Headerkonflikt vor Betrieb klären; README.
+  /endpoint/index.php:
+    post:
+      operationId: submitV1ScriptAlias
+      summary: Einsendung annehmen
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/Gclid'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFields'
+      responses:
+        '200':
+          description: Angenommen oder identischer abgeschlossener Replay; ursprüngliche Identität.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 200 - OK
+                - ''
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 400 - Bad Request
+                - ''
+              example: 400 - Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 401 - Unauthorized
+                - ''
+              example: 401 - Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 403 - Forbidden
+                - ''
+              example: 403 - Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 404 - Not Found
+                - ''
+              example: 404 - Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 405 - Method Not Allowed
+                - ''
+              example: 405 - Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '406':
+          description: Botprüfung negativ.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 406 - Not Acceptable
+                - ''
+              example: 406 - Not Acceptable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 409 - Conflict
+                - ''
+              example: 409 - Conflict
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '412':
+          description: Pflichtdaten/Validierung/Bot-Token fehlen oder ungültig.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 412 - Precondition Failed
+                - ''
+              example: 412 - Precondition Failed
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 413 - Payload Too Large
+                - ''
+              example: 413 - Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 415 - Unsupported Media Type
+                - ''
+              example: 415 - Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 429 - Too Many Requests
+                - ''
+              example: 429 - Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '451':
+          description: Malwaretreffer, Legacycode ohne rechtliche Aussage.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 451 - Unavailable For Legal Reasons
+                - ''
+              example: 451 - Unavailable For Legal Reasons
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 500 - Internal Server Error
+                - ''
+              example: 500 - Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 503 - Service Unavailable
+                - ''
+              example: 503 - Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '501':
+          description: 'Legacy: kein ausführbarer Handler/Feldschema vorhanden (generisch.php:39-46).'
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 501 - Not Implemented
+                - ''
+              example: 501 - Not Implemented
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '418':
+          description: 'Legacy-Bewerbungshandler: Zustimmung ungleich String true; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Legacy-Statuskurztext oder leere Antwort gemäß README.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '424':
+          description: 'Legacy-Bewerbungshandler: Proxyzweigfehler; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Legacy-Statuskurztext oder leere Antwort gemäß README.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: null
+      x-authentication: Legacyfassade; ADR-0001-Headerkonflikt vor Betrieb klären; README.
+  /api/getFormData.php:
+    post:
+      operationId: formV1
+      summary: Legacykonfiguration laden
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/LegacyFormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyConfiguration'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 400 - Bad Request
+                - ''
+              example: 400 - Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 401 - Unauthorized
+                - ''
+              example: 401 - Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 403 - Forbidden
+                - ''
+              example: 403 - Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 404 - Not Found
+                - ''
+              example: 404 - Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 405 - Method Not Allowed
+                - ''
+              example: 405 - Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 413 - Payload Too Large
+                - ''
+              example: 413 - Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 415 - Unsupported Media Type
+                - ''
+              example: 415 - Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 429 - Too Many Requests
+                - ''
+              example: 429 - Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 500 - Internal Server Error
+                - ''
+              example: 500 - Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                - 503 - Service Unavailable
+                - ''
+              example: 503 - Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: null
+      x-authentication: Legacyfassade; ADR-0001-Headerkonflikt vor Betrieb klären; README.
+  /api/v2/submit/:
+    post:
+      operationId: submitV2
+      summary: Einsendung annehmen
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/Timestamp'
+      - $ref: '#/components/parameters/Signature'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/Gclid'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFields'
+      responses:
+        '200':
+          description: Angenommen oder identischer abgeschlossener Replay; ursprüngliche Identität.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '406':
+          description: Botprüfung negativ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 406
+                  status: Not Acceptable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 409
+                  status: Conflict
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '412':
+          description: Pflichtdaten/Validierung/Bot-Token fehlen oder ungültig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 412
+                  status: Precondition Failed
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '451':
+          description: Malwaretreffer, Legacycode ohne rechtliche Aussage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 451
+                  status: Unavailable For Legal Reasons
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '501':
+          description: 'Legacy: kein ausführbarer Handler/Feldschema vorhanden (generisch.php:39-46).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 501
+                  status: Not Implemented
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '418':
+          description: 'Legacy-Bewerbungshandler: Zustimmung ungleich String true; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '424':
+          description: 'Legacy-Bewerbungshandler: Proxyzweigfehler; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/submit/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+  /api/v2/submit/index.php:
+    post:
+      operationId: submitV2ScriptAlias
+      summary: Einsendung annehmen
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/Timestamp'
+      - $ref: '#/components/parameters/Signature'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/Gclid'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFields'
+      responses:
+        '200':
+          description: Angenommen oder identischer abgeschlossener Replay; ursprüngliche Identität.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '406':
+          description: Botprüfung negativ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 406
+                  status: Not Acceptable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 409
+                  status: Conflict
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '412':
+          description: Pflichtdaten/Validierung/Bot-Token fehlen oder ungültig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 412
+                  status: Precondition Failed
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '451':
+          description: Malwaretreffer, Legacycode ohne rechtliche Aussage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 451
+                  status: Unavailable For Legal Reasons
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '501':
+          description: 'Legacy: kein ausführbarer Handler/Feldschema vorhanden (generisch.php:39-46).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 501
+                  status: Not Implemented
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '418':
+          description: 'Legacy-Bewerbungshandler: Zustimmung ungleich String true; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '424':
+          description: 'Legacy-Bewerbungshandler: Proxyzweigfehler; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/submit/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+  /api/v2/form/:
+    post:
+      operationId: formV2
+      summary: Formularschema laden
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/Timestamp'
+      - $ref: '#/components/parameters/Signature'
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuration'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/form/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+  /api/v2/form/index.php:
+    post:
+      operationId: formV2ScriptAlias
+      summary: Formularschema laden
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/Timestamp'
+      - $ref: '#/components/parameters/Signature'
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Fields'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuration'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/form/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+  /api/v2/key/:
+    post:
+      operationId: keyV2
+      summary: Ed25519 provisionieren oder rotieren
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - name: CLIENTUA-ENCRYPT
+        in: header
+        required: true
+        schema:
+          type: string
+        description: SDK-Signalformat und Legacygrenze siehe README; bei key zwingend formularspezifisch.
+      - name: CLIENTIP-ENCRYPT
+        in: header
+        required: true
+        schema:
+          type: string
+        description: SDK-Endnutzer-IP, nicht Transport-IP zur Modusautorisierung; bei key zwingend formularspezifisch.
+      - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/KeyRequest'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyResult'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '201':
+          description: Erstregistriert.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyResult'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 409
+                  status: Conflict
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/key/
+      x-authentication: Zwei formularspezifische SDK-Signale plus Provisionierungs-MAC/Rotationssignatur.
+  /api/v2/key/index.php:
+    post:
+      operationId: keyV2ScriptAlias
+      summary: Ed25519 provisionieren oder rotieren
+      description: Verbindliche ergänzende Byte-, Auth-, Fehler- und Zustandsregeln im README. VORGESCHLAGEN-Regeln
+        sind noch nicht freigegeben.
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - name: CLIENTUA-ENCRYPT
+        in: header
+        required: true
+        schema:
+          type: string
+        description: SDK-Signalformat und Legacygrenze siehe README; bei key zwingend formularspezifisch.
+      - name: CLIENTIP-ENCRYPT
+        in: header
+        required: true
+        schema:
+          type: string
+        description: SDK-Endnutzer-IP, nicht Transport-IP zur Modusautorisierung; bei key zwingend formularspezifisch.
+      - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/KeyRequest'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyResult'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '201':
+          description: Erstregistriert.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyResult'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 409
+                  status: Conflict
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/key/
+      x-authentication: Zwei formularspezifische SDK-Signale plus Provisionierungs-MAC/Rotationssignatur.
+  /api/transport/v1/form/:
+    post:
+      operationId: transportForm
+      summary: Zusätzliche symmetrische Transporthülle öffnen
+      description: 'VORGESCHLAGENER neuer Wirevertrag nach ADR 0004: ../crypto/transport.md. Formularbezogene Transportkeys,
+        Signatur über Hülle, AEAD, Replayledger. Bestehende Kanonisierung unverändert auf regulären Routen.'
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - name: X-Kubus-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        description: Pflicht im neuen Transportvertrag; Signatur/AAD und identischer Hüllentimestamp gemäß ../crypto/transport.md,
+          keine Signaturausnahme.
+      - name: X-Kubus-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Pflicht im neuen Transportvertrag; Signatur/AAD und identischer Hüllentimestamp gemäß ../crypto/transport.md,
+          keine Signaturausnahme.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransportEnvelope'
+      responses:
+        '200':
+          description: Erfolgreich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuration'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/form/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+      x-inner-schema: '#/components/schemas/TransportPayload'
+  /api/transport/v1/submit/:
+    post:
+      operationId: transportSubmit
+      summary: Zusätzliche symmetrische Transporthülle öffnen
+      description: 'VORGESCHLAGENER neuer Wirevertrag nach ADR 0004: ../crypto/transport.md. Formularbezogene Transportkeys,
+        Signatur über Hülle, AEAD, Replayledger. Bestehende Kanonisierung unverändert auf regulären Routen.'
+      parameters:
+      - $ref: '#/components/parameters/FormId'
+      - $ref: '#/components/parameters/UserAgentSignal'
+      - $ref: '#/components/parameters/IpSignal'
+      - $ref: '#/components/parameters/Origin'
+      - name: X-Kubus-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        description: Pflicht im neuen Transportvertrag; Signatur/AAD und identischer Hüllentimestamp gemäß ../crypto/transport.md,
+          keine Signaturausnahme.
+      - name: X-Kubus-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Pflicht im neuen Transportvertrag; Signatur/AAD und identischer Hüllentimestamp gemäß ../crypto/transport.md,
+          keine Signaturausnahme.
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/Gclid'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransportEnvelope'
+      responses:
+        '200':
+          description: Angenommen oder identischer abgeschlossener Replay; ursprüngliche Identität.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '400':
+          description: Nicht lesbar oder ungültige Key-Nutzlast; key ohne f.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 400
+                  status: Bad Request
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '401':
+          description: Formularparameter fehlt/leer (außer key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 401
+                  status: Unauthorized
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '403':
+          description: Herkunft, Signatur oder Key-Autorisierung abgelehnt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 403
+                  status: Forbidden
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '404':
+          description: Formular unbekannt; Submit auch inaktiv.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 404
+                  status: Not Found
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '405':
+          description: POST erforderlich.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 405
+                  status: Method Not Allowed
+          headers:
+            Allow:
+              $ref: '#/components/headers/Allow'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '406':
+          description: Botprüfung negativ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 406
+                  status: Not Acceptable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '409':
+          description: 'Submit: Nutzlastkonflikt oder laufende Bearbeitung; key: konkurrierende Änderung.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 409
+                  status: Conflict
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '412':
+          description: Pflichtdaten/Validierung/Bot-Token fehlen oder ungültig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 412
+                  status: Precondition Failed
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '413':
+          description: Größenlimit; genaue Byte-Grenzen siehe README.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 413
+                  status: Payload Too Large
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '415':
+          description: Dateityp/Upload/Transporttyp unzulässig.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 415
+                  status: Unsupported Media Type
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '429':
+          description: Rate-Limit oder Sperre; keine neue fachliche Nebenwirkung.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 429
+                  status: Too Many Requests
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '451':
+          description: Malwaretreffer, Legacycode ohne rechtliche Aussage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 451
+                  status: Unavailable For Legal Reasons
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '500':
+          description: Interner Verarbeitungs-/Versandfehler, kein Beweis fehlender Nebenwirkungen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 500
+                  status: Internal Server Error
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '503':
+          description: DB/DNS/Speicherziel nicht verfügbar; Konfiguration inaktiv. Ein Scannerfehler
+            ist nie Ursache dieses 503 (ADR 0005 D6, Altverhalten; Annahme läuft weiter mit Status nicht_geprueft).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 503
+                  status: Service Unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '501':
+          description: 'Legacy: kein ausführbarer Handler/Feldschema vorhanden (generisch.php:39-46).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: 501
+                  status: Not Implemented
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '418':
+          description: 'Legacy-Bewerbungshandler: Zustimmung ungleich String true; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+        '424':
+          description: 'Legacy-Bewerbungshandler: Proxyzweigfehler; Altverhalten verbindlich (ADR 0005 D6); Verschärfung unbeschlossen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+      x-canonical-signature-path: /api/v2/submit/
+      x-authentication: Ed25519 Pflicht; ausschließlich befristete protokollierte widerrufbare Ausnahme gemäß ADR
+        0002. Herkunft/Modus zusätzlich prüfen.
+      x-inner-schema: '#/components/schemas/TransportPayload'
+components:
+  parameters:
+    FormId:
+      name: f
+      in: query
+      required: true
+      schema:
+        $ref: ../flow/common.schema.json#/$defs/uuid
+      description: 'Formular-UUID unverändert. Fehlend/leer: 401; bei key stattdessen 400. Unbekannt: 404. Kein
+        trim/Normalisieren der signierten UUID.'
+    LegacyFormId:
+      name: z
+      in: query
+      required: true
+      schema:
+        $ref: ../flow/common.schema.json#/$defs/uuid
+      description: 'Formular-UUID unverändert. Fehlend/leer: 401; bei key stattdessen 400. Unbekannt: 404. Kein
+        trim/Normalisieren der signierten UUID.'
+    UserAgentSignal:
+      name: CLIENTUA-ENCRYPT
+      in: header
+      required: false
+      schema:
+        type: string
+      description: SDK-Signalformat und Legacygrenze siehe README; bei key zwingend formularspezifisch.
+    IpSignal:
+      name: CLIENTIP-ENCRYPT
+      in: header
+      required: false
+      schema:
+        type: string
+      description: SDK-Endnutzer-IP, nicht Transport-IP zur Modusautorisierung; bei key zwingend formularspezifisch.
+    Timestamp:
+      name: X-Kubus-Timestamp
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9]+$
+      description: Dezimal-Unixzeit, inklusive ±300 Sekunden; Pflicht außer expliziter gültiger formularbezogener
+        Ausnahme.
+    Signature:
+      name: X-Kubus-Signature
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Base64 von 64 Ed25519-Signaturbytes; Pflicht außer gültiger Ausnahme. Keine Bearer-Authentifizierung.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Optional. PHP-trim; 1–190 BYTE danach. Leer/überlang ignoriert, nicht gekürzt. Keine Zeichengrenze;
+        Regeln/409 siehe README.
+      x-max-bytes-after-trim: 190
+    Origin:
+      name: Origin
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 'Vorhanden: gegen administrativ eingetragene Formular-Origins prüfen. Detailnormalisierung VORGESCHLAGEN,
+        README.'
+    Gclid:
+      name: CLIENTGCLID
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Optionales Statistikaltsignal; keine Authentifizierung.
+  headers:
+    RetryAfter:
+      description: 'VORGESCHLAGEN: positive ganze Sekunden; 429, laufende Bearbeitung 409, zeitlich bestimmbarer
+        Ausfall 503. Nicht auf Nutzlastkonflikt oder Key-Race.'
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]*$
+    CacheControl:
+      description: 'VORGESCHLAGEN: auf allen Antworten.'
+      schema:
+        type: string
+        const: no-store
+    NoSniff:
+      description: 'VORGESCHLAGEN: auf allen Antworten.'
+      schema:
+        type: string
+        const: nosniff
+    Allow:
+      description: 'VORGESCHLAGEN: bei 405.'
+      schema:
+        type: string
+        const: POST
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - status
+          additionalProperties: false
+          properties:
+            code:
+              type: integer
+              minimum: 400
+              maximum: 599
+            status: &id002
+              type: string
+    Submission:
+      type: object
+      required:
+      - submission
+      properties:
+        submission:
+          type: object
+          required:
+          - id
+          properties:
+            id:
+              $ref: ../flow/common.schema.json#/$defs/uuid
+    KeyResult:
+      type: object
+      required:
+      - submission
+      properties:
+        submission:
+          type: object
+          required:
+          - id
+          properties:
+            id:
+              type: 'null'
+    Mode:
+      type: string
+      enum:
+      - production
+      - testing
+      description: Serverseitig über autorisierte Zuordnung bestimmt; kein Clientparameter.
+    LegacyConfiguration:
+      type: object
+      required:
+      - cf-sitekey
+      - mode
+      properties:
+        cf-sitekey: &id001
+          type:
+          - string
+          - 'null'
+        mode:
+          $ref: '#/components/schemas/Mode'
+    Configuration:
+      type: object
+      required:
+      - configuration
+      - fields
+      properties:
+        configuration:
+          type: object
+          required:
+          - cfSitekey
+          - mode
+          - signaturschluesselHinterlegt
+          properties:
+            cfSitekey: *id001
+            mode:
+              $ref: '#/components/schemas/Mode'
+            signaturschluesselHinterlegt:
+              type: boolean
+            transportPolicy:
+              enum:
+              - offered
+              - required
+              description: 'VORGESCHLAGEN Vertragsrunde 3 R05: nur vorhanden, wenn das veröffentlichte Formular security.transport
+                offered oder required hat; fehlt bei off. Siehe ../crypto/transport.md. Das Feld ist ein Hinweis, die Durchsetzung
+                geschieht serverseitig.'
+            transportKeyVersion:
+              type: integer
+              minimum: 1
+              description: 'VORGESCHLAGEN: aktuelle Transportschlüsselgeneration, nie der Schlüssel selbst.'
+        fields:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - type
+            - required
+            - rule
+            properties:
+              name: *id002
+              type: *id002
+              required:
+                type: boolean
+              rule:
+                description: Formularspezifische Regel; kein vollständiger Feldschema-Vertrag in P2-1.
+    Fields:
+      type: object
+      additionalProperties: true
+      description: Dynamische Formularfelder gemäß veröffentlichtem Schema. PHP-Klammernotation; Strings/verschachtelte
+        Arrays. Gesperrte Felder serverseitig fixiert, verborgene Felder weiterhin validiert (ADR 0003). Kein JSON-Transport.
+    UploadFields:
+      type: object
+      additionalProperties: true
+      description: Formularfelder plus optional ein schemaabhängig benanntes binäres Uploadfeld. Name nicht global
+        festgelegt. Datei <20.000.000 Byte; Endung/MIME-Prüfung, Scan und Paketgrenze laut README. Mehrfachdateien
+        fachlich nicht freigegeben.
+    KeyRequest:
+      type: object
+      required:
+      - publicKey
+      additionalProperties: true
+      description: Erstregistrierung benötigt provisioningTimestamp und provisioningMac; Rotation timestamp und
+        signature. Bereits aktueller Key darf ohne Rotationsfelder bestätigt werden. Private Schlüssel nie senden.
+        Bedingungen im README. Unbekannte Zusatzfelder werden wie im Altcode ignoriert; die vier bekannten privaten
+        Schlüsselfeldnamen im README sind ausdrücklich verboten.
+      properties:
+        publicKey:
+          type: string
+          minLength: 44
+          maxLength: 44
+          pattern: ^[A-Za-z0-9+/]{43}=$
+          description: Kanonisches Base64 von genau 32 Public-Key-Bytes; auch Pad-Bits prüfen.
+        provisioningTimestamp:
+          type: string
+          pattern: ^[0-9]+$
+        provisioningMac:
+          type: string
+          description: Base64, dekodiert 32 Byte HMAC-SHA256.
+        timestamp:
+          type: string
+          pattern: ^[0-9]{1,20}$
+        signature:
+          type: string
+          description: Base64, dekodiert 64 Byte Ed25519.
+    TransportEnvelope:
+      type: object
+      properties:
+        version:
+          const: transport-v1
+        formId: &id003
+          $ref: ../flow/common.schema.json#/$defs/uuid
+        keyVersion:
+          type: integer
+          minimum: 1
+          maximum: 9223372036854775807
+        requestId: *id003
+        timestamp:
+          type: string
+          pattern: ^[1-9][0-9]{0,11}$
+        nonce:
+          type: string
+          pattern: ^[A-Za-z0-9+/]{16}$
+        ciphertext:
+          type: string
+          minLength: 24
+          pattern: ^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
+      required:
+      - version
+      - formId
+      - keyVersion
+      - requestId
+      - timestamp
+      - nonce
+      - ciphertext
+      additionalProperties: false
+      description: 'VORGESCHLAGEN: ../crypto/transport.md, AEAD/Ed25519/Replay zusätzlich prüfen; kein Speicherprofil. Vertragsrunde 4: Idempotency-Key (Header) steht in AAD und Signaturtext; Header-Abweichung = 403.'
+    TransportValue:
+      oneOf:
+      - type: string
+      - type: array
+        items:
+          $ref: '#/components/schemas/TransportValue'
+      - type: object
+        additionalProperties:
+          $ref: '#/components/schemas/TransportValue'
+    TransportPayload:
+      type: object
+      properties:
+        fields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/TransportValue'
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+              content:
+                type: string
+                contentEncoding: base64
+            required:
+            - field
+            - name
+            - type
+            - content
+            additionalProperties: false
+      required:
+      - fields
+      - files
+      additionalProperties: false
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R06: Abbildung auf den bestehenden Idempotenz-/Signaturdigest
+        ausschließlich nach README.md Abschnitt R06 (PHP-Struktur aus fields und files; leeres fields wird zu [],
+        files nach Feldnamen gruppiert, size aus dekodierten Bytes, error 0). files[].name darf nicht leer sein;
+        dasselbe field ohne [] darf nicht zweimal vorkommen. Der Hüllenhash ist nie Teil des Digests.'
+x-proposed-values:
+  status: VORGESCHLAGEN
+  http-body-max-bytes: 33554432
+  metadata-key-body-max-bytes: 8192
+  exception-max-seconds: 604800
+  rate-window-seconds: 120
+  rate-max-calls: 30
+  idempotency-retention: mindestens Anfragelebensdauer; Bestätigung offen
+x-normative-rules: 'README.md: Legacyblocker, Signaturkanonisierung, Herkunft, Idempotenz, Betriebsarten, Uploads,
+  Statuspriorität. Auth ist ein berechnetes mehrteiliges Protokoll, kein einfacher API-Key.'

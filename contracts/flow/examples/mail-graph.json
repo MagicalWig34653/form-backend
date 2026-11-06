@@ -1,0 +1,63 @@
+{
+  "contractVersion": "0.1.0",
+  "proposalStatus": "VORGESCHLAGEN",
+  "id": "36f5cc05-eaf7-5d05-9689-81c304b27708",
+  "version": "1.0.0",
+  "engineContractVersion": "0.1.0",
+  "entryNode": "entry",
+  "limits": {
+    "maxSteps": 1000,
+    "activeTimeoutMs": 30000,
+    "maxElapsedMs": 86400000,
+    "memoryBytes": 67108864,
+    "nodeTimeoutMs": 5000,
+    "maxStateBytes": 1048576
+  },
+  "nodes": {
+    "entry": {
+      "kind": "entry",
+      "label": {
+        "de": "Start"
+      }
+    },
+    "synthetic-mail-node": {
+      "kind": "block",
+      "label": {
+        "de": "Mail"
+      },
+      "block": {
+        "id": "synthetic-mail",
+        "version": "1.0.0",
+        "sha256": "49714696ecc53dd521dbd37864d4b8242182d9cf9219f70d468d0cc367fb4f95"
+      },
+      "location": "backend-worker",
+      "config": {},
+      "inputBindings": {
+        "email": {
+          "sourceNode": "entry",
+          "pointer": "/email"
+        }
+      }
+    },
+    "end": {
+      "kind": "end",
+      "label": {
+        "de": "Ende"
+      },
+      "result": "success"
+    }
+  },
+  "edges": [
+    {
+      "from": "entry",
+      "port": "next",
+      "to": "synthetic-mail-node"
+    },
+    {
+      "from": "synthetic-mail-node",
+      "port": "next",
+      "to": "end"
+    }
+  ],
+  "failurePolicy": "stop-and-record"
+}

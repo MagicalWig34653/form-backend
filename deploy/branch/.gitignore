@@ -1,0 +1,21 @@
+# Local deployment configuration and sensitive material
+.DS_Store
+**/stack.env
+**/stack.env.*
+!**/stack.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/secrets/
+**/*.deploy-lock/
+*.bak
+*.log
+*.key
+*.pem
+*.sql
+*.sql.gz
+**/backups/
+**/backup/
+SHA256SUMS
+counts.tsv
+source-database

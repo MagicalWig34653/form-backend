@@ -1,0 +1,70 @@
+{
+  "contractVersion": "0.1.0",
+  "proposalStatus": "VORGESCHLAGEN",
+  "engineContractVersion": "0.1.0",
+  "id": "4253cf0b-7032-5e31-9808-b30864fcdb88",
+  "tenantId": "a18baabf-e502-5b1b-af37-8fe04579a694",
+  "submissionId": "33ac0b83-e906-5bd6-b968-888810a1c59a",
+  "release": {
+    "id": "f3e9b474-8563-5909-80fd-ce27b1a00aaf",
+    "version": "1.0.0",
+    "sha256": "92750f0f6b16bbbba27d134f622308783b2f9aa6b1037c351fab1dddfe5c66d2"
+  },
+  "mode": "test",
+  "state": "waiting",
+  "revision": 3,
+  "startedAt": "2026-10-26T10:00:00Z",
+  "deadlineAt": "2026-10-27T10:00:00Z",
+  "budget": {
+    "stepsConsumed": 1,
+    "activeMsConsumed": 10,
+    "limits": {
+      "maxSteps": 1000,
+      "activeTimeoutMs": 30000,
+      "maxElapsedMs": 86400000,
+      "memoryBytes": 67108864,
+      "nodeTimeoutMs": 5000,
+      "maxStateBytes": 1048576
+    }
+  },
+  "idempotency": {
+    "scope": "tenant-form-submission-release-run-slot",
+    "key": "synthetic-request",
+    "requestDigest": "5204e4b71093e82122ae013ae183e699dd0ffab865b0579aa5c70d6929529176",
+    "retainUntil": "2026-11-02T10:00:00Z"
+  },
+  "checkpoint": {
+    "sequence": 1,
+    "nextNode": "validate",
+    "nodeVisits": {
+      "entry": 1
+    },
+    "loopIterations": {},
+    "payload": {
+      "objectId": "dbd9d556-61dd-5757-9cab-400773bf39ae",
+      "encryption": "KUBUS-AEAD:2",
+      "keyGeneration": 1,
+      "sha256": "997cb117b54a0b7725d665f854562974bb1591f5c6ec9e3448e33382c7e4d69d"
+    },
+    "nodeAttempts": {
+      "entry": {
+        "visit": 1,
+        "attempts": 1
+      }
+    }
+  },
+  "effects": [],
+  "suspension": {
+    "kind": "module-pause",
+    "nodeId": "validate",
+    "module": {
+      "id": "synthetic-core",
+      "version": "1.0.0",
+      "sha256": "137a2ffaafa322f33670e0664ddaddb6e60b9bb70ea7bb5341c3b96134701b15"
+    },
+    "pausedAt": "2026-10-26T10:00:01Z",
+    "resumePermission": "flow.resume"
+  },
+  "runSlot": "initial",
+  "continuationPolicy": "human-after-wait-or-crash"
+}

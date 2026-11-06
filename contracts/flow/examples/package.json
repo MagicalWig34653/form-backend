@@ -1,0 +1,707 @@
+{
+  "contractVersion": "0.1.0",
+  "proposalStatus": "VORGESCHLAGEN",
+  "packageId": "synthetic-package",
+  "packageRevision": 1,
+  "createdAt": "2026-10-26T10:00:00Z",
+  "credentialPolicy": "references-only",
+  "importPolicy": {
+    "mode": "draft-only",
+    "idempotency": "package-id-revision-digest",
+    "conflicts": "require-explicit-mapping",
+    "externalEffects": "forbidden"
+  },
+  "forms": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "51c6a66b-de6b-54a3-b317-e0812bf4cbaa",
+      "version": "1.0.0",
+      "tenantId": "a18baabf-e502-5b1b-af37-8fe04579a694",
+      "title": {
+        "de": "Synthetisches Beispielformular"
+      },
+      "unknownFields": "reject",
+      "normalization": "typed-v1",
+      "fields": {
+        "email": {
+          "name": "kontakt_email",
+          "kind": "email",
+          "label": {
+            "de": "E-Mail"
+          },
+          "required": true,
+          "hidden": false,
+          "locked": false,
+          "sensitive": true,
+          "validation": {
+            "type": "string",
+            "format": "email",
+            "minLength": 1
+          }
+        },
+        "consent": {
+          "name": "zustimmung",
+          "kind": "boolean",
+          "label": {
+            "de": "Zustimmung"
+          },
+          "required": true,
+          "hidden": false,
+          "locked": false,
+          "sensitive": false,
+          "validation": {
+            "const": true
+          }
+        },
+        "channel": {
+          "name": "kanal",
+          "kind": "text",
+          "label": {
+            "de": "Kanal"
+          },
+          "required": true,
+          "hidden": true,
+          "locked": true,
+          "sensitive": false,
+          "fixedValue": "synthetisch",
+          "validation": {
+            "type": "string",
+            "const": "synthetisch"
+          }
+        }
+      },
+      "security": {
+        "encryptionProfile": "hpke-v2",
+        "specialCategories": false
+      },
+      "storage": {
+        "adapter": "db",
+        "maxSubmissionBytes": 1048576,
+        "onFailure": "reject-acceptance"
+      }
+    }
+  ],
+  "views": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "7085d2b2-9777-5a87-96c1-f90aa9c3df28",
+      "version": "1.0.0",
+      "form": {
+        "id": "51c6a66b-de6b-54a3-b317-e0812bf4cbaa",
+        "version": "1.0.0",
+        "sha256": "d44210b6a4c4e4cb2e4755e7389e9b2f0f13f425afea9775ba3b87efce87eb9a"
+      },
+      "title": {
+        "de": "Beispielansicht"
+      },
+      "theme": {
+        "id": "standard",
+        "version": "1.0.0",
+        "parameters": {}
+      },
+      "steps": [
+        {
+          "id": "contact",
+          "title": {
+            "de": "Kontakt"
+          },
+          "sections": [
+            {
+              "id": "contact-fields",
+              "title": {
+                "de": "Kontaktdaten"
+              },
+              "fields": [
+                {
+                  "fieldId": "email",
+                  "readOnly": false,
+                  "disabled": false
+                },
+                {
+                  "fieldId": "consent",
+                  "readOnly": false,
+                  "disabled": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "15559599-1fc7-53ac-beb3-f653471ccb69",
+      "version": "1.0.0",
+      "engineContractVersion": "0.1.0",
+      "entryNode": "entry",
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "nodes": {
+        "entry": {
+          "kind": "entry",
+          "label": {
+            "de": "Eingang"
+          }
+        },
+        "validate": {
+          "kind": "block",
+          "label": {
+            "de": "Prüfen"
+          },
+          "block": {
+            "id": "synthetic-validate",
+            "version": "1.0.0",
+            "sha256": "fafe08ce2c9392f76d8204d1253653f1f918ea00587cccc1aabee099ee4aa4ac"
+          },
+          "location": "backend-worker",
+          "config": {},
+          "inputBindings": {
+            "email": {
+              "sourceNode": "entry",
+              "pointer": "/email"
+            }
+          }
+        },
+        "route": {
+          "kind": "condition",
+          "label": {
+            "de": "Gültig?"
+          },
+          "predicate": {
+            "type": "object",
+            "properties": {
+              "valid": {
+                "const": true
+              }
+            },
+            "required": [
+              "valid"
+            ]
+          }
+        },
+        "loop": {
+          "kind": "loop",
+          "label": {
+            "de": "Begrenzte Schleife"
+          },
+          "maxIterations": 3,
+          "predicate": {
+            "type": "object",
+            "properties": {
+              "continue": {
+                "const": true
+              }
+            },
+            "required": [
+              "continue"
+            ]
+          }
+        },
+        "script": {
+          "kind": "script",
+          "label": {
+            "de": "Identität"
+          },
+          "artifact": {
+            "id": "synthetic-identity",
+            "version": "1.0.0",
+            "sha256": "ed397f8e9239a044141e47154ffdc03bba90ac5951091ba2c3576507ab9a57c2"
+          },
+          "sandboxProfile": {
+            "id": "VORGESCHLAGEN-isolated-v1",
+            "version": "1.0.0",
+            "sha256": "ef2fc9a5d1ddde37844771583d3c17411c42b19d2bb70e6e6ff34399bd3afaf5"
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "limits": {
+            "maxSteps": 1000,
+            "activeTimeoutMs": 30000,
+            "maxElapsedMs": 86400000,
+            "memoryBytes": 67108864,
+            "nodeTimeoutMs": 5000,
+            "maxStateBytes": 1048576
+          },
+          "plaintext": {
+            "required": true,
+            "allowedLocations": [
+              "backend-worker"
+            ],
+            "persistence": "forbidden"
+          }
+        },
+        "wait": {
+          "kind": "wait",
+          "label": {
+            "de": "Kurz warten"
+          },
+          "durationMs": 1000,
+          "onTimeout": "fail"
+        },
+        "helper": {
+          "kind": "subflow",
+          "label": {
+            "de": "Teilablauf"
+          },
+          "flow": {
+            "id": "408d33f7-c58d-5d83-8d3b-94e93dabf8dc",
+            "version": "1.0.0",
+            "sha256": "9cdf1a592b98086364228516b5be4ab7fa4819d67d82399eaeb55f6b389d8391"
+          }
+        },
+        "approval": {
+          "kind": "approval",
+          "label": {
+            "de": "Freigeben"
+          },
+          "permission": "flow.approve",
+          "timeoutMs": 3600000,
+          "onTimeout": "reject",
+          "requireHuman": true
+        },
+        "end": {
+          "kind": "end",
+          "label": {
+            "de": "Erfolg"
+          },
+          "result": "success"
+        },
+        "reject": {
+          "kind": "end",
+          "label": {
+            "de": "Abgelehnt"
+          },
+          "result": "rejected"
+        }
+      },
+      "edges": [
+        {
+          "from": "entry",
+          "port": "next",
+          "to": "validate"
+        },
+        {
+          "from": "validate",
+          "port": "next",
+          "to": "route"
+        },
+        {
+          "from": "route",
+          "port": "true",
+          "to": "loop"
+        },
+        {
+          "from": "route",
+          "port": "false",
+          "to": "reject"
+        },
+        {
+          "from": "loop",
+          "port": "body",
+          "to": "script"
+        },
+        {
+          "from": "script",
+          "port": "next",
+          "to": "wait"
+        },
+        {
+          "from": "wait",
+          "port": "resume",
+          "to": "helper"
+        },
+        {
+          "from": "helper",
+          "port": "next",
+          "to": "loop"
+        },
+        {
+          "from": "loop",
+          "port": "done",
+          "to": "approval"
+        },
+        {
+          "from": "approval",
+          "port": "approved",
+          "to": "end"
+        },
+        {
+          "from": "approval",
+          "port": "rejected",
+          "to": "reject"
+        }
+      ],
+      "failurePolicy": "stop-and-record"
+    },
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "408d33f7-c58d-5d83-8d3b-94e93dabf8dc",
+      "version": "1.0.0",
+      "engineContractVersion": "0.1.0",
+      "entryNode": "entry",
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "nodes": {
+        "entry": {
+          "kind": "entry",
+          "label": {
+            "de": "Start"
+          }
+        },
+        "end": {
+          "kind": "end",
+          "label": {
+            "de": "Ende"
+          },
+          "result": "success"
+        }
+      },
+      "edges": [
+        {
+          "from": "entry",
+          "port": "next",
+          "to": "end"
+        }
+      ],
+      "failurePolicy": "stop-and-record"
+    },
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "36f5cc05-eaf7-5d05-9689-81c304b27708",
+      "version": "1.0.0",
+      "engineContractVersion": "0.1.0",
+      "entryNode": "entry",
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "nodes": {
+        "entry": {
+          "kind": "entry",
+          "label": {
+            "de": "Start"
+          }
+        },
+        "synthetic-mail-node": {
+          "kind": "block",
+          "label": {
+            "de": "Mail"
+          },
+          "block": {
+            "id": "synthetic-mail",
+            "version": "1.0.0",
+            "sha256": "49714696ecc53dd521dbd37864d4b8242182d9cf9219f70d468d0cc367fb4f95"
+          },
+          "location": "backend-worker",
+          "config": {},
+          "inputBindings": {
+            "email": {
+              "sourceNode": "entry",
+              "pointer": "/email"
+            }
+          }
+        },
+        "end": {
+          "kind": "end",
+          "label": {
+            "de": "Ende"
+          },
+          "result": "success"
+        }
+      },
+      "edges": [
+        {
+          "from": "entry",
+          "port": "next",
+          "to": "synthetic-mail-node"
+        },
+        {
+          "from": "synthetic-mail-node",
+          "port": "next",
+          "to": "end"
+        }
+      ],
+      "failurePolicy": "stop-and-record"
+    }
+  ],
+  "blocks": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "synthetic-validate",
+      "version": "1.0.0",
+      "module": {
+        "id": "synthetic-core",
+        "version": "1.0.0",
+        "sha256": "137a2ffaafa322f33670e0664ddaddb6e60b9bb70ea7bb5341c3b96134701b15"
+      },
+      "title": {
+        "de": "Felder prüfen"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "additionalProperties": false
+      },
+      "configSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "locations": [
+        "backend-worker"
+      ],
+      "permissions": [
+        "flow.execute"
+      ],
+      "connections": [],
+      "plaintext": {
+        "required": true,
+        "allowedLocations": [
+          "backend-worker"
+        ],
+        "persistence": "forbidden"
+      },
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "effectKind": "none",
+      "idempotency": "pure",
+      "retry": {
+        "mode": "never",
+        "maxAttempts": 1,
+        "initialDelayMs": 0,
+        "maxDelayMs": 0,
+        "backoffFactor": 1,
+        "jitter": false
+      },
+      "debug": {
+        "valuePolicy": "masked-only",
+        "sensitiveInputPointers": [
+          "/email"
+        ],
+        "sensitiveOutputPointers": []
+      }
+    },
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "synthetic-mail",
+      "version": "1.0.0",
+      "module": {
+        "id": "synthetic-core",
+        "version": "1.0.0",
+        "sha256": "137a2ffaafa322f33670e0664ddaddb6e60b9bb70ea7bb5341c3b96134701b15"
+      },
+      "title": {
+        "de": "Manueller Mailversand"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "additionalProperties": false
+      },
+      "configSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "locations": [
+        "backend-worker"
+      ],
+      "permissions": [
+        "flow.execute"
+      ],
+      "connections": [
+        {
+          "alias": "smtp-test",
+          "kind": "smtp",
+          "required": true
+        }
+      ],
+      "plaintext": {
+        "required": true,
+        "allowedLocations": [
+          "backend-worker"
+        ],
+        "persistence": "forbidden"
+      },
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "effectKind": "mail",
+      "idempotency": "manual-on-uncertain",
+      "retry": {
+        "mode": "manual-authorized",
+        "maxAttempts": 5,
+        "initialDelayMs": 60000,
+        "maxDelayMs": 3600000,
+        "backoffFactor": 2,
+        "jitter": true
+      },
+      "debug": {
+        "valuePolicy": "masked-only",
+        "sensitiveInputPointers": [
+          "/email"
+        ],
+        "sensitiveOutputPointers": []
+      }
+    }
+  ],
+  "modules": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "synthetic-core",
+      "version": "1.0.0",
+      "title": {
+        "de": "Synthetisches Kernmodul"
+      },
+      "owner": "flow-team",
+      "engineContractVersion": "0.1.0",
+      "configSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "permissions": [
+        "flow.execute"
+      ],
+      "dependencies": [],
+      "blocks": [
+        {
+          "id": "synthetic-validate",
+          "version": "1.0.0"
+        },
+        {
+          "id": "synthetic-mail",
+          "version": "1.0.0"
+        }
+      ],
+      "activation": {
+        "installed": true,
+        "serverAvailable": true,
+        "tenantEnabled": true,
+        "formEnabled": true,
+        "onDisable": "pause"
+      },
+      "health": {
+        "state": "unknown"
+      }
+    }
+  ],
+  "scripts": [
+    {
+      "contractVersion": "0.1.0",
+      "proposalStatus": "VORGESCHLAGEN",
+      "id": "synthetic-identity",
+      "version": "1.0.0",
+      "language": "VORGESCHLAGEN-javascript",
+      "source": "return input;",
+      "sourceSha256": "4d3a5625145171d40ee827df41e201e99e24e3cf7a30adea9e36d84038dd310b"
+    }
+  ],
+  "sandboxRequirements": [
+    {
+      "id": "VORGESCHLAGEN-isolated-v1",
+      "version": "1.0.0",
+      "sha256": "ef2fc9a5d1ddde37844771583d3c17411c42b19d2bb70e6e6ff34399bd3afaf5"
+    }
+  ],
+  "templates": [
+    {
+      "id": "synthetic-mail-template",
+      "version": "1.0.0",
+      "mediaType": "text/plain",
+      "content": "Synthetische Testnachricht."
+    }
+  ],
+  "connections": [
+    {
+      "alias": "smtp-test",
+      "kind": "smtp",
+      "required": true
+    }
+  ],
+  "moduleRequirements": [
+    {
+      "id": "synthetic-core",
+      "version": "1.0.0",
+      "sha256": "137a2ffaafa322f33670e0664ddaddb6e60b9bb70ea7bb5341c3b96134701b15"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+<!-- title: Stand & Roadmap | description: Was im Formular-Backend umgesetzt und getestet ist, was fehlt und in welcher Reihenfolge es weitergeht. -->
+<h1>Stand &amp; Roadmap</h1>
+<p class="lead">Eine ungeschönte Übersicht: Jeder Punkt ist entweder umgesetzt und getestet, teilweise umgesetzt oder geplant.</p>
+
+<h2>Umgesetzt und getestet</h2>
+<table>
+  <tr><th>Bereich</th><th>Stand</th><th>Nachweis</th></tr>
+  <tr><td>Kryptografie</td><td><span class="badge ok">fertig</span> HPKE-Paketformat, Signaturen (streng), Kanonisierung; kompatibel mit PHP</td><td>Swift- und PHP-Kreuztests, RFC-9180-Vektor</td></tr>
+  <tr><td>Datenbankschema</td><td><span class="badge ok">fertig</span> 74 Tabellen, Migration wiederholbar</td><td>Prüfskript mit 112 Fällen gegen MariaDB</td></tr>
+  <tr><td>Eingang (Einsendungen)</td><td><span class="badge ok">aktiv</span> signiert, idempotent, nebenläufig geprüft; Schlüssel für Kunde und Formular über die Admin-API</td><td>Ende-zu-Ende-Test: Formular veröffentlichen → Schlüssel → signierte Einsendung → Kunde entschlüsselt; Wiederholung, Rotation, Fehlerfälle</td></tr>
+  <tr><td>Erstes Konto, Passkey-Registrierung</td><td><span class="badge ok">fertig</span> <code>bootstrap-admin</code>, Einmal-Link, Registrierung ES256/EdDSA/RS256, weiteres Gerät, Ersatz-Link</td><td>Test mit leerer Datenbank im echten Browser (virtueller Authenticator); Einheits- und Datenbanktests</td></tr>
+  <tr><td>Anmeldung</td><td><span class="badge ok">fertig</span> Passkey + Passwort (Argon2id), Sitzungen, CSRF, Sperren, Aufräumen</td><td>Echter Browsertest mit virtuellem Authenticator gegen den laufenden Server</td></tr>
+  <tr><td>Rechte</td><td><span class="badge ok">fertig</span> Einzelrechte und Gruppen, Kunde/Formular, live geprüft</td><td>Datenbanktests</td></tr>
+  <tr><td>Formulare, Entwürfe, Veröffentlichung</td><td><span class="badge ok">fertig</span> inkl. Standard-Entwurf, Bestätigung, Idempotenz, Aktivierung</td><td>Datenbanktests, Rennen-Test, ungültige Dokumente</td></tr>
+  <tr><td>E-Mail mit Inhalt</td><td><span class="badge ok">fertig</span> SMTP (TLS/STARTTLS/AUTH) und Mail-Proxy, Organisations- und Bestätigungsmail, Platzhalter, Zustellstatus</td><td>Tests gegen einen scriptbaren SMTP-Server, gegen einen echten Mailserver (Mailpit) und Ende-zu-Ende von der Einsendung bis zur Mail. Anhänge und manueller Wiederversand fehlen.</td></tr>
+  <tr><td>PHP-SDK</td><td><span class="badge ok">fertig</span> signieren und senden, Wiederholungen, Fehlerabbildung, Kommandozeile</td><td>87 Einheitsprüfungen; echter Test PHP-SDK gegen den Server mit Entschlüsselung durch den Kunden. Dateien (Multipart) fehlen.</td></tr>
+  <tr><td>Oberfläche</td><td><span class="badge warn">teilweise</span> Anmeldung, Ersteinrichtung, Kunden, Formulare, Felder, Mail, Veröffentlichen, Schlüssel &amp; SDK, Verbindungen, Einsendungen lesen</td><td>47 Unit-Tests, 31 Browsertests inkl. Barrierefreiheit (axe); echter Ende-zu-Ende-Lauf der Verwaltung</td></tr>
+  <tr><td>Einsendungen lesen</td><td><span class="badge ok">fertig</span> Liste (nur Metadaten), Paketabruf mit Rechten, frischer Anmeldung und Audit; Entschlüsselung im Browser</td><td>Datenbanktest bis zur Entschlüsselung; PHP-erzeugte Pakete werden im Browser geöffnet (Unit- und Chromium-Test). Schlüsselverwaltung (PRF, Wiederherstellung), Anhänge fehlen.</td></tr>
+  <tr><td>Betrieb</td><td><span class="badge ok">fertig</span> Docker-Image amd64 + arm64 (nicht als Root), CI auf beiden Architekturen, zustandslose Replicas (Swarm), vertrauenswürdige Proxys</td><td>GitHub Actions; Test mit zwei Instanzen auf einer Datenbank</td></tr>
+  <tr><td>Löschung, Löschschutz, Aufbewahrung, Export</td><td><span class="badge ok">fertig</span> physische Löschung mit Nachweis, Hold, Aufbewahrungsfrist je Formular mit stündlichem Job, seitenweiser Chiffrat-Export</td><td>Datenbanktests inkl. Wiederholung nach Löschung; Browsertest der Oberfläche; unabhängiges Review (Befunde behoben)</td></tr>
+  <tr><td>Domains und Statistik</td><td><span class="badge ok">fertig</span> Domainzuordnung, Ereignis-Endpunkt, Statistik mit Conversion, 13-Monats-Löschung</td><td>Datenbanktests; Review-Korrekturen eingearbeitet</td></tr>
+  <tr><td>Webhooks</td><td><span class="badge ok">fertig</span> Endpunkte, signierte Zustellung, Outbox ohne Inhalt</td><td>Datenbanktests mit lokalem Testserver; Review-Befunde behoben</td></tr>
+  <tr><td>Speicher S3/SFTP</td><td><span class="badge ok">fertig</span> externer Speicher für Anhänge</td><td>Datenbanktests; Sicherheitsreview und Upgrade-Pfad für bestehende Datenbanken offen</td></tr>
+  <tr><td>Betrieb (Deploy)</td><td><span class="badge warn">vorbereitet</span> Docker Swarm und Compose ohne Caddy, externe Datenbank, Einstellungen per Umgebungsvariablen, Setup- und Update-Skripte, Platzierung (Pflicht-Host, Opt-in-Knoten)</td><td>Skriptprüfung; noch nicht auf einem echten Swarm mit Reverse Proxy erprobt</td></tr>
+  <tr><td>Zwei Zugänge und Einstellungen</td><td><span class="badge ok">fertig</span> öffentlicher Port (SDK, Statistik, MCP/OAuth) getrennt vom internen (Oberfläche, Verwaltung); Einstellungen auch in der Oberfläche (Umgebung &gt; Datenbank &gt; Standard)</td><td>Datenbanktests</td></tr>
+  <tr><td>Ablaufengine, MCP, OAuth</td><td><span class="badge ok">fertig</span> Engine mit Debug, MCP mit Tokens, OAuth 2.1 (PKCE, dynamische Registrierung), MCP-Statistikwerkzeuge</td><td>Datenbanktests, Sicherheitsreview</td></tr>
+  <tr><td>Missbrauchsschutz</td><td><span class="badge ok">fertig</span> Turnstile mit Ausfallunterscheidung, IP-Sperre, Malware-Hash, Testmodus</td><td>Tests, Sicherheitsreview</td></tr>
+  <tr><td>Konten, TOTP, Betrieb</td><td><span class="badge ok">fertig</span> Passwort mit TOTP, Sperren, Passwortwechsel, Fehlerprotokoll mit Alarmen</td><td>Tests, Sicherheitsreview</td></tr>
+  <tr><td>Export und Auskunft</td><td><span class="badge ok">fertig</span> lokal entschlüsselt im Browser (CSV/JSON), Betroffenenanfragen</td><td>Tests</td></tr>
+  <tr><td>Google-Ads-Auswertung</td><td><span class="badge ok">fertig</span> datensparsame Ads-Statistik in Oberfläche und MCP</td><td>Tests</td></tr>
+  <tr><td>Schlüsselverwaltung</td><td><span class="badge ok">fertig</span> unsichtbar im Hintergrund: Entsperren per Passkey, Wiederherstellungscode, automatische Rotation</td><td>Tests</td></tr>
+  <tr><td>Eingangsprüfung</td><td><span class="badge ok">fertig</span> serverseitige Feldprüfung gegen das veröffentlichte Formular, Captcha-Felder werden nicht gespeichert; abgeleitete Mailwerte</td><td>Tests</td></tr>
+  <tr><td>Setup und Migration</td><td><span class="badge ok">fertig</span> Assistent, Migration mit Fortschritt, Test-Entschlüsselung im Browser, Delta-Import, Formularkonverter</td><td>Importprobe an echtem Dump (Trockenlauf)</td></tr>
+</table>
+<p class="muted">Stand 04.11.2026: 421 Backend-Tests inklusive Datenbank, 159 Oberflächentests und 74 Browsertests auf dem Hauptzweig. GitHub-CI läuft auf Linux (amd64/arm64).</p>
+
+<h2>Noch offen</h2>
+<div class="note warn">
+  <ul>
+    <li><strong>Abnahme gegen einen isolierten Neubau</strong> mit dem Abnahmeskript und echter Importprobe inklusive Mail-Verbindungen.</li>
+    <li><strong>Echte Proxy-/Swarm-Abnahme</strong> der Deploy-Vorlagen.</li>
+    <li><strong>Oberflächen</strong> für abgeleitete Mailwerte und Webhook-Verwaltung; Ablaufeditor.</li>
+    <li><strong>Last-, Mehrreplika- und Wiederherstellungstests</strong>, unabhängige Sicherheitsprüfung, Browser-Matrix.</li>
+    <li>Der Docker-Kundenagent entfällt bewusst.</li>
+  </ul>
+</div>
+<p>Das Altsystem ist noch nicht ersetzt; die Funktionen sind weitgehend vorhanden, die Abnahme gegen einen Neubau steht aus.</p>
+
+<h2>Reihenfolge</h2>
+<table>
+  <tr><th>Paket</th><th>Inhalt</th><th>Stand</th></tr>
+  <tr><td>P0–P2</td><td>Bestandsaufnahme, Entscheidungen, Verträge</td><td><span class="badge ok">erledigt</span></td></tr>
+  <tr><td>P3–P4</td><td>Durchstich: Krypto, Schema, Passkey, Backend- und PWA-Grundgerüst</td><td><span class="badge ok">erledigt</span></td></tr>
+  <tr><td>P5</td><td>Erstes vollständiges Formular: Eingang, Anmeldung, Verwaltung, Veröffentlichung, Mail, Einsendungen, Uploads</td><td><span class="badge ok">erledigt</span></td></tr>
+  <tr><td>P6</td><td>Ablaufengine, Bausteine, Editor, Debug</td><td><span class="badge ok">fertig</span> Editor in der Oberfläche offen</td></tr>
+  <tr><td>P7</td><td>SDK, Domains, Selbstupdate</td><td><span class="badge warn">teilweise</span> Domains und SDK-Update fertig; Kopplung, Agent offen</td></tr>
+  <tr><td>P8</td><td>Funktionen des Altsystems: Löschung, Statistik, Webhooks, Speicher, Rotation, MCP</td><td><span class="badge ok">fertig</span> alle genutzten Funktionen, Docker-Agent entfällt</td></tr>
+  <tr><td>P9</td><td>Wiederholbare Datenmigration, Paritätsprüfung, Probe der Umstellung</td><td><span class="badge warn">gebaut</span> Importprobe am Dump gelungen, Abnahme am Neubau offen</td></tr>
+  <tr><td>P10</td><td>Mehrreplika, Wiederanlauf, Last- und Wiederherstellungstests, Abnahme</td><td><span class="badge plan">geplant</span></td></tr>
+</table>
+<h2>Wie wir den Stand belegen</h2>
+<p>Aussagen auf diesen Seiten stützen sich auf ausgeführte Tests, nicht auf Absicht. Das Repository ist die einzige Quelle der Wahrheit; der laufende Stand mit Prüfergebnissen steht in <code>docs/STATUS.md</code>, Entscheidungen mit Begründung unter <code>docs/decisions/</code>. Wo etwas nicht geprüft wurde (zum Beispiel echte Hardware-Schlüssel, weitere Browser oder ein unabhängiger Sicherheits-Review), steht das ausdrücklich dort.</p>

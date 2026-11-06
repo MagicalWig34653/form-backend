@@ -1,0 +1,25 @@
+{
+  "manifestVersion": "resend-manifest-v1",
+  "submissionId": "20000000-0000-4000-8000-000000000001",
+  "sourceReleaseId": "20000000-0000-4000-8000-000000000002",
+  "sourceMode": "production",
+  "effectSlot": "mail-main",
+  "createdAt": "2026-10-28T10:00:00Z",
+  "objects": [
+    {"objectId": "20000000-0000-4000-8000-000000000010", "role": "data", "ordinal": 0, "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "plaintextBytes": 120, "contentEncoding": "raw"},
+    {"objectId": "20000000-0000-4000-8000-000000000011", "role": "mail-organisation", "ordinal": 0, "payloadSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "plaintextBytes": 900, "contentEncoding": "legacy-base64-trimmed-mail"},
+    {"objectId": "20000000-0000-4000-8000-000000000012", "role": "attachment", "ordinal": 0, "payloadSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "plaintextBytes": 2048, "contentEncoding": "raw"}
+  ],
+  "deliveries": [
+    {
+      "deliveryId": "20000000-0000-4000-8000-000000000020",
+      "channel": "mail",
+      "connectionAlias": "smtp-synthetic",
+      "templateRef": {"id": "20000000-0000-4000-8000-000000000021", "versionNo": 3},
+      "subject": "Synthetische Einsendung",
+      "recipients": [{"kind": "to", "address": "empfaenger@example.invalid"}],
+      "bodyObjectId": "20000000-0000-4000-8000-000000000011",
+      "attachmentObjectIds": ["20000000-0000-4000-8000-000000000012"]
+    }
+  ]
+}

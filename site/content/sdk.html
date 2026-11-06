@@ -1,0 +1,96 @@
+<!-- title: PHP-SDK | description: Einsendungen von der eigenen Webseite an das Formular-Backend senden: Zugangsdaten, Einbau in PHP, Wiederholungen, Fehlerbehandlung. -->
+<h1>PHP-SDK</h1>
+<p class="lead">So senden Sie Formulardaten Ihrer Webseite an das Backend. Das SDK signiert die Anfrage; das Backend versiegelt die Daten beim Eingang mit dem öffentlichen Schlüssel Ihres Kunden.</p>
+
+<div class="note warn"><p><strong>Wichtig:</strong> Das SDK verschlüsselt nicht selbst. Die Felder gehen im Klartext, geschützt durch HTTPS, an das Backend und werden dort sofort versiegelt. Verwenden Sie deshalb immer HTTPS (Klartext-HTTP akzeptiert das SDK nur für <code>localhost</code>). Details: <a href="sicherheit.html">Sicherheit</a>.</p></div>
+
+<h2>Voraussetzungen</h2>
+<ul>
+  <li>PHP 8.2 oder neuer mit den Erweiterungen <code>sodium</code>, <code>curl</code>, <code>json</code> und <code>mbstring</code>.</li>
+  <li>Ein veröffentlichtes Formular, der Datenschlüssel des Kunden und die SDK-Zugangsdaten (siehe unten). Das Formular muss aktiv sein.</li>
+</ul>
+
+<h2>1. Zugangsdaten erzeugen</h2>
+<p>Der Administrator des Backends erzeugt die Zugangsdaten einmal pro Formular über <code>POST /tenants/{t}/forms/{f}/sdk-credentials</code> (<a href="api.html">Admin-API</a>; erfordert das Recht <code>key.manage</code> und eine frische Anmeldung). Die Antwort enthält die Formular-Kennung, den öffentlichen Kundenschlüssel und den <strong>privaten Signaturschlüssel</strong>. Letzterer wird nur in dieser einen Antwort angezeigt und nicht gespeichert.</p>
+<ol class="steps">
+  <li>Antwort als <code>credentials.json</code> speichern, <strong>außerhalb des Web-Verzeichnisses</strong> Ihrer Anwendung.</li>
+  <li>Zugriff beschränken: <code>chmod 600 credentials.json</code> und nur dem PHP-Benutzer zugänglich machen. Das SDK verweigert Dateien, die für Gruppe oder andere lesbar sind.</li>
+  <li>Den Wert <code>formId</code> brauchen Sie später nicht im HTML; er steckt in der Datei.</li>
+</ol>
+
+<h2>2. SDK einbinden</h2>
+<p>Das SDK liegt im Repository unter <code>sdk/php/</code> (Namespace <code>FormBackend\</code>, keine weiteren Abhängigkeiten). Kopieren Sie das Verzeichnis <code>src/</code> in Ihr Projekt oder binden Sie <code>sdk/php</code> per Composer als Pfad-Repository ein.</p>
+
+<h2>3. Einsendung senden</h2>
+<pre><code>&lt;?php
+require __DIR__ . '/vendor/autoload.php';
+
+use FormBackend\Client;
+use FormBackend\Credentials;
+use FormBackend\Exception\RejectedException;
+use FormBackend\Exception\TransportException;
+
+$client = new Client('https://admin.example.org', Credentials::fromFile('/etc/meineapp/credentials.json'));
+
+try {
+    $submission = $client-&gt;submit([
+        'name'       =&gt; $_POST['name'] ?? '',
+        'nachricht'  =&gt; $_POST['nachricht'] ?? '',
+        'interessen' =&gt; ['a', 'b'],
+    ]);
+    echo 'Danke! Referenz: ' . htmlspecialchars($submission-&gt;id);
+} catch (RejectedException $e) {
+    // Der Server hat abgelehnt (Status in $e-&gt;status)
+} catch (TransportException $e) {
+    // keine Antwort; siehe „Wiederholungen“
+}</code></pre>
+
+<h2>Regeln für die Felder</h2>
+<ul>
+  <li>Werte sind Zeichenketten oder ganze Zahlen, auch in Arrays. Wahrheitswerte, Kommazahlen und <code>null</code> wandeln Sie bewusst selbst um; sonst gibt es eine <code>InvalidInputException</code>, <strong>bevor</strong> etwas gesendet wird.</li>
+  <li>Ungültiges UTF-8, leere Namen, mehr als 1000 Werte oder Verschachtelung über 64 Ebenen werden abgelehnt.</li>
+  <li>Oberste Feldnamen dürfen weder <code>.</code> noch Leerzeichen noch Klammern enthalten, weil PHP sie sonst stillschweigend umbenennt.</li>
+  <li>Dateien werden als Multipart unterstützt: drittes Argument von <code>submit($fields, $key, $files)</code>. Felder und Dateiinhalt sind an die Signatur gebunden; Typ und Größe prüft das Backend.</li>
+</ul>
+
+<h2>Wiederholungen</h2>
+<p>Jeder Aufruf trägt einen <code>Idempotency-Key</code> (zufällig, wenn Sie keinen angeben). Bei Verbindungsfehlern und den Antworten 429, 502, 503, 504 wiederholt das SDK bis zu dreimal mit <strong>demselben</strong> Schlüssel, aber mit frischem Zeitstempel und frischer Signatur. Der Server liefert dann dieselbe Einsendung zurück, es entsteht nie eine doppelte.</p>
+<p>Wenn Sie nach einem <code>TransportException</code> selbst wiederholen, übergeben Sie denselben Schlüssel: <code>$client-&gt;submit($fields, $key)</code>. Derselbe Schlüssel mit anderem Inhalt wird mit <code>409</code> abgelehnt.</p>
+
+<h2>Fehler verstehen</h2>
+<table>
+  <tr><th>Situation</th><th>Bedeutung</th></tr>
+  <tr><td><code>403</code></td><td>Signatur abgelehnt: falscher Schlüssel, falsche Formular-Kennung oder <strong>Uhr weicht mehr als 5 Minuten ab</strong> (zuerst die Serveruhr per NTP prüfen). Nach einer Rotation gilt der alte Schlüssel noch 1 Stunde.</td></tr>
+  <tr><td><code>404</code></td><td>Formular unbekannt oder noch nicht aktiv (es braucht ein veröffentlichtes Release).</td></tr>
+  <tr><td><code>409</code></td><td>Idempotenz-Schlüssel bereits mit anderem Inhalt verwendet oder zugehörige Einsendung gelöscht; eine Löschung wird nicht durch erneutes Senden rückgängig gemacht.</td></tr>
+  <tr><td><code>413</code> / <code>415</code></td><td>Zu groß / falscher Inhaltstyp.</td></tr>
+  <tr><td><code>429</code></td><td>Zu viele Anfragen; <code>$e-&gt;retryAfter</code> nennt die Wartezeit in Sekunden.</td></tr>
+  <tr><td><code>503</code></td><td>Das Formular ist noch nicht vollständig eingerichtet (z. B. fehlt der Kundenschlüssel) oder der Dienst ist nicht erreichbar.</td></tr>
+  <tr><td><code>TransportException</code></td><td>Keine Antwort nach drei Versuchen. Die Einsendung kann angekommen sein; mit demselben Schlüssel wiederholen.</td></tr>
+</table>
+<p>Fehlermeldungen des SDK enthalten weder Feldwerte noch Schlüsselmaterial und können protokolliert werden.</p>
+
+<h2>SDK-Signaturschlüssel erneuern</h2>
+<p>Rufen Sie <code>sdk-credentials</code> erneut auf, erhalten Sie neue Zugangsdaten. Der bisherige Schlüssel bleibt <strong>1 Stunde</strong> gültig, damit Sie die Datei auf allen Servern austauschen können; danach wird er abgelehnt. Bei Verdacht auf Abfluss rotieren Sie sofort (der Schlüssel erlaubt nur Einsendungen im Namen des Formulars, kein Lesen).</p>
+
+<h2>Kommandozeile</h2>
+<p>Zum Testen und für Skripte:</p>
+<pre><code>php sdk/php/bin/submit.php --credentials credentials.json --url https://admin.example.org \
+    name=Beispiel nachricht=Hallo 'liste[]=a' 'liste[]=b'</code></pre>
+<p>Gibt die Einsendungs-Kennung aus. Exit-Codes: 0 gesendet, 1 abgelehnt, 2 Transportfehler, 64 Eingabe- oder Konfigurationsfehler.</p>
+
+<h2>Nachweise und Grenzen</h2>
+<p>Dokumentierte Einheitsprüfungen des SDK (Kanonisierung, Signatur, Wiederholungen, Fehlerabbildung, Absicherung der Zugangsdaten) sowie ein Test mit dem <em>echten</em> PHP-SDK gegen den <em>echten</em> Server mit Datenbank: Senden, Wiederholung mit gleichem Schlüssel, 409, 403, 404, nicht erreichbarer Server, und der Kunde entschlüsselt exakt, was gesendet wurde. Zusätzlich dokumentiert sind Multipart- und Browser-Downloadtests. In dieser Doku-Aktualisierung wurden diese Anwendungstests nicht erneut ausgeführt. Andere PHP-Versionen als 8.5 und Hosting-Umgebungen mit eingeschränktem cURL sind hier nicht belegt.</p>
+
+<h2>Datei-Uploads</h2>
+<p>Das dritte Argument ordnet Feldnamen entweder lesbare Dateipfade oder Objekte mit <code>name</code> und <code>content</code> (Dateibytes) zu; Listen erlauben mehrere Dateien je Feld. PHPs <code>$_FILES</code>-Struktur wird nicht direkt übernommen. Das SDK liest und signiert den Inhalt; der Server versiegelt Anhänge separat. Die Kommandozeile unterstützt <code>--file</code>. Erlaubte Typen, Anzahl und Größenlimits werden geprüft; ein Dateiupload ersetzt keine Schadsoftwareprüfung.</p>
+<h2 id="sdk-selbstupdate">SDK-Selbstupdate per FTP/FTPS/SFTP</h2>
+<p>Das Backend kann das SDK aus seinem eigenen Image auf Kunden-Webspace installieren, aktualisieren und auf genau eine Vorversion zurückrollen (ADR 0011). Die Version stammt aus <code>sdk/php/VERSION</code>; es wird kein Paket aus dem Internet geladen.</p>
+<ol class="steps">
+<li>Systemadministration legt eine FTP-/SFTP-Verbindung an und weist sie dem Kunden zu. FTP nutzt explizites oder implizites TLS; Klartext-FTP ist nur im Entwicklungsmodus erlaubt. SFTP nutzt Passwortanmeldung und verlangt einen verifizierten Host-Key-Pin.</li>
+<li>Mit <code>key.manage</code> am Kunden und frischer Anmeldung ein Ziel je Formular anlegen: Verbindung, genaues Zielverzeichnis und <code>autoUpdate:false</code>. Zugangsdaten und Kundencode außerhalb des verwalteten SDK-Verzeichnisses halten.</li>
+<li>Installation manuell auslösen. Das Backend lädt in ein Nachbar-Stagingverzeichnis, liest Dateien zurück und vergleicht SHA-256. Erst danach wird umbenannt; <code>.prev</code> hält eine Vorversion. Rollback ist ein eigener ausdrücklicher Aufruf.</li>
+</ol>
+<p>Normale Updates erlauben nur höhere SemVer-Versionen. Ein Host-Key-Wechsel wird abgelehnt; der über <code>POST /connections/probe-sftp</code> gelesene Fingerabdruck muss über einen unabhängigen Kanal geprüft werden. FTPS-Server mit erzwungener TLS-Sitzungswiederverwendung auf dem Datenkanal werden derzeit nicht unterstützt; SSH-Schlüsselanmeldung und automatische Testeinsendung nach Update fehlen.</p>
+<div class="note warn"><p>Automatische Updates sind optional und standardmäßig aus. Wegen offener Reviewpunkte zu gemeinsamem physischem Ziel, Lauf-/Phasenpersistenz und Zeitlimits sind sie noch nicht freigegeben. Tests mit Fake-FTP und einem echten OpenSSH-Server belegen Teilpfade; daraus folgt keine Freigabe für beliebige Hoster oder Crash-/Konkurrenzfälle.</p></div>
+<p>Die Erneuerung des SDK-Signaturschlüssels ist bereits vorhanden. Datenschlüsselrotation samt Hold-Rewrap ist dagegen noch nicht auf main.</p>

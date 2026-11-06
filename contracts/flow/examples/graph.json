@@ -1,0 +1,216 @@
+{
+  "contractVersion": "0.1.0",
+  "proposalStatus": "VORGESCHLAGEN",
+  "id": "15559599-1fc7-53ac-beb3-f653471ccb69",
+  "version": "1.0.0",
+  "engineContractVersion": "0.1.0",
+  "entryNode": "entry",
+  "limits": {
+    "maxSteps": 1000,
+    "activeTimeoutMs": 30000,
+    "maxElapsedMs": 86400000,
+    "memoryBytes": 67108864,
+    "nodeTimeoutMs": 5000,
+    "maxStateBytes": 1048576
+  },
+  "nodes": {
+    "entry": {
+      "kind": "entry",
+      "label": {
+        "de": "Eingang"
+      }
+    },
+    "validate": {
+      "kind": "block",
+      "label": {
+        "de": "Prüfen"
+      },
+      "block": {
+        "id": "synthetic-validate",
+        "version": "1.0.0",
+        "sha256": "fafe08ce2c9392f76d8204d1253653f1f918ea00587cccc1aabee099ee4aa4ac"
+      },
+      "location": "backend-worker",
+      "config": {},
+      "inputBindings": {
+        "email": {
+          "sourceNode": "entry",
+          "pointer": "/email"
+        }
+      }
+    },
+    "route": {
+      "kind": "condition",
+      "label": {
+        "de": "Gültig?"
+      },
+      "predicate": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "const": true
+          }
+        },
+        "required": [
+          "valid"
+        ]
+      }
+    },
+    "loop": {
+      "kind": "loop",
+      "label": {
+        "de": "Begrenzte Schleife"
+      },
+      "maxIterations": 3,
+      "predicate": {
+        "type": "object",
+        "properties": {
+          "continue": {
+            "const": true
+          }
+        },
+        "required": [
+          "continue"
+        ]
+      }
+    },
+    "script": {
+      "kind": "script",
+      "label": {
+        "de": "Identität"
+      },
+      "artifact": {
+        "id": "synthetic-identity",
+        "version": "1.0.0",
+        "sha256": "ed397f8e9239a044141e47154ffdc03bba90ac5951091ba2c3576507ab9a57c2"
+      },
+      "sandboxProfile": {
+        "id": "VORGESCHLAGEN-isolated-v1",
+        "version": "1.0.0",
+        "sha256": "ef2fc9a5d1ddde37844771583d3c17411c42b19d2bb70e6e6ff34399bd3afaf5"
+      },
+      "inputSchema": {
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "limits": {
+        "maxSteps": 1000,
+        "activeTimeoutMs": 30000,
+        "maxElapsedMs": 86400000,
+        "memoryBytes": 67108864,
+        "nodeTimeoutMs": 5000,
+        "maxStateBytes": 1048576
+      },
+      "plaintext": {
+        "required": true,
+        "allowedLocations": [
+          "backend-worker"
+        ],
+        "persistence": "forbidden"
+      }
+    },
+    "wait": {
+      "kind": "wait",
+      "label": {
+        "de": "Kurz warten"
+      },
+      "durationMs": 1000,
+      "onTimeout": "fail"
+    },
+    "helper": {
+      "kind": "subflow",
+      "label": {
+        "de": "Teilablauf"
+      },
+      "flow": {
+        "id": "408d33f7-c58d-5d83-8d3b-94e93dabf8dc",
+        "version": "1.0.0",
+        "sha256": "9cdf1a592b98086364228516b5be4ab7fa4819d67d82399eaeb55f6b389d8391"
+      }
+    },
+    "approval": {
+      "kind": "approval",
+      "label": {
+        "de": "Freigeben"
+      },
+      "permission": "flow.approve",
+      "timeoutMs": 3600000,
+      "onTimeout": "reject",
+      "requireHuman": true
+    },
+    "end": {
+      "kind": "end",
+      "label": {
+        "de": "Erfolg"
+      },
+      "result": "success"
+    },
+    "reject": {
+      "kind": "end",
+      "label": {
+        "de": "Abgelehnt"
+      },
+      "result": "rejected"
+    }
+  },
+  "edges": [
+    {
+      "from": "entry",
+      "port": "next",
+      "to": "validate"
+    },
+    {
+      "from": "validate",
+      "port": "next",
+      "to": "route"
+    },
+    {
+      "from": "route",
+      "port": "true",
+      "to": "loop"
+    },
+    {
+      "from": "route",
+      "port": "false",
+      "to": "reject"
+    },
+    {
+      "from": "loop",
+      "port": "body",
+      "to": "script"
+    },
+    {
+      "from": "script",
+      "port": "next",
+      "to": "wait"
+    },
+    {
+      "from": "wait",
+      "port": "resume",
+      "to": "helper"
+    },
+    {
+      "from": "helper",
+      "port": "next",
+      "to": "loop"
+    },
+    {
+      "from": "loop",
+      "port": "done",
+      "to": "approval"
+    },
+    {
+      "from": "approval",
+      "port": "approved",
+      "to": "end"
+    },
+    {
+      "from": "approval",
+      "port": "rejected",
+      "to": "reject"
+    }
+  ],
+  "failurePolicy": "stop-and-record"
+}
