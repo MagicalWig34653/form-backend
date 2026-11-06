@@ -199,7 +199,7 @@ render_swarm() {
   done < "$BASE/stack.yaml"
 }
 parse_args() {
-  DRY=0; NONINTERACTIVE=0; IMAGE_ARG=''; TAG_ARG=''; KEY_ARG=''; PASSWORD_ARG=''
+  ADMIN_CMD=''; ADMIN_USER=admin; DRY=0; NONINTERACTIVE=0; IMAGE_ARG=''; TAG_ARG=''; KEY_ARG=''; PASSWORD_ARG=''
   ENV_FILE="$BASE/stack.env"; [[ "$MODE" != compose ]] || ENV_FILE="$BASE/.env"
   while (( $# )); do
     case "$1" in
@@ -217,9 +217,11 @@ parse_args() {
         say 'Datenbank, Benutzer und TLS-Proxy müssen bereits existieren. Setup führt nur SELECT 1 aus.'
         say 'Trockenlauf: keine Docker-Aufrufe, Dateiänderungen oder Secret-Erzeugung.'
         return 10 ;;
+      bootstrap-admin|enroll-passkey) [[ "$ACTION" == admin ]] || fail "Unbekannte Option: $1"; ADMIN_CMD=$1; ADMIN_USER=${2:-admin}; shift 2 2>/dev/null || shift ;;
       *) fail "Unbekannte Option: $1" ;;
     esac
   done
+  [[ "$ACTION" != admin || -n "${ADMIN_CMD:-}" ]] || fail 'Aufruf: admin.sh bootstrap-admin|enroll-passkey [BENUTZER]'
   [[ -z "$TAG_ARG" || -z "$IMAGE_ARG" ]] || fail '--tag und --image sind Alternativen'
   [[ "$ENV_FILE" == /* ]] || ENV_FILE="$PWD/$ENV_FILE"
   [[ -d "$(dirname "$ENV_FILE")" ]] || fail 'Env-Verzeichnis fehlt'
@@ -297,7 +299,7 @@ initialize() {
     [[ -z "${!key}" ]] || printf -v "$key" '%s' "$(absolute_path "${!key}")"
   done
   validate
-  [[ "$ACTION" != update || -f "$ENV_FILE" ]] || fail 'Zuerst Setup ausführen'
+  [[ "$ACTION" != update && "$ACTION" != admin || -f "$ENV_FILE" ]] || fail 'Zuerst Setup ausführen'
   for key in $CONFIG_KEYS; do [[ -z "${!key+x}" ]] || export "${key?}"; done
   CONFIG_REV=$(cat "$BASE/../docker-entrypoint.sh" "$BASE/../swarm/healthcheck.sh" | cksum | awk '{print $1}')
   export CONFIG_REV
@@ -509,10 +511,45 @@ swarm_deploy() {
   wait_rollout "${STACK}_app" "$FORM_REPLICAS"
   wait_rollout "${STACK}_app-pinned" "$FORM_PINNED_EFFECTIVE_REPLICAS"
 }
+run_admin() {
+  local key service out
+  [[ "$ADMIN_USER" =~ ^[a-z][a-z0-9._-]{0,63}$ ]] || fail 'Ungültiger Benutzername'
+  if [[ "$MODE" == compose ]]; then
+    compose run --rm --no-deps -T app "$ADMIN_CMD" "$ADMIN_USER"
+    return
+  fi
+  # Swarm: one-off replicated job with the same image, network, ENV and secrets as the app service.
+  service="${STACK}_admin"
+  docker service inspect "$service" >/dev/null 2>&1 && docker service rm "$service" >/dev/null
+  ensure_configs
+  env_args=()
+  for key in $CONFIG_KEYS; do
+    case "$key" in FORM_*|LOG_LEVEL) [[ -z "${!key+x}" ]] || env_args+=(--env "$key") ;; esac
+  done
+  secret_args=(--secret "source=$DB_PASSWORD_SECRET,target=$FORM_DB_PASSWORD_FILE,uid=$APP_UID,gid=$APP_GID,mode=0400"
+               --secret "source=$SERVER_KEY_SECRET,target=$FORM_SERVER_KEY_FILE,uid=$APP_UID,gid=$APP_GID,mode=0400")
+  if docker secret inspect "$BOOTSTRAP_PASSWORD_SECRET" >/dev/null 2>&1; then
+    secret_args+=(--secret "source=$BOOTSTRAP_PASSWORD_SECRET,target=$FORM_BOOTSTRAP_PASSWORD_FILE,uid=$APP_UID,gid=$APP_GID,mode=0400")
+  fi
+  docker service create --quiet --with-registry-auth --name "$service" --restart-condition none \
+    ${EXCLUDE_ARGS[@]+"${EXCLUDE_ARGS[@]}"} --network "$NETWORK_NAME" --user "$APP_UID:$APP_GID" \
+    "${secret_args[@]}" --config "source=$ENTRY_CONFIG,target=$ENTRYPOINT_PATH" --entrypoint bash \
+    "${env_args[@]}" --env "FORM_DB_PASSWORD_FILE=$FORM_DB_PASSWORD_FILE" --env "FORM_SERVER_KEY_FILE=$FORM_SERVER_KEY_FILE" \
+    "$FORM_IMAGE" "$ENTRYPOINT_PATH" "$ADMIN_CMD" "$ADMIN_USER" >/dev/null
+  wait_job "$service" || { docker service logs "$service" 2>&1 | tail -20; docker service rm "$service" >/dev/null 2>&1; return 1; }
+  out=$(docker service logs --raw "$service" 2>&1 || true)
+  docker service rm "$service" >/dev/null
+  printf '%s\n' "$out"
+}
 main() {
   local rc=0
   initialize "$@" || rc=$?
   [[ "$rc" != 10 ]] || return 0
+  if [[ "$ACTION" == admin ]]; then
+    if [[ "$DRY" == 1 ]]; then say "Trockenlauf: würde '$ADMIN_CMD $ADMIN_USER' mit Image $FORM_IMAGE im Stack $STACK ausführen."; return; fi
+    umask 077; need docker
+    run_admin; return
+  fi
   if [[ "$DRY" == 1 ]]; then plan; return; fi
   umask 077; need docker; need curl; need openssl
   [[ "$MODE" != compose ]] || docker compose version >/dev/null

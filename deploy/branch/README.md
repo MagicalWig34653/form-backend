@@ -6,15 +6,18 @@ werden **extern** bereitgestellt. Dieses Repository startet weder DB noch Proxy 
 keine Images. Lizenz: [AGPL-3.0-only](LICENSE).
 
 ```bash
-git clone --branch deploy --single-branch https://github.com/magicalwig34653/form-backend.git
+git clone --depth 1 --branch deploy https://github.com/MagicalWig34653/form-backend.git
 cd form-backend
-# Eine Variante wählen; Swarm vorher auf dem Manager initialisieren:
-deploy/swarm/setup.sh --dry-run
-deploy/swarm/setup.sh
-# Oder Einzelserver (rootful Linux-Docker, Compose v2):
-sudo deploy/compose/setup.sh --dry-run
+# Compose (ein Server):
 sudo deploy/compose/setup.sh
+sudo deploy/compose/admin.sh bootstrap-admin admin    # gibt den einmaligen Passkey-Einrichtungslink aus
+# oder Swarm (Manager, vorher einmalig docker swarm init):
+deploy/swarm/setup.sh
+deploy/swarm/admin.sh bootstrap-admin admin
 ```
+
+Mit `--dry-run` zeigt Setup vorab, was passieren würde. Schritt-für-Schritt-Anleitung:
+<https://magicalwig34653.github.io/form-backend/einrichtung.html>
 
 Setup fragt Origin, Passkey-RP-ID und die vorhandene DB-Verbindung ab. Das DB-Passwort kommt
 aus verdeckter Eingabe oder `--db-password-file /geschuetzt/db_password`; Setup prüft mit

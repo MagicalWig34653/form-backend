@@ -1,30 +1,34 @@
 <!-- title: Einrichtung | description: Docker Swarm oder Compose mit externer MariaDB, externem TLS-Proxy und ENV-Konfiguration; Setup, Update, Sicherung und Grenzen. -->
 <h1>Einrichtung</h1>
-<p class="lead">Stand main vom 03.11.2026: Swarm und Compose nutzen ein fertiges App-Image mit PWA. Datenbank und TLS-Reverse-Proxy stellen Sie selbst bereit; Caddy wird nicht mitgeliefert.</p>
-<div class="note warn"><p>Die Deploy-Skripte und Konfigurationsmodelle sind geprüft. Ein vollständiger Lauf mit echtem Swarm, externer TLS-Datenbank, Proxy, Rollback und Restore ist nicht belegt. Der Upgrade-Pfad für bereits migrierte Datenbanken ist wegen der neuen Speichertabelle noch offen.</p></div>
-<h2>Voraussetzungen</h2>
+<p class="lead">In drei Schritten von null zum Login: Skripte holen, <code>setup.sh</code> beantwortet die Fragen und startet die App aus dem fertigen Image <code>ghcr.io/magicalwig34653/form-backend</code>, ein Kommando liefert den Einrichtungslink für den ersten Passkey. Datenbank (MariaDB) und HTTPS-Proxy bringen Sie selbst mit.</p>
+<h2>Das brauchen Sie vorab</h2>
 <ul>
- <li>Linux mit rootful Docker Engine, Bash, curl, OpenSSL und Git; für Compose das v2-Plugin mit <code>up --wait</code>, für Swarm ein aktiver Manager. Rootless und User-Namespace-Remapping sind nicht geprüft.</li>
- <li>Externe MariaDB mit vorhandener Datenbank und Benutzer samt Anwendungs- und DDL-Rechten. Setup erzeugt weder DB noch Benutzer und ändert kein DB-Passwort. DB muss von App, Migrationsjob und Backup-Client erreichbar sein.</li>
- <li>Externer HTTPS-Proxy mit gültigem Zertifikat, öffentlicher Verwaltungs-Origin und passender Passkey-RP-ID. Bei privatem GHCR-Paket vorher an der Registry anmelden.</li>
+ <li>Linux-Server mit Docker Engine (rootful), Bash, curl, OpenSSL und Git. Compose: Docker Compose v2. Swarm: ein Manager-Knoten.</li>
+ <li>Eine <strong>leere MariaDB-Datenbank mit Benutzer</strong> (Rechte für Tabellen anlegen und ändern), von diesem Server erreichbar. Setup legt beides nicht an.</li>
+ <li>Eine <strong>Domain mit HTTPS</strong> für das Dashboard (z. B. <code>admin.example.org</code>) über einen Reverse Proxy, der auf Port 8080 des Servers weiterleitet (<a href="#externer-reverse-proxy">Beispiel unten</a>).</li>
 </ul>
-<h2>Setup</h2>
-<p>Die Vorlagen liegen auf main unter <code>deploy/swarm/</code> und <code>deploy/compose/</code>. Der zusätzlich erzeugte Deploy-Branch enthält die Betriebsdateien. Aus einem aktuellen Checkout:</p>
-<pre><code># Swarm (bei bisher inaktivem Cluster vorher docker swarm init)
-deploy/swarm/setup.sh --dry-run
-deploy/swarm/setup.sh --db-password-file /geschuetzt/db_password
+<h2 id="schnellstart">Schnellstart</h2>
+<p>Zuerst die Betriebsdateien holen (gilt für beide Varianten; es wird kein Quellcode geklont):</p>
+<pre><code>git clone --depth 1 --branch deploy https://github.com/MagicalWig34653/form-backend.git
+cd form-backend</code></pre>
+<h3>Variante A: Docker Compose (ein Server)</h3>
+<pre><code>sudo deploy/compose/setup.sh           # Fragen beantworten: Domain, DB-Zugang, Image (Vorgabe passt)
+sudo deploy/compose/admin.sh bootstrap-admin admin</code></pre>
+<h3>Variante B: Docker Swarm (mehrere Replikate)</h3>
+<pre><code>docker swarm init                      # nur beim ersten Mal auf dem Manager
+deploy/swarm/setup.sh                  # Fragen beantworten: Domain, DB-Zugang, Replikate
+deploy/swarm/admin.sh bootstrap-admin admin</code></pre>
+<p>Was <code>setup.sh</code> erledigt: Server-Schlüssel erzeugen, DB-Zugang mit <code>SELECT 1</code> prüfen, Schema migrieren, Image ziehen und starten, bis <code>/ready</code> antwortet. Mit <code>--dry-run</code> vorab nichts ändern. Das DB-Passwort wird verdeckt abgefragt oder mit <code>--db-password-file DATEI</code> übergeben.</p>
+<p>Die letzte Zeile gibt einen Link <code>https://admin.example.org/setup#…</code> aus. Im Browser öffnen, Gerätenamen eingeben, Passkey erstellen. Der Link gilt 24 Stunden und genau einmal (Details <a href="#erster-administrator">unten</a>).</p>
+<div class="note"><p><strong>Sichern Sie den Server-Schlüssel</strong> (Datei, die Setup anzeigt) getrennt und verschlüsselt. Ohne ihn lassen sich Datenbank und Sicherungen nicht wiederherstellen.</p></div>
+<h3>Prüfen und aktualisieren</h3>
+<pre><code>curl --fail https://admin.example.org/ready
 
-# Alternative: einzelner Compose-Server
-sudo deploy/compose/setup.sh --dry-run
-sudo deploy/compose/setup.sh --db-password-file /geschuetzt/db_password</code></pre>
-<p>Die Pfade sind frei gewählte Beispiele. Übergeben Sie das bereits gültige Passwort der externen DB. Ohne Datei fragt Setup es verdeckt ab. Ohne vorhandenen Server-Key erzeugt Setup einen neuen; einen vorhandenen über <code>--server-key-file DATEI</code> übernehmen. Diesen Key separat verschlüsselt sichern und beim Restore wiederverwenden.</p>
-<p>Setup fragt Origin, RP-ID, DB-Zugang und Image ab; Swarm zusätzlich Replikate. Vorbereitetes Setup ohne Dialog:</p>
-<pre><code>cp deploy/swarm/stack.env.example deploy/swarm/stack.env
-chmod 600 deploy/swarm/stack.env
-# Platzhalter in stack.env bearbeiten, dann:
-deploy/swarm/setup.sh --non-interactive --db-password-file /geschuetzt/db_password --dry-run
-deploy/swarm/setup.sh --non-interactive --db-password-file /geschuetzt/db_password</code></pre>
-<p>Compose analog mit <code>deploy/compose/.env.example</code> und <code>.env</code>, typischerweise mit sudo für die Dateirechte. Ein Trockenlauf ändert keine Dateien, Secrets oder Container und prüft keine echten Verbindungen.</p>
+# Update auf das neueste Image (migriert zuerst, rollt dann aus):
+git pull --ff-only
+deploy/swarm/update.sh                 # Compose: sudo deploy/compose/update.sh</code></pre>
+<p>Das Image ist öffentlich unter <code>ghcr.io/magicalwig34653/form-backend</code> (Tags <code>latest</code> und Commit-SHA, amd64 und arm64) abrufbar. Für feste Versionen <code>--tag COMMIT_SHA</code> an <code>update.sh</code> übergeben. Ein Image-Rollback setzt das Datenbankschema nicht zurück; vorher Datenbank und Schlüssel sichern.</p>
+<div class="note warn"><p>Die Skripte sind mit Kommando-Doubles und Docker-Konfigurationsprüfungen getestet. Ein vollständiger Lauf mit echtem Swarm, externer TLS-Datenbank und Restore ist als Betriebsabnahme noch nicht belegt.</p></div>
 <h2>ENV-Konfiguration</h2>
 <p>Die vollständigen kommentierten Inventare stehen in den beiden ENV-Vorlagen. Priorität: Defaults, gespeicherte Datei, Prozess-ENV, CLI-Image-/Dateioptionen. Die Dateien enthalten einfache <code>KEY=VALUE</code>-Werte und werden ohne Shell-Ausführung geparst. Konfigurationsdatei und Sicherung werden mit Modus 0600 gespeichert; geheime Werte gehören in geschützte Dateien oder Secrets.</p>
 <table>
@@ -38,7 +42,7 @@ deploy/swarm/setup.sh --non-interactive --db-password-file /geschuetzt/db_passwo
 <tr><td>Swarm</td><td><code>FORM_REPLICAS</code>, <code>FORM_PLACEMENT_CONSTRAINTS</code>, <code>FORM_PLACEMENT_PREFERENCES</code>, <code>FORM_PINNED_NODE</code>, <code>FORM_PINNED_REPLICAS</code>, <code>FORM_EXCLUDE_LABEL</code></td><td>Hauptdienst Standard 3 Replikate; optionaler gepinnter Dienst zusätzlich. Pinning garantiert bei Knotenausfall keinen Ersatz auf anderen Knoten.</td></tr>
 </table>
 <p>Compose nutzt bei festem Hostport eine App-Instanz. Swarm erlaubt optionale getrennte Ports <code>FORM_PUBLISH_PORT</code> und <code>FORM_PINNED_PUBLISH_PORT</code>; leer bedeutet keine Portveröffentlichung. Der alte Swarm-Parameter <code>PUBLISHED_PORT</code> entfällt. Swarm kann veröffentlichte Ports nicht an eine einzelne Host-IP binden. Im Host-Modus begrenzen feste Ports die Platzierung auf einen Task je Knoten; Update-Reihenfolge entsprechend planen.</p>
-<h2>Externer Reverse Proxy</h2>
+<h2 id="externer-reverse-proxy">Externer Reverse Proxy</h2>
 <p>Die ganze Origin einschließlich PWA, API und <code>/ready</code> weiterleiten. <code>Host</code> erhalten, <code>X-Forwarded-Proto: https</code> setzen und eingehende Forwarded-Header am äußeren Proxy überschreiben. Nur die tatsächlich sichtbaren Proxy-CIDRs in <code>FORM_TRUSTED_PROXIES</code> freigeben; direkten App-Zugriff per Firewall begrenzen. Für den aktuellen Stand ist keine WebSocket-Weiterleitung nötig.</p>
 <p>Für den Statistik-Collector müssen außerdem genau ein <code>X-Forwarded-Host</code> ohne Port und ein gültiger <code>X-Real-IP</code> aus vertrauenswürdiger Quelle ankommen. Ohne freigegebenen Socketpeer bleibt der Collector geschlossen. Domainbindung und exakte HTTPS-Origin müssen passen.</p>
 <p>Im Swarm-Overlay können beide App-Dienste über ihren gemeinsamen HTTP-Netzalias angesprochen werden. Der Proxy muss DNS regelmäßig neu auflösen und mehrere Task-Adressen behandeln. Bei zwei veröffentlichten Ingress-Ports benötigt er zwei Upstreams, um beide Dienste zu erreichen. Details und Varianten stehen in <a href="https://github.com/MagicalWig34653/form-backend/blob/main/docs/BETRIEB.md">BETRIEB.md</a>.</p>
@@ -53,12 +57,11 @@ sudo deploy/compose/update.sh --image ghcr.io/magicalwig34653/form-backend:GEWUE
 curl --fail https://admin.example.org/health
 curl --fail https://admin.example.org/ready</code></pre>
 <p>Bei unklarem Migrations- oder Rolloutstatus bleibt die Sperre erhalten. Vor Wiederholung Jobs, Exitcodes und Schema prüfen. Swarm-Updates können kurzzeitig alte und neue App-Stände parallel betreiben; Compose ersetzt die einzelne App mit Unterbrechung.</p>
-<h2>Ersten Administrator und Passkey einrichten</h2>
+<h2 id="erster-administrator">Ersten Administrator und Passkey einrichten</h2>
 <p>Ein Betreiber-Kommando legt das erste Konto an und gibt einen <strong>einmaligen Einrichtungslink</strong> aus. Es verweigert die Arbeit, sobald irgendein Konto existiert, kann also nicht benutzt werden, um später ein privilegiertes Konto anzulegen.</p>
-<pre><code># Compose: vorbereitete Konfiguration und Secret-Mounts verwenden
-sudo docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yaml \
-  run --rm --no-deps app bootstrap-admin admin</code></pre>
-<p>Ein explizites Bootstrap-Passwort wird über <code>BOOTSTRAP_PASSWORD_SOURCE_FILE</code> beim Setup bereitgestellt. Ohne Betreiberquelle erzeugt das Kommando ein Passwort und zeigt es einmal an. Bei Swarm das Kommando als einmaligen Betreiberlauf mit denselben Image-, Netz-, ENV- und Secret-Einstellungen ausführen.</p>
+<pre><code>sudo deploy/compose/admin.sh bootstrap-admin admin    # Compose
+deploy/swarm/admin.sh bootstrap-admin admin           # Swarm</code></pre>
+<p>Das Skript verwendet dieselbe Konfiguration, dieselben Secrets und dasselbe Image wie die laufende App (bei Swarm als einmaliger Dienst, der danach entfernt wird). Ein explizites Bootstrap-Passwort stellt <code>BOOTSTRAP_PASSWORD_SOURCE_FILE</code> bereit; ohne Quelle erzeugt das Kommando ein Passwort und zeigt es einmal an.</p>
 <p>Die Ausgabe enthält einen Link der Form <code>https://admin.example.org/setup#…</code>. Öffnen Sie ihn im Browser auf dem Gerät, das Ihren Passkey halten soll:</p>
 <ol class="steps">
   <li>Name für das Gerät eingeben (z. B. „Laptop“) und „Passkey erstellen“ wählen. Der Code im Link steht nach <code>#</code> und gelangt erst durch die Registrierungsanfrage an die API; die Seite entfernt ihn sofort aus der Adresszeile.</li>
@@ -68,7 +71,7 @@ sudo docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yam
 <p><strong>Weiteres Gerät oder verlorener Passkey:</strong></p>
 <ul>
   <li>Angemeldet (Anmeldung höchstens 5 Minuten alt) können Sie über <code>POST /auth/passkeys/options</code> und <code>/auth/passkeys/verify</code> (siehe <a href="api.html">Admin-API</a>) weitere Passkeys hinzufügen; bereits registrierte Geräte werden ausgeschlossen.</li>
-  <li>Ist kein Passkey mehr verfügbar, erzeugt der Betreiber einen neuen Link: <code>enroll-passkey admin</code> im gleich konfigurierten Betreiberlauf. Das Ereignis wird im Audit-Protokoll festgehalten. Alte Passkeys bleiben bestehen; eigene Passkeys lassen sich in der Kontoverwaltung entfernen.</li>
+  <li>Ist kein Passkey mehr verfügbar, erzeugt der Betreiber einen neuen Link: <code>admin.sh enroll-passkey admin</code> (gleiche Aufrufform wie oben). Das Ereignis wird im Audit-Protokoll festgehalten. Alte Passkeys bleiben bestehen; eigene Passkeys lassen sich in der Kontoverwaltung entfernen.</li>
 </ul>
 <div class="note"><p>Unterstützt werden Passkeys mit ES256, EdDSA und RS256 (mindestens 2048 Bit), mit Benutzerverifikation und auffindbarem Schlüssel („resident key“). Eine Prüfung der Hersteller-Beglaubigung (Attestation) findet nicht statt; es wird nur die Bindung an Ihre Domain, Challenge und Schlüsselqualität geprüft.</p></div>
 
