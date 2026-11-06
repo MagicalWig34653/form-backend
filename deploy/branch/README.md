@@ -30,6 +30,13 @@ hat Modus 0600 und bleibt außerhalb von Git. Prozess-ENV überschreibt gespeich
 Secret-Werte werden nicht darin gespeichert. **Server-Key separat verschlüsselt sichern.**
 Einen bestehenden Key mit `--server-key-file DATEI` übernehmen.
 
+Einstellungen ändern ohne die Datei von Hand zu bearbeiten: `deploy/swarm/settings.sh` bzw.
+`deploy/compose/settings.sh` öffnet ein Menü (whiptail, Bash 4.4+) oder arbeitet per CLI:
+`--list`, `--get KEY`, `--set KEY=VALUE`, `--unset KEY`, `--check`, `--env PFAD`. Werte werden
+geprüft (Typ, Grenzen, Konflikte), atomar mit Modus 0600 gespeichert und vorher als
+`<Datei>.bak.JJJJMMTT-HHMMSS` gesichert. Geheimnisse zeigt und schreibt das Skript nie. Ausgerollt
+wird nichts, außer im Menü „Jetzt anwenden“ wird bestätigt (ruft `update.sh`).
+
 Der externe Reverse Proxy terminiert TLS und leitet HTTP an Port **8080** weiter.
 Compose bindet standardmäßig an `127.0.0.1`; Swarm kann Published Ports nicht an einzelne
 Host-IP-Adressen binden und benötigt eine Firewall mit Zugriff ausschließlich vom Proxy.
