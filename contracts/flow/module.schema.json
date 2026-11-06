@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/flow/0.1.0/module.schema.json",
+  "title": "Modulmanifest",
+  "description": "P2-4; Vertragsentwurf 0.1.0, VORGESCHLAGEN. Bestätigte Anforderungen siehe README.md.",
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.1.0"
+    },
+    "proposalStatus": {
+      "const": "VORGESCHLAGEN"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "title": {
+      "$ref": "common.schema.json#/$defs/localized"
+    },
+    "owner": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "engineContractVersion": {
+      "const": "0.1.0"
+    },
+    "configSchema": {
+      "$ref": "common.schema.json#/$defs/jsonSchema"
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      },
+      "uniqueItems": true
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/reference"
+      },
+      "uniqueItems": true
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/versionReference"
+      },
+      "uniqueItems": true
+    },
+    "activation": {
+      "type": "object",
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "serverAvailable": {
+          "type": "boolean"
+        },
+        "tenantEnabled": {
+          "type": "boolean"
+        },
+        "formEnabled": {
+          "type": "boolean"
+        },
+        "onDisable": {
+          "enum": [
+            "drain",
+            "pause",
+            "cancel"
+          ]
+        }
+      },
+      "required": [
+        "installed",
+        "serverAvailable",
+        "tenantEnabled",
+        "formEnabled",
+        "onDisable"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "healthy",
+            "degraded",
+            "unavailable"
+          ]
+        },
+        "checkedAt": {
+          "$ref": "common.schema.json#/$defs/instant"
+        },
+        "code": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contractVersion",
+    "proposalStatus",
+    "id",
+    "version",
+    "title",
+    "owner",
+    "engineContractVersion",
+    "configSchema",
+    "permissions",
+    "dependencies",
+    "blocks",
+    "activation",
+    "health"
+  ],
+  "additionalProperties": false
+}

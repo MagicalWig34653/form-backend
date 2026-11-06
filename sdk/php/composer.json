@@ -1,0 +1,15 @@
+{
+  "name": "form-backend/sdk",
+  "description": "PHP client for the Formular-Backend ingest: signs and submits form data (the server seals it with the customer's public key).",
+  "type": "library",
+  "license": "AGPL-3.0-only",
+  "require": {
+    "php": ">=8.2",
+    "ext-sodium": "*",
+    "ext-curl": "*",
+    "ext-json": "*",
+    "ext-mbstring": "*"
+  },
+  "autoload": { "psr-4": { "FormBackend\\": "src/" } },
+  "bin": ["bin/submit.php"]
+}

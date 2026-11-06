@@ -1,0 +1,14 @@
+# Secret scan config (CI job `secret-scan`). Only synthetic, public test material is allowlisted.
+title = "form-backend"
+[extend]
+useDefault = true
+[allowlist]
+description = "Synthetic test vectors and fixtures (RFC 9180, generated test keys); no real secrets"
+paths = [
+  '''backend/Tests/.*''',  # unit/integration tests use synthetic placeholder secrets by design
+  '''backend/poc-passkey/Tests/.*/Fixtures/.*''',
+  '''backend/Tests/TestSupport/Fixtures/.*''',
+  '''docs/paritaet/review-.*\.md''',
+  '''docs/handoffs/.*\.md''',
+  '''docs/STATUS\.md''',
+]

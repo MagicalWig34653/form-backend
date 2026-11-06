@@ -1,0 +1,39 @@
+{
+  "contractVersion": "0.1.0",
+  "proposalStatus": "VORGESCHLAGEN",
+  "id": "408d33f7-c58d-5d83-8d3b-94e93dabf8dc",
+  "version": "1.0.0",
+  "engineContractVersion": "0.1.0",
+  "entryNode": "entry",
+  "limits": {
+    "maxSteps": 1000,
+    "activeTimeoutMs": 30000,
+    "maxElapsedMs": 86400000,
+    "memoryBytes": 67108864,
+    "nodeTimeoutMs": 5000,
+    "maxStateBytes": 1048576
+  },
+  "nodes": {
+    "entry": {
+      "kind": "entry",
+      "label": {
+        "de": "Start"
+      }
+    },
+    "end": {
+      "kind": "end",
+      "label": {
+        "de": "Ende"
+      },
+      "result": "success"
+    }
+  },
+  "edges": [
+    {
+      "from": "entry",
+      "port": "next",
+      "to": "end"
+    }
+  ],
+  "failurePolicy": "stop-and-record"
+}

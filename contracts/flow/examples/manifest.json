@@ -1,0 +1,23 @@
+{
+  "form.json": "form.schema.json",
+  "view.json": "view.schema.json",
+  "module.json": "module.schema.json",
+  "block.json": "block.schema.json",
+  "mail-block.json": "block.schema.json",
+  "script-artifact.json": "script-artifact.schema.json",
+  "graph.json": "graph.schema.json",
+  "subflow.json": "graph.schema.json",
+  "mail-graph.json": "graph.schema.json",
+  "release.json": "release.schema.json",
+  "mail-release.json": "release.schema.json",
+  "execution.json": "execution.schema.json",
+  "execution-waiting.json": "execution.schema.json",
+  "execution-manual.json": "execution.schema.json",
+  "debug-event.json": "debug-event.schema.json",
+  "package.json": "package.schema.json",
+  "statistics-visit.json": "statistics-event.schema.json",
+  "statistics-begin.json": "statistics-event.schema.json",
+  "statistics-submit.json": "statistics-event.schema.json",
+  "statistics-abandon.json": "statistics-event.schema.json",
+  "execution-paused.json": "execution.schema.json"
+}

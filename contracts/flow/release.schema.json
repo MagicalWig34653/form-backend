@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/flow/0.1.0/release.schema.json",
+  "title": "Fixierter Veröffentlichungsbezug",
+  "description": "P2-4; Vertragsentwurf 0.1.0, VORGESCHLAGEN. Bestätigte Anforderungen siehe README.md.",
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.1.0"
+    },
+    "proposalStatus": {
+      "const": "VORGESCHLAGEN"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "tenantId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "form": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/resourceReference"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "flow": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/reference"
+      },
+      "uniqueItems": true
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/reference"
+      },
+      "uniqueItems": true
+    },
+    "scripts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/reference"
+      },
+      "uniqueItems": true
+    },
+    "sandboxProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/reference"
+      },
+      "uniqueItems": true
+    },
+    "publication": {
+      "type": "object",
+      "properties": {
+        "actorKind": {
+          "const": "human"
+        },
+        "confirmationAuditId": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "confirmedAt": {
+          "$ref": "common.schema.json#/$defs/instant"
+        }
+      },
+      "required": [
+        "actorKind",
+        "confirmationAuditId",
+        "confirmedAt"
+      ],
+      "additionalProperties": false
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/version"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "proposalStatus",
+    "id",
+    "tenantId",
+    "form",
+    "views",
+    "flow",
+    "modules",
+    "blocks",
+    "scripts",
+    "sandboxProfiles",
+    "publication",
+    "version"
+  ],
+  "additionalProperties": false
+}

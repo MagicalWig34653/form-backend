@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/ingest/0.1.0/legacy-validation.schema.json",
+  "title": "legacy-validation-v1 (VORGESCHLAGEN, Vertragsrunde 3 M02)",
+  "description": "Unveraenderliche Adapterdefinition fuer validation_profile=legacy-v1. Daten, kein ausfuehrbarer Code. SPDX-License-Identifier: AGPL-3.0-only.",
+  "type": "object",
+  "properties": {
+    "adapterVersion": { "const": "legacy-validation-v1" },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 190 },
+          "type": { "enum": ["text", "datei", "email", "datum", "zahl", "bool", "auswahl"] },
+          "required": { "type": "boolean" },
+          "rule": {
+            "type": "object",
+            "description": "Verbatim dekodierter Altwert; Typen werden NICHT korrigiert (z. B. nicht-int minLaenge wird wie im Altcode ignoriert).",
+            "properties": {
+              "minLaenge": {},
+              "maxLaenge": {},
+              "muster": {},
+              "mussSein": {},
+              "optionen": {}
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": ["name", "type", "required", "rule"],
+        "additionalProperties": false
+      }
+    },
+    "specialHandler": { "enum": ["bewerbung-v1"] },
+    "configurationErrors": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+  },
+  "required": ["adapterVersion", "fields"],
+  "additionalProperties": false
+}

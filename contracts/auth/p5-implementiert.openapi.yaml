@@ -1,0 +1,310 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Aus dem Code abgeleitete Beschreibung der in P5 tatsächlich umgesetzten Admin-Operationen, die in
+# admin-api.openapi.yaml (Entwurf) fehlen oder abweichen. Maßgeblich für die Implementierung ist der Code
+# (backend/Sources/FormAdmin); dieses Dokument ist ein Abbild, KEIN geprüfter Vertrag (Status VORGESCHLAGEN).
+# Basis: /admin/api/v1. Alle Operationen: Sitzungscookie, bei Mutationen Origin + X-CSRF-Token; 401 ohne Sitzung,
+# 404 für nicht sichtbare Objekte, 403 bei fehlendem Recht, 403 mit Code reauthentication_required bei veralteter Anmeldung (>5 min).
+openapi: 3.1.0
+info:
+  title: Formular-Backend Admin-API - umgesetzte P5-Operationen
+  version: 0.5.0-entwurf
+  license: { name: AGPL-3.0-only, identifier: AGPL-3.0-only }
+servers: [{ url: /admin/api/v1 }]
+components:
+  securitySchemes:
+    Session: { type: apiKey, in: cookie, name: session }
+  parameters:
+    tenantId: { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+    formId: { name: formId, in: path, required: true, schema: { type: string, format: uuid } }
+    entryId: { name: entryId, in: path, required: true, schema: { type: string, format: uuid } }
+    cursor: { name: cursor, in: query, schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+  schemas:
+    CustomerKey:
+      type: object
+      required: [keyId, publicKey, generation]
+      properties:
+        keyId: { type: string, pattern: '^[0-9a-f]{16}$' }
+        publicKey: { type: string, description: 'X25519, 32 Byte, base64url' }
+        generation: { type: integer }
+    SdkCredentials:
+      type: object
+      description: Einmalige Ausgabe; signingSeed wird nicht gespeichert (Cache-Control no-store).
+      required: [formId, tenantId, submitPath, customerKeyId, customerPublicKey, signingSeed, signingPublicKey, signingGeneration, note]
+      properties:
+        formId: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        submitPath: { type: string, const: /api/v2/submit/ }
+        customerKeyId: { type: string }
+        customerPublicKey: { type: string }
+        signingSeed: { type: string, description: 'Ed25519-Seed, base64url, geheim' }
+        signingPublicKey: { type: string }
+        signingGeneration: { type: integer }
+        note: { type: string }
+    EntryItem:
+      type: object
+      required: [id, state]
+      properties:
+        id: { type: string, format: uuid }
+        receivedAt: { type: [string, 'null'], format: date-time }
+        state: { type: string, const: accepted }
+        releaseId: { type: [string, 'null'], format: uuid }
+        keyId: { type: [string, 'null'] }
+    EntryList:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/EntryItem' } }
+        nextCursor: { type: [string, 'null'] }
+    Ciphertext:
+      type: object
+      description: Versiegeltes Paket KUBUS-AEAD:2 (crypto/paket-v2.md). Der Server entschlüsselt nie.
+      required: [id, tenantId, formId, generationId, keyId, format, package]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        formId: { type: string, format: uuid }
+        generationId: { type: string, format: uuid }
+        keyId: { type: string }
+        format: { type: string, const: 'KUBUS-AEAD:2' }
+        package: { type: string }
+paths:
+  /me:
+    get:
+      operationId: getMe
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Eigenes Konto.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, username, systemAdministrator]
+                properties:
+                  id: { type: string, format: uuid }
+                  username: { type: string }
+                  systemAdministrator: { type: boolean }
+  /tenants:
+    get:
+      operationId: listTenants
+      description: Sichtbare Kunden; permissions sind nur Hinweise für die Oberfläche.
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Kunden.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, permissions]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        permissions: { type: array, items: { type: string } }
+    post:
+      operationId: createTenant
+      description: 'Recht system.manage, frische Anmeldung. Body {name} (1-255 Zeichen).'
+      security: [{ Session: [] }]
+      responses:
+        '201': { description: 'Angelegt: {id, status}.' }
+        '422': { description: Name ungültig. }
+  /tenants/{tenantId}/connections:
+    get:
+      operationId: listTenantConnections
+      description: 'Recht form.read am Kunden. Zugeordnete, aktive Mail-Verbindungen (smtp, mail-proxy): {items:[{id,kind,name}]}.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses: { '200': { description: Verbindungen. } }
+  /tenants/{tenantId}/customer-key:
+    get:
+      operationId: getCustomerKey
+      description: 'Recht form.read. 404, solange kein Schlüssel hinterlegt ist.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses:
+        '200': { description: Aktive Generation., content: { application/json: { schema: { $ref: '#/components/schemas/CustomerKey' } } } }
+        '404': { description: Kein Schlüssel oder Kunde unsichtbar. }
+    put:
+      operationId: setCustomerKey
+      description: 'Recht key.manage, frische Anmeldung. Body {publicKey} oder (im Browser erzeugt) {publicKey, access:{enc,sealed}, recovery:{salt,iterations:600000,iv,wrap}} - access und recovery nur gemeinsam, setzt den Kontoschlüssel des Ausführenden voraus. Genau eine aktive Generation; 409, wenn schon vorhanden (Rotation nicht umgesetzt). Der private Schlüssel erreicht den Server nie.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses:
+        '201': { description: Hinterlegt., content: { application/json: { schema: { $ref: '#/components/schemas/CustomerKey' } } } }
+        '409': { description: Bereits ein aktiver Schlüssel. }
+        '422': { description: Kein gültiger X25519-Schlüssel. }
+  /tenants/{tenantId}/forms/{formId}/sdk-credentials:
+    post:
+      operationId: issueSdkCredentials
+      description: 'Recht key.manage, frische Anmeldung. Erzeugt Ed25519-Zugangsdaten; ein bisheriger Schlüssel gilt 1 h weiter (previous), ältere werden widerrufen. 422 ohne Kundenschlüssel.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }]
+      responses:
+        '201': { description: Zugangsdaten (einmalig)., content: { application/json: { schema: { $ref: '#/components/schemas/SdkCredentials' } } } }
+  /tenants/{tenantId}/forms/{formId}/entries:
+    get:
+      operationId: listEntries
+      description: 'Recht content.read. Nur Metadaten (nie Pakete), neueste zuerst, Keyset-Paginierung, Cache-Control no-store. Nur Status accepted.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { $ref: '#/components/parameters/cursor' }, { $ref: '#/components/parameters/limit' }]
+      responses:
+        '200': { description: Seite., content: { application/json: { schema: { $ref: '#/components/schemas/EntryList' } } } }
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/resends:
+    post:
+      operationId: resendMail
+      description: 'Rechte content.resend + content.decrypt, frische Anmeldung. Body {deliveryId, contentKey(32 Byte base64url), confirmUncertain?, expectedFence?}; uncertain nur mit confirmUncertain UND expectedFence. 202; 409 wenn nicht erneut sendbar; 422 bei falschem Schlüssel.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { $ref: '#/components/parameters/entryId' }]
+      responses: { '202': { description: Versand gestartet. } }
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/attachments/{ordinal}:
+    get:
+      operationId: getAttachmentCiphertext
+      description: 'Wie getCiphertext (content.read + content.decrypt, frisch, Audit content.attachment.read, no-store) für Anhang Nr. ordinal (0..15) in signierter Reihenfolge: Feldnamen bytesortiert, Listen in Reihenfolge. Der Browser prüft den SHA-256 gegen die signierten Metadaten.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { $ref: '#/components/parameters/entryId' }, { name: ordinal, in: path, required: true, schema: { type: integer } }]
+      responses: { '200': { description: Paket. } }
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/ciphertext:
+    get:
+      operationId: getCiphertext
+      description: 'Rechte content.read UND content.decrypt, frische Anmeldung, Audit content.ciphertext.read, Cache-Control no-store. 404 für unbekannte/fremde Einsendung.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { $ref: '#/components/parameters/entryId' }]
+      responses:
+        '200': { description: Paket., content: { application/json: { schema: { $ref: '#/components/schemas/Ciphertext' } } } }
+  /tenants/{tenantId}/forms/{formId}/statistics:
+    get:
+      operationId: getStatistics
+      description: 'Recht statistics.read. Angenommene Produktiv-Einsendungen je UTC-Tag der letzten days Tage (1-366, Standard 30): {from,to,total,days:[{date,count}]}, nur Tage mit Einsendungen. Keine Besuche/Abbrüche (statistics_events folgen mit Ansichten/Domains, P7). no-store.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 366, default: 30 } }]
+      responses: { '200': { description: Zählung. } }
+  /me/password:
+    put:
+      operationId: setOwnPassword
+      description: 'ADR 0022: Eigenes Passwort setzen (12–256 Zeichen), auch erstmals nach interner Passkey-Anmeldung. Sitzung, CSRF/Origin und frische Anmeldung (5 min) erforderlich. Andere Kontositzungen werden atomar widerrufen; Audit account.password. Kein Passwortlogin ohne Passkey.'
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              additionalProperties: false
+              properties:
+                password: { type: string, minLength: 12, maxLength: 256, writeOnly: true }
+      responses:
+        '204': { description: Gespeichert. }
+        '401': { description: Sitzung fehlt oder frische Anmeldung erforderlich. }
+        '403': { description: CSRF oder Origin ungültig. }
+        '422': { description: Passwort ungültig. }
+  /accounts:
+    post:
+      operationId: createAccountP5
+      description: 'Systemrecht identity.manage, frische Anmeldung. Body {username (a-z0-9._@-, 3-120), password (optional intern ohne Zweitfaktor, sonst erforderlich; 12-256 Zeichen)}; Argon2id, leerer Hash bedeutet kein Passwort (ADR 0022). 201 {id, username, setupLink} (Einmal-Link /setup#token, 24 h, no-store); 409 bei vergebenem Namen.'
+      security: [{ Session: [] }]
+      responses: { '201': { description: Angelegt. } }
+  /tenants/{tenantId}/members:
+    get:
+      operationId: listMembers
+      description: 'Recht identity.manage am Kunden. {items:[{accountId,username,permissions (direkt, kundenweit),inherited}], assignable}; assignable ohne system.manage. no-store.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses: { '200': { description: Mitglieder. } }
+  /tenants/{tenantId}/members/{accountId}/permissions:
+    put:
+      operationId: setMemberPermissions
+      description: 'Recht identity.manage am Kunden, frische Anmeldung. Body {permissions:[...]} ersetzt die direkten kundenweiten Rechte. Nur Rechte, die der Ausführende selbst am Kunden hält, dürfen hinzugefügt/entzogen werden (403); eigene Rechte nicht änderbar (403); system.manage nie vergebbar (422). 204.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Gesetzt. } }
+  /me/passkeys:
+    get:
+      operationId: listOwnPasskeys
+      description: 'Eigene Passkeys {items:[{credentialId,label,createdAt,lastUsedAt?,unlocksKeys}]}.'
+      security: [{ Session: [] }]
+      responses: { '200': { description: Passkeys. } }
+  /me/passkeys/{credentialId}:
+    delete:
+      operationId: removeOwnPasskey
+      description: 'Frische Anmeldung. Entfernt Passkey samt Schlüsselhülle; der letzte Passkey bleibt (422); fremde/unbekannte 404.'
+      security: [{ Session: [] }]
+      parameters: [{ name: credentialId, in: path, required: true, schema: { type: string } }]
+      responses: { '204': { description: Entfernt. } }
+  /me/key-bundle:
+    get:
+      operationId: getKeyBundle
+      description: 'Eigener Kontoschlüssel (öffentlich), Passkey-Hüllen und Datenzugänge (nur für Kunden, in denen das Konto noch ein Recht hat): {rpId, accountPublicKey|null, wraps:[{credentialId,prfSalt,iv,wrap}], access:[{tenantId,kid,enc,sealed}]}. no-store. Der Server kann keine Hülle öffnen.'
+      security: [{ Session: [] }]
+      responses: { '200': { description: Bündel. } }
+  /me/account-key:
+    put:
+      operationId: createAccountKey
+      description: 'Frische Anmeldung. Body {publicKey, wrap:{credentialId,prfSalt(32),iv(12),wrap(48)}}, base64url. Einmalig je Konto (409); die Credential-ID muss ein Passkey dieses Kontos sein; Low-Order-Punkte werden abgelehnt.'
+      security: [{ Session: [] }]
+      responses: { '201': { description: Angelegt. } }
+  /me/account-key/wraps:
+    post:
+      operationId: addAccountKeyWrap
+      description: 'Frische Anmeldung. Weiterer Passkey-Wrap für den vorhandenen Kontoschlüssel; vorhandene Credential-ID wird nie überschrieben (409).'
+      security: [{ Session: [] }]
+      responses: { '201': { description: Angelegt. } }
+  /tenants/{tenantId}/key-access/{accountId}:
+    put:
+      operationId: grantKeyAccess
+      description: 'Recht key.manage + eigener Datenzugang, frische Anmeldung. Body {kid,enc(32),sealed(48)}; kid muss die aktive Generation sein, das Zielkonto aktiv mit Kontoschlüssel und Recht im Kunden; fremder Zugang wird nie ersetzt (409).'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '201': { description: Erteilt. } }
+  /tenants/{tenantId}/key-access/{accountId}/revoke-note:
+    delete:
+      operationId: revokeKeyAccess
+      description: 'DELETE /tenants/{t}/key-access/{accountId}: Recht key.manage, frische Anmeldung. Entzieht den Datenzugang (bereits gehaltene Schlüssel sind nicht rückrufbar; endgültig erst durch Rotation). 409, wenn es die letzte handlungsfähige Identität (Zugang + key.manage) wäre; ebenso beim Entzug von key.manage via Mitglieder-PUT.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Entzogen. } }
+  /tenants/{tenantId}/key-candidates:
+    get:
+      operationId: listKeyCandidates
+      description: 'Recht key.manage. Konten mit Kontoschlüssel und Recht im Kunden: {items:[{accountId,username,publicKey,hasAccess}]}.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses: { '200': { description: Kandidaten. } }
+  /tenants/{tenantId}/key-recovery:
+    get:
+      operationId: getKeyRecovery
+      description: 'Recht key.manage, frische Anmeldung, Audit key.recovery.read. {keyId,salt,iterations(600000),iv,wrap}; no-store.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }]
+      responses: { '200': { description: Recovery-Hülle. } }
+  /tenants/{tenantId}/forms/{formId}/mail-connection:
+    put:
+      operationId: setMailConnection
+      description: 'Recht release.publish. Body {connectionId}; die Verbindung muss dem Kunden zugeordnet sein.'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }]
+      responses: { '200': { description: Zugeordnet. } }
+  /tenants/{tenantId}/forms/{formId}/mail-deliveries:
+    get:
+      operationId: listMailDeliveries
+      description: 'Recht form.read. Zustellstatus je Einsendung (ohne Inhalt).'
+      security: [{ Session: [] }]
+      parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }]
+      responses: { '200': { description: Zustellungen. } }
+  /connections:
+    get:
+      operationId: listConnections
+      description: 'Recht system.manage.'
+      security: [{ Session: [] }]
+      responses: { '200': { description: Alle Verbindungen. } }
+    post:
+      operationId: createConnection
+      description: 'Recht system.manage. Body {kind, name, config, credential}; Zugangsdaten werden verschlüsselt abgelegt.'
+      security: [{ Session: [] }]
+      responses: { '201': { description: Angelegt. } }

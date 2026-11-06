@@ -1,0 +1,284 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Documentation site (build + checks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build (project pages path)
+        run: node site/build.mjs --base /${GITHUB_REPOSITORY#*/}/
+      - name: Check links, anchors, structure
+        run: node site/check.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  php-sdk:
+    name: PHP SDK (unit tests, PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.2", "8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: sodium, curl, json, mbstring
+      - run: php sdk/php/tests/sdk_test.php
+      - name: Crypto library cross-test (PHP side without Swift output)
+        run: php -l sdk/php/src/Client.php && php -l sdk/php/bin/submit.php
+
+  backend-linux:
+    name: Backend (Linux, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift tests incl. database tests (Docker, private network)
+        run: bash backend/ci-linux.sh
+
+  secret-scan:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 detect --source /repo --config /repo/.gitleaks.toml --no-banner --redact
+
+  pwa:
+    name: PWA (lint, check, unit, build, e2e)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - name: Production dependency audit
+        run: npm audit --omit=dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pwa-dist
+          path: pwa/dist
+          retention-days: 7
+
+  e2e-real:
+    name: Real end-to-end runs (binary + MariaDB + Chromium)
+    needs: [pwa]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: sodium
+      - name: Install the Swift toolchain (same image as the backend tests)
+        run: |
+          # setup-swift does not offer 6.3; copy the toolchain out of swift:6.3-noble (Ubuntu 24.04 matches the runner).
+          docker pull -q swift:6.3-noble
+          id=$(docker create swift:6.3-noble)
+          sudo mkdir -p /opt/swift
+          sudo docker cp "$id:/usr/." /opt/swift/
+          docker rm "$id" >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcurl4-openssl-dev libxml2-dev libncurses-dev libedit-dev libsqlite3-dev libz3-dev binutils git libc6-dev libstdc++-13-dev pkg-config >/dev/null
+          echo /opt/swift/bin >> "$GITHUB_PATH"
+      - name: Toolchain versions
+        run: |
+          swift --version
+          php -r 'echo PHP_VERSION, " argon2id=", defined("PASSWORD_ARGON2ID") ? "yes" : "NO", "\n";'
+          docker --version
+          command -v xxd openssl python3 curl
+      - name: Install PWA dependencies and Chromium
+        working-directory: pwa
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      # Each script gets its own ports and they run one after another; all steps run even if an earlier one failed.
+      - name: Smoke test (admin API, ingest, fail-closed key file)
+        run: P3B_PORT=33710 SMOKE_HTTP_PORT=38710 SMOKE_PUBLIC_PORT=38711 bash backend/smoke-admin.sh
+      - name: E2E login (passkey + password)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33711 E2E_PORT=4310 bash backend/e2e-login.sh
+      - name: E2E first-run setup
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33712 E2E_PORT=4311 bash backend/e2e-setup.sh
+      - name: E2E MCP (personal token, OAuth)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33713 E2E_PORT=4312 bash backend/e2e-mcp.sh
+      - name: Upload logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-real-logs
+          path: |
+            e2e-logs
+            pwa/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  image:
+    name: Docker image (${{ matrix.arch }})
+    needs: [backend-linux, pwa]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Free disk space (Swift release builds are large)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pwa-dist
+          path: pwa/dist
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR (only on main)
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lowercase image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Build natively (push by digest on main)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Load image for the deployment probe (cached layers)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: form-local:probe
+          cache-from: type=gha,scope=${{ matrix.arch }}
+      - name: Deployment probe (image + MariaDB + nginx, listener separation)
+        run: IMAGE=form-local:probe bash backend/proxy-probe.sh
+      - name: Export digest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Multi-arch manifest (amd64 + arm64)
+    if: github.ref == 'refs/heads/main'
+    needs: [image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create and push manifest list
+        working-directory: /tmp/digests
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA}" $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:latest"
+
+  pages:
+    name: Deploy documentation (GitHub Pages)
+    if: github.ref == 'refs/heads/main'
+    needs: [site]
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

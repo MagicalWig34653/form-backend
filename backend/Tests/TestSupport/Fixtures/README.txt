@@ -1,0 +1,1 @@
+SYNTHETIC TEST CERTIFICATE AND KEY ONLY - generated for unit tests, never use elsewhere. Regenerate: openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout test-key.pem -out test-cert.pem -days 36500 -subj /CN=smtp.test.invalid -addext subjectAltName=DNS:smtp.test.invalid,IP:127.0.0.1

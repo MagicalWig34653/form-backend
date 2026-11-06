@@ -1,0 +1,85 @@
+<!-- title: Einrichtung | description: Docker Swarm oder Compose mit externer MariaDB, externem TLS-Proxy und ENV-Konfiguration; Setup, Update, Sicherung und Grenzen. -->
+<h1>Einrichtung</h1>
+<p class="lead">Stand main vom 03.11.2026: Swarm und Compose nutzen ein fertiges App-Image mit PWA. Datenbank und TLS-Reverse-Proxy stellen Sie selbst bereit; Caddy wird nicht mitgeliefert.</p>
+<div class="note warn"><p>Die Deploy-Skripte und Konfigurationsmodelle sind geprüft. Ein vollständiger Lauf mit echtem Swarm, externer TLS-Datenbank, Proxy, Rollback und Restore ist nicht belegt. Der Upgrade-Pfad für bereits migrierte Datenbanken ist wegen der neuen Speichertabelle noch offen.</p></div>
+<h2>Voraussetzungen</h2>
+<ul>
+ <li>Linux mit rootful Docker Engine, Bash, curl, OpenSSL und Git; für Compose das v2-Plugin mit <code>up --wait</code>, für Swarm ein aktiver Manager. Rootless und User-Namespace-Remapping sind nicht geprüft.</li>
+ <li>Externe MariaDB mit vorhandener Datenbank und Benutzer samt Anwendungs- und DDL-Rechten. Setup erzeugt weder DB noch Benutzer und ändert kein DB-Passwort. DB muss von App, Migrationsjob und Backup-Client erreichbar sein.</li>
+ <li>Externer HTTPS-Proxy mit gültigem Zertifikat, öffentlicher Verwaltungs-Origin und passender Passkey-RP-ID. Bei privatem GHCR-Paket vorher an der Registry anmelden.</li>
+</ul>
+<h2>Setup</h2>
+<p>Die Vorlagen liegen auf main unter <code>deploy/swarm/</code> und <code>deploy/compose/</code>. Der zusätzlich erzeugte Deploy-Branch enthält die Betriebsdateien. Aus einem aktuellen Checkout:</p>
+<pre><code># Swarm (bei bisher inaktivem Cluster vorher docker swarm init)
+deploy/swarm/setup.sh --dry-run
+deploy/swarm/setup.sh --db-password-file /geschuetzt/db_password
+
+# Alternative: einzelner Compose-Server
+sudo deploy/compose/setup.sh --dry-run
+sudo deploy/compose/setup.sh --db-password-file /geschuetzt/db_password</code></pre>
+<p>Die Pfade sind frei gewählte Beispiele. Übergeben Sie das bereits gültige Passwort der externen DB. Ohne Datei fragt Setup es verdeckt ab. Ohne vorhandenen Server-Key erzeugt Setup einen neuen; einen vorhandenen über <code>--server-key-file DATEI</code> übernehmen. Diesen Key separat verschlüsselt sichern und beim Restore wiederverwenden.</p>
+<p>Setup fragt Origin, RP-ID, DB-Zugang und Image ab; Swarm zusätzlich Replikate. Vorbereitetes Setup ohne Dialog:</p>
+<pre><code>cp deploy/swarm/stack.env.example deploy/swarm/stack.env
+chmod 600 deploy/swarm/stack.env
+# Platzhalter in stack.env bearbeiten, dann:
+deploy/swarm/setup.sh --non-interactive --db-password-file /geschuetzt/db_password --dry-run
+deploy/swarm/setup.sh --non-interactive --db-password-file /geschuetzt/db_password</code></pre>
+<p>Compose analog mit <code>deploy/compose/.env.example</code> und <code>.env</code>, typischerweise mit sudo für die Dateirechte. Ein Trockenlauf ändert keine Dateien, Secrets oder Container und prüft keine echten Verbindungen.</p>
+<h2>ENV-Konfiguration</h2>
+<p>Die vollständigen kommentierten Inventare stehen in den beiden ENV-Vorlagen. Priorität: Defaults, gespeicherte Datei, Prozess-ENV, CLI-Image-/Dateioptionen. Die Dateien enthalten einfache <code>KEY=VALUE</code>-Werte und werden ohne Shell-Ausführung geparst. Konfigurationsdatei und Sicherung werden mit Modus 0600 gespeichert; geheime Werte gehören in geschützte Dateien oder Secrets.</p>
+<table>
+<tr><th>Bereich</th><th>Variablen</th><th>Vertrag</th></tr>
+<tr><td>DB</td><td><code>FORM_DB_HOST</code>, <code>FORM_DB_PORT</code>, <code>FORM_DB_USER</code>, <code>FORM_DB_NAME</code>, <code>FORM_DB_TLS</code>, <code>FORM_DB_PASSWORD_FILE</code></td><td>Externe DB, TLS Standard <code>verify</code>. <code>disable</code> nur mit <code>FORM_ALLOW_INSECURE_DEV=1</code>. Kein generiertes DB-Passwort.</td></tr>
+<tr><td>Anmeldung</td><td><code>FORM_ADMIN_ORIGIN</code>, <code>FORM_RP_ID</code>, <code>FORM_SERVER_KEY_FILE</code></td><td>Exakte HTTPS-Origin ohne Pfad; RP-ID an bestehende Passkeys gebunden. Server-Key: 32 Byte als 64 Hexzeichen, 0400/0600, App-Benutzer muss ihn lesen können.</td></tr>
+<tr><td>Secret-Quellen</td><td><code>DB_PASSWORD_SOURCE_FILE</code>, <code>SERVER_KEY_SOURCE_FILE</code>, <code>BOOTSTRAP_PASSWORD_SOURCE_FILE</code></td><td>Hostdateien; native <code>FORM_*_FILE</code>-Pfade im Stack bezeichnen Containerdateien. Swarm verwendet Secrets, Compose geschützte Dateimounts.</td></tr>
+<tr><td>App</td><td><code>FORM_HTTP_HOST</code>, <code>FORM_HTTP_PORT</code>, <code>FORM_PUBLIC_DIR</code>, <code>FORM_SCHEMA_FILE</code>, <code>FORM_SDK_DIR</code></td><td>Container lauscht standardmäßig auf Port 8080; PWA, Baselineschema und SDK kommen aus dem Image.</td></tr>
+<tr><td>Image</td><td><code>FORM_IMAGE_REPOSITORY</code>, <code>FORM_IMAGE_TAG</code>, <code>FORM_IMAGE</code></td><td>Registry <code>ghcr.io/magicalwig34653/form-backend</code>; erfolgreiche Auswahl wird zum Digest fixiert.</td></tr>
+<tr><td>Netze</td><td><code>NETWORK_NAME</code>, <code>FORM_TRUSTED_PROXIES</code>, <code>FORM_MAIL_ALLOWED_NETS</code></td><td>Nur tatsächliche Proxy-Peer-Netze vertrauen. Private Mail-/SDK-/Speicherziele brauchen ausdrückliche Netzfreigabe; produktive Webhooks haben keine solche Ausnahme.</td></tr>
+<tr><td>Swarm</td><td><code>FORM_REPLICAS</code>, <code>FORM_PLACEMENT_CONSTRAINTS</code>, <code>FORM_PLACEMENT_PREFERENCES</code>, <code>FORM_PINNED_NODE</code>, <code>FORM_PINNED_REPLICAS</code>, <code>FORM_EXCLUDE_LABEL</code></td><td>Hauptdienst Standard 3 Replikate; optionaler gepinnter Dienst zusätzlich. Pinning garantiert bei Knotenausfall keinen Ersatz auf anderen Knoten.</td></tr>
+</table>
+<p>Compose nutzt bei festem Hostport eine App-Instanz. Swarm erlaubt optionale getrennte Ports <code>FORM_PUBLISH_PORT</code> und <code>FORM_PINNED_PUBLISH_PORT</code>; leer bedeutet keine Portveröffentlichung. Der alte Swarm-Parameter <code>PUBLISHED_PORT</code> entfällt. Swarm kann veröffentlichte Ports nicht an eine einzelne Host-IP binden. Im Host-Modus begrenzen feste Ports die Platzierung auf einen Task je Knoten; Update-Reihenfolge entsprechend planen.</p>
+<h2>Externer Reverse Proxy</h2>
+<p>Die ganze Origin einschließlich PWA, API und <code>/ready</code> weiterleiten. <code>Host</code> erhalten, <code>X-Forwarded-Proto: https</code> setzen und eingehende Forwarded-Header am äußeren Proxy überschreiben. Nur die tatsächlich sichtbaren Proxy-CIDRs in <code>FORM_TRUSTED_PROXIES</code> freigeben; direkten App-Zugriff per Firewall begrenzen. Für den aktuellen Stand ist keine WebSocket-Weiterleitung nötig.</p>
+<p>Für den Statistik-Collector müssen außerdem genau ein <code>X-Forwarded-Host</code> ohne Port und ein gültiger <code>X-Real-IP</code> aus vertrauenswürdiger Quelle ankommen. Ohne freigegebenen Socketpeer bleibt der Collector geschlossen. Domainbindung und exakte HTTPS-Origin müssen passen.</p>
+<p>Im Swarm-Overlay können beide App-Dienste über ihren gemeinsamen HTTP-Netzalias angesprochen werden. Der Proxy muss DNS regelmäßig neu auflösen und mehrere Task-Adressen behandeln. Bei zwei veröffentlichten Ingress-Ports benötigt er zwei Upstreams, um beide Dienste zu erreichen. Details und Varianten stehen in <a href="https://github.com/MagicalWig34653/form-backend/blob/main/docs/BETRIEB.md">BETRIEB.md</a>.</p>
+<h2>Migration, Update und Prüfung</h2>
+<p>Setup und Update halten eine Deploy-Sperre, prüfen die DB-Anmeldung mit <code>SELECT 1</code>, führen genau einen Migrationslauf mit dem gewählten Image aus und starten erst bei Erfolg den App-Rollout. Die normale App migriert nicht selbst beim Start. Ein Image-Rollback setzt das Schema nicht zurück.</p>
+<div class="note warn"><p><strong>Bestehende Installationen:</strong> <code>storage_uploads</code> erweitert die Baseline auf 74 Tabellen. Die additive SQL-Vorlage ist noch kein unterstützter Upgrade-Pfad: Der Runner lehnt eine veränderte Baseline-Checksumme ab. Vor einem Bestandsrollout ist ein versionierter, getesteter Upgrade-Runner nötig. Checksummen nicht blind überschreiben und bestehende Datenbanken nicht zurücksetzen.</p></div>
+<pre><code>deploy/swarm/update.sh --tag GEWUENSCHTE_COMMIT_SHA --dry-run
+deploy/swarm/update.sh --tag GEWUENSCHTE_COMMIT_SHA
+# Compose alternativ:
+sudo deploy/compose/update.sh --image ghcr.io/magicalwig34653/form-backend:GEWUENSCHTE_COMMIT_SHA
+
+curl --fail https://admin.example.org/health
+curl --fail https://admin.example.org/ready</code></pre>
+<p>Bei unklarem Migrations- oder Rolloutstatus bleibt die Sperre erhalten. Vor Wiederholung Jobs, Exitcodes und Schema prüfen. Swarm-Updates können kurzzeitig alte und neue App-Stände parallel betreiben; Compose ersetzt die einzelne App mit Unterbrechung.</p>
+<h2>Ersten Administrator und Passkey einrichten</h2>
+<p>Ein Betreiber-Kommando legt das erste Konto an und gibt einen <strong>einmaligen Einrichtungslink</strong> aus. Es verweigert die Arbeit, sobald irgendein Konto existiert, kann also nicht benutzt werden, um später ein privilegiertes Konto anzulegen.</p>
+<pre><code># Compose: vorbereitete Konfiguration und Secret-Mounts verwenden
+sudo docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yaml \
+  run --rm --no-deps app bootstrap-admin admin</code></pre>
+<p>Ein explizites Bootstrap-Passwort wird über <code>BOOTSTRAP_PASSWORD_SOURCE_FILE</code> beim Setup bereitgestellt. Ohne Betreiberquelle erzeugt das Kommando ein Passwort und zeigt es einmal an. Bei Swarm das Kommando als einmaligen Betreiberlauf mit denselben Image-, Netz-, ENV- und Secret-Einstellungen ausführen.</p>
+<p>Die Ausgabe enthält einen Link der Form <code>https://admin.example.org/setup#…</code>. Öffnen Sie ihn im Browser auf dem Gerät, das Ihren Passkey halten soll:</p>
+<ol class="steps">
+  <li>Name für das Gerät eingeben (z. B. „Laptop“) und „Passkey erstellen“ wählen. Der Code im Link steht nach <code>#</code> und gelangt erst durch die Registrierungsanfrage an die API; die Seite entfernt ihn sofort aus der Adresszeile.</li>
+  <li>Der Link gilt <strong>24 Stunden und genau einmal</strong>. Ein zweiter Versuch, abgelaufene oder erfundene Links ergeben dieselbe neutrale Fehlermeldung.</li>
+  <li>Danach melden Sie sich an: Passkey, dann das Passwort als zweiter Faktor.</li>
+</ol>
+<p><strong>Weiteres Gerät oder verlorener Passkey:</strong></p>
+<ul>
+  <li>Angemeldet (Anmeldung höchstens 5 Minuten alt) können Sie über <code>POST /auth/passkeys/options</code> und <code>/auth/passkeys/verify</code> (siehe <a href="api.html">Admin-API</a>) weitere Passkeys hinzufügen; bereits registrierte Geräte werden ausgeschlossen.</li>
+  <li>Ist kein Passkey mehr verfügbar, erzeugt der Betreiber einen neuen Link: <code>enroll-passkey admin</code> im gleich konfigurierten Betreiberlauf. Das Ereignis wird im Audit-Protokoll festgehalten. Alte Passkeys bleiben bestehen; eigene Passkeys lassen sich in der Kontoverwaltung entfernen.</li>
+</ul>
+<div class="note"><p>Unterstützt werden Passkeys mit ES256, EdDSA und RS256 (mindestens 2048 Bit), mit Benutzerverifikation und auffindbarem Schlüssel („resident key“). Eine Prüfung der Hersteller-Beglaubigung (Attestation) findet nicht statt; es wird nur die Bindung an Ihre Domain, Challenge und Schlüsselqualität geprüft.</p></div>
+
+<h2>Formular und Webseite anbinden</h2>
+<p>Nach der Anmeldung: Formular anlegen und veröffentlichen (<a href="benutzung.html">Benutzung</a>), den Datenschlüssel des Kunden registrieren und die SDK-Zugangsdaten erzeugen (<a href="api.html">Admin-API</a>). Dann kann Ihre Webseite mit dem <a href="sdk.html">PHP-SDK</a> einsenden.</p>
+
+
+<h2 id="externe-speicher">Externe Speicher: S3 und SFTP</h2>
+<p>MariaDB bleibt Standard. Systemadministratoren können S3-/SFTP-Verbindungen anlegen, Kunden zuweisen und eine Kunden- oder Formularrichtlinie setzen. Sie wählt externe Datenpakete und/oder Anhänge oberhalb einer Schwelle in Originalbytes. Eine Formularrichtlinie ersetzt die Kundenrichtlinie vollständig; explizite DB-Auswahl beendet die Vererbung. Bestehende Objekte werden nicht verschoben.</p>
+<p>S3 benötigt einen HTTPS-Endpunkt, Region, Bucket und Zugangsdaten; ausschließlich unversionierte Buckets sind unterstützt. SFTP benötigt Passwort, absolutes Stammverzeichnis und einen außerhalb des Systems verifizierten SHA-256-Host-Key-Pin. Zugangsdaten liegen verschlüsselt im SecretStore. Nutzen Sie exklusiv verwaltete Buckets/Verzeichnisse.</p>
+<p>Die Speicherprobe führt PUT/GET/HEAD/DELETE mit synthetischen Testbytes aus. <code>cleanupConfirmed=false</code> bedeutet, dass ein Probeobjekt zurückgeblieben sein kann. Uploadfehler verbleiben inventarisiert und werden erneut versucht; es gibt keinen stillen DB-Fallback. Sicherheitsreview, Last-/Crash-Abnahme und Bestandsupgrade bleiben offen (ADR 0019).</p>
+<h2>Sicherung und Wiederherstellung</h2>
+<p><code>scripts/backup-db.sh</code> und <code>scripts/restore-db.sh</code> arbeiten gegen die externe Datenbank, per Docker-Client oder lokalem MariaDB-Client. Für Dump und Zeilenzählung Schreibzugriffe und Hintergrundjobs pausieren; die Skripte erzwingen dies nicht. Restore akzeptiert nur eine neu anzulegende <code>restore_*</code>-Datenbank und überschreibt keinen Bestand.</p>
+<p>DB-Dumps und betriebliche Server-Keys getrennt verschlüsselt sichern; Kundenschlüssel und Recovery-Codes zusätzlich nach dem Anwendungskonzept aufbewahren. Externe S3-/SFTP-Objekte sind nicht Teil eines DB-Dumps und müssen konsistent mit dem Inventar gesichert werden. Prüfsummen und Zeilenzahlen ersetzen keine Probe von Inhalt, Entschlüsselung und Anmeldung. Ein vollständiger Restore mit externer DB und Schlüsseln ist noch nicht als Betriebsabnahme belegt.</p>

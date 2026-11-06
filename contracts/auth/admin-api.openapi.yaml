@@ -1,0 +1,5732 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+openapi: 3.1.0
+info:
+  title: 'Verwaltungs-API: Identität, Rechte und Formulare'
+  version: 0.1.0
+  description: 'VORGESCHLAGEN: P2-5-Vertragsentwurf, keine Implementierung. Rechte, Authentifizierung und Altparität
+    je Operation; Beschlüsse und offene Details siehe README.md, rechte.md, anmeldung.md, mcp.md und domains-proxy.md.
+    Alle Pfade und Detailwerte bedürfen Abnahme. x-permissions ist UND-verknüpft; Sitzung oder Token ersetzen keine
+    Objektprüfung. Bearerzugriff ist auf die Aktions-/Scopemenge in mcp.md begrenzt. Cookiebasierte Mutationen verlangen
+    CSRF und feste Admin-Origin. Alle Antworten no-store. Keine Secrets in Listen oder Audit.'
+  license:
+    name: GNU AGPLv3 ausschließlich
+    identifier: AGPL-3.0-only
+servers:
+- url: /admin/api/v1
+  description: 'VORGESCHLAGEN: ausschließlich auf der unveränderten Admin-Origin'
+security:
+- Session: []
+- BearerToken: []
+x-proposal-status: VORGESCHLAGEN
+x-authorizer: Gemeinsame Fachschicht gemäß rechte.md; tenant/form/entry-Besitzkette aus DB.
+paths:
+  /auth/session:
+    get:
+      operationId: getSession
+      summary: Sitzungszustand und CSRF lesen
+      description: 'VORGESCHLAGEN: bei Bedarf anonyme DB-Sitzung setzen; keine fremden Kontodaten. Auch im anonymen
+        Zustand ratenbegrenzt.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security: []
+  /auth/password:
+    post:
+      operationId: loginPassword
+      summary: Mit Passwort anmelden
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /?a
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: anonymous
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLogin'
+      security:
+      - Session: []
+  /auth/totp:
+    post:
+      operationId: verifyTotp
+      summary: TOTP-Zweitfaktor bestätigen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /login/otp-mfa/
+      - /login/passkey/zweiter-faktor/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: factor_pending
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpVerify'
+      security:
+      - Session: []
+  /auth/passkey/options:
+    post:
+      operationId: passkeyOptions
+      summary: Challenge für Passkeyanmeldung erzeugen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /login/passkey/?a=challenge
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnOptions'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: anonymous
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      security:
+      - Session: []
+  /auth/passkey/verify:
+    post:
+      operationId: passkeyVerify
+      summary: Passkeyantwort prüfen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /login/passkey/?a=pruefen
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: anonymous
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnResponse'
+      security:
+      - Session: []
+  /auth/second-factor/password:
+    post:
+      operationId: verifySecondFactorPassword
+      summary: Passwort als zweiten Faktor nach Passkey prüfen
+      description: 'VORGESCHLAGEN: nur method=password zulässig; nur an das Konto der Passkey-Zwischensitzung gebunden.
+        Kein alternativer Benutzername und kein Überspringen des Faktors.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /login/passkey/zweiter-faktor/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: factor_pending
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecondFactorPassword'
+      security:
+      - Session: []
+  /auth/reauthenticate/passkey/options:
+    post:
+      operationId: reauthenticatePasskeyOptions
+      summary: Passkeychallenge für frische Authentifizierung erzeugen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnOptions'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: authenticated
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      security:
+      - Session: []
+  /auth/reauthenticate:
+    post:
+      operationId: reauthenticate
+      summary: Frische Authentifizierung bestätigen
+      description: 'VORGESCHLAGEN: frische Authentifizierungszeit setzen, keine Bestätigung eines Releasehashs und
+        keine selbst vorausgesetzte frische Reauthentifizierung.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      - /mcp/oauth/authorize/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: authenticated
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reauthenticate'
+      security:
+      - Session: []
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Aktuelle Sitzung widerrufen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions: []
+      x-legacy-routes:
+      - /logout/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            Set-Cookie:
+              schema:
+                type: string
+              description: 'VORGESCHLAGEN: __Host-admin_session mit Secure/HttpOnly/SameSite=Lax/Path=/; bei Abschluss
+                rotieren, bei Logout entfernen.'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-session-stage: any-cookie-session
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      security:
+      - Session: []
+  /me/sessions:
+    get:
+      operationId: listSessions
+      summary: Eigene Sitzungen lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      security:
+      - Session: []
+  /me/sessions/{sessionId}:
+    delete:
+      operationId: revokeSession
+      summary: Eigene Sitzung widerrufen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /logout/
+      - /konto/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/sessionId'
+      - $ref: '#/components/parameters/Csrf'
+  /me/password:
+    patch:
+      operationId: changePassword
+      summary: Eigenes Passwort ändern
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+  /me/totp/enrollments:
+    post:
+      operationId: enrollTotp
+      summary: TOTP-Einrichtung beginnen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpEnrollment'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+  /me/totp:
+    post:
+      operationId: activateTotp
+      summary: TOTP-Einrichtung mit Code bestätigen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpActivate'
+    delete:
+      operationId: removeTotp
+      summary: TOTP entfernen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+  /me/passkeys/options:
+    post:
+      operationId: registerPasskeyOptions
+      summary: Registrierungschallenge erzeugen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/?a=passkey-challenge
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnOptions'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+  /me/passkeys:
+    get:
+      operationId: listPasskeys
+      summary: Eigene Passkeys ohne Geheimnisse lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      security:
+      - Session: []
+    post:
+      operationId: registerPasskey
+      summary: Eigenen Passkey registrieren
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnResponse'
+  /me/passkeys/{credentialId}:
+    delete:
+      operationId: removePasskey
+      summary: Eigenen Passkey entfernen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - account.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/credentialId'
+      - $ref: '#/components/parameters/Csrf'
+  /me/tokens:
+    get:
+      operationId: listTokens
+      summary: Eigene Tokenmetadaten ohne Tokenwerte lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - token.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      security:
+      - Session: []
+    post:
+      operationId: createToken
+      summary: Persönliches MCP-Token ausstellen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - token.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenOnce'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenInput'
+  /me/tokens/{tokenId}:
+    delete:
+      operationId: revokeToken
+      summary: Eigenes MCP-Token widerrufen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - token.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tokenId'
+      - $ref: '#/components/parameters/Csrf'
+  /me/oauth-grants:
+    get:
+      operationId: listGrants
+      summary: Eigene OAuth-Freigaben lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - token.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      security:
+      - Session: []
+  /me/oauth-grants/{grantId}:
+    delete:
+      operationId: revokeGrant
+      summary: OAuth-Grant samt Tokenfamilie widerrufen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - token.manage
+      x-legacy-routes:
+      - /konto/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/grantId'
+      - $ref: '#/components/parameters/Csrf'
+  /tenants:
+    get:
+      operationId: listTenants
+      summary: Zugängliche Kunden ohne Inhaltswerte lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.read
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: konfiguration.lesen
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: createTenant
+      summary: Kundenmandant anlegen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantInput'
+  /users:
+    get:
+      operationId: listUsers
+      summary: Konten und Zuständigkeiten lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - /benutzer/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: createUser
+      summary: Konto und begrenzte Zuständigkeiten anlegen
+      description: 'VORGESCHLAGEN: keine Passwörter in Listen. Sicherer initialer Aktivierungs-/Passwortsetzprozess
+        ist OFFEN; Konto bis dahin inaktiv. Nur interaktive menschliche DB-Sitzung und frische Authentifizierung
+        (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - /benutzer/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateInput'
+  /users/{userId}:
+    patch:
+      operationId: updateUser
+      summary: Rechte, Sperre, MCP-Erlaubnis und Zuständigkeiten ändern
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - /benutzer/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/userId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserInput'
+  /tenants/{tenantId}/forms:
+    get:
+      operationId: listForms
+      summary: Zugängliche Formulare lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.read
+      x-legacy-routes:
+      - /forms/
+      - /home/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: konfiguration.lesen
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: createForm
+      summary: Inaktives Formular anlegen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.create
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormInput'
+  /form-references:
+    get:
+      operationId: listFormReferences
+      summary: Reduzierte Formularreferenzen für Statistikwerkzeuge lesen
+      description: 'VORGESCHLAGEN: ausschließlich zugängliche Formular-IDs, Namen und Status; keine Konfigurationsdetails
+        oder Inhalte. Gemeinsame Fachprojektion für formulare_auflisten.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.read
+      x-legacy-routes:
+      - /mcp/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: statistik.lesen
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /tenants/{tenantId}/forms/{formId}:
+    get:
+      operationId: getForm
+      summary: Redigierte Konfiguration und aktive Release-ID lesen
+      description: 'VORGESCHLAGEN: Referenz mit Konfigurationszugriff über Entwürfe; keine SDK-Schlüssel, Zugangsdaten
+        oder Formularinhalte. Produktionsfelder sind hier nicht schreibbar.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.read
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reference'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: konfiguration.lesen
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+  /tenants/{tenantId}/forms/{formId}/drafts:
+    post:
+      operationId: createDraft
+      summary: Entwurf aus freigegebener Version anlegen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - draft.write
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: entwurf.schreiben
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftCreate'
+  /tenants/{tenantId}/forms/{formId}/drafts/{draftId}:
+    get:
+      operationId: getDraft
+      summary: Entwurf und Stand lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - form.read
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: konfiguration.lesen
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/draftId'
+    patch:
+      operationId: updateDraft
+      summary: Konfigurationsentwurf vollständig ersetzen
+      description: 'VORGESCHLAGEN: PATCH ersetzt das gesamte document atomar; kein beliebiges JSON-Patch, keine
+        produktiven Änderungen. Produktive Webhooks werden nur im Release geändert; genaue Webhook-/Transportbindung
+        im Folgeabgleich offen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - draft.write
+      x-legacy-routes:
+      - /forms/
+      - /webhooks/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      x-required-scope: entwurf.schreiben
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/draftId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftDocument'
+  /tenants/{tenantId}/forms/{formId}/drafts/{draftId}/package:
+    get:
+      operationId: exportDraft
+      summary: Konfigurationspaket exportieren
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - draft.export
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: ../flow/package.schema.json
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: entwurf.schreiben
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/draftId'
+  /tenants/{tenantId}/forms/{formId}/imports:
+    post:
+      operationId: importDraft
+      summary: Paket oder PHP-Text in neuen Entwurf konvertieren
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - draft.write
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+            ETag:
+              schema:
+                type: string
+              description: Revision für If-Match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: entwurf.schreiben
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportInput'
+  /tenants/{tenantId}/forms/{formId}/tests:
+    post:
+      operationId: testDraft
+      summary: Entwurf simulieren oder verwaltetes Testziel verwenden
+      description: 'VORGESCHLAGEN: standardmäßig keine realen Effekte; optionale testTargetId nur verwaltete erlaubte
+        Ziele. HTTP-Erfolg bedeutet Testannahme, nicht erfolgreiche Mailzustellung.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - test.run
+      x-legacy-routes:
+      - /forms/
+      - /mail-server/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: test.ausfuehren
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestInput'
+  /tenants/{tenantId}/forms/{formId}/publication-confirmations:
+    post:
+      operationId: confirmPublication
+      summary: Konkreten Releasekandidaten menschlich bestätigen
+      description: 'ADR 0003 Nr. 13: niemals mit Bearer. Unveränderlichen Kandidaten prüfen, confirmationId an Sitzung/Konto/Hash/Revision
+        binden, 120s VORGESCHLAGEN. Keine freie actorKind-Behauptung akzeptieren. Nur interaktive menschliche DB-Sitzung
+        und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - release.publish
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Confirmation'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmationInput'
+  /tenants/{tenantId}/forms/{formId}/releases:
+    post:
+      operationId: publishRelease
+      summary: Bestätigten Stand veröffentlichen oder bestätigten Rollback erstellen
+      description: 'ADR 0003 Nr. 13: menschliche Sitzung und einmalige Hashbestätigung atomar verbrauchen; Audit
+        erzeugt human/confirmedAt/confirmationAuditId. Kein unmittelbarer Moduswechsel durch Entwurf/Token/Import.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - release.publish
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Release'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishInput'
+  /tenants/{tenantId}/forms/{formId}/entries:
+    get:
+      operationId: listEntries
+      summary: Verlauf mit Status und Metadaten lesen
+      description: 'VORGESCHLAGEN: nur Metadaten, keine Chiffrate, Suchinhalte oder entschlüsselten Werte; Filter
+        vor Paginierung. Filterdetails im Datenvertrag abgleichen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      x-legacy-routes:
+      - /history/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/ciphertext:
+    get:
+      operationId: getCiphertext
+      summary: Verschlüsselten Eintrag zur lokalen Anzeige laden
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.decrypt
+      x-legacy-routes:
+      - /history/?a=zeilen
+      - /history/vorschau/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ciphertext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/attachment:
+    get:
+      operationId: getEncryptedAttachment
+      summary: Verschlüsselten Anhang laden
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.decrypt
+      x-legacy-routes:
+      - /history/?a=anhang
+      - /history/vorschau/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ciphertext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+  /tenants/{tenantId}/forms/{formId}/exports:
+    post:
+      operationId: exportEntries
+      summary: Auswahl für lokalen Browserexport bereitstellen
+      description: 'VORGESCHLAGEN: zusätzliche content.decrypt-/Schlüsselprüfung bei csv/json; Ausgabe nur verschlüsselt.
+        Kurzlebiger Job mit bereichsgebundenem Download, keine persistierten Klartexte. Nur interaktive menschliche
+        DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.export
+      x-legacy-routes:
+      - /export/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportInput'
+  /tenants/{tenantId}/forms/{formId}/exports/{jobId}:
+    get:
+      operationId: getExport
+      summary: Ergebnis eines eigenen autorisierten Exportauftrags laden
+      description: 'VORGESCHLAGEN: Bereich und Rechte erneut prüfen, nur verschlüsselte Auswahl; csv/json zusätzlich
+        content.decrypt und Schlüsselrecht. TTL/Downloadformat P2-3-Abgleich OFFEN. Nur interaktive menschliche
+        DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.export
+      x-legacy-routes:
+      - /export/?a=zeilen
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/jobId'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/resends:
+    post:
+      operationId: resendEntry
+      summary: Interaktiven Resend aus Browserklartext auslösen
+      description: 'ADR 0002 Nr. 19: Passphrase/Schlüssel bleiben lokal, bewusster Browserklartext nur im RAM. Keine
+        automatische Wiederholung; Zustellidentität erhalten. Originalbindung sourceHash allein nicht beweisend;
+        Kryptovertrag hierzu OFFEN. Ergebnis je Versandart, kein Erfolg allein aufgrund HTTP 200. Nur interaktive
+        menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich
+        CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.decrypt
+      - content.resend
+      x-legacy-routes:
+      - /history/?a=resend
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendInput'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/hold:
+    patch:
+      operationId: holdEntry
+      summary: Löschschutz mit erforderlichem Nachschutz ändern
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.hold
+      x-legacy-routes:
+      - /history/?a=anhalten
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldInput'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}:
+    delete:
+      operationId: deleteEntry
+      summary: Einzelnen Inhalt unter Holdregeln löschen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.delete
+      x-legacy-routes:
+      - /history/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+  /tenants/{tenantId}/forms/{formId}/deletions:
+    post:
+      operationId: deleteEntries
+      summary: Inhalte atomar mit Rechtsgrundlage löschen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - privacy.manage
+      - content.delete
+      x-legacy-routes:
+      - /betroffenenrechte/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletionInput'
+  /tenants/{tenantId}/forms/{formId}/debug-jobs:
+    post:
+      operationId: createDebug
+      summary: Maskierte Beobachtung oder Testaufzeichnung starten
+      description: 'ADR 0003 Nr. 9: 15 Minuten TTL, sensitive Felder maskieren, genau fixiertes Release und Akteur.
+        observe ohne Außenwirkung, test nach Testzielregeln. mode=test verlangt zusätzlich test.run und bei Tokens
+        test.ausfuehren; debug.maskiert allein erlaubt nur observe.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - debug.read
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Debug'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      x-required-scope: debug.maskiert
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebugInput'
+      x-conditional-permissions:
+        mode=test:
+          permissions:
+          - test.run
+          tokenScope: test.ausfuehren
+  /tenants/{tenantId}/forms/{formId}/debug-jobs/{debugId}:
+    get:
+      operationId: getDebug
+      summary: Maskierten Debugauftrag lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - debug.read
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Debug'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      x-required-scope: debug.maskiert
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/debugId'
+    delete:
+      operationId: cancelDebug
+      summary: Eigenen Debugauftrag abbrechen und Aufzeichnung entfernen
+      description: 'VORGESCHLAGEN: Eigentümerprüfung zusätzlich zum Formularbereich; Token nur eigener Auftrag und
+        debug.maskiert. Bereits erfasste Werte nicht in unbefristete Jobs verschieben.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - debug.read
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      x-required-scope: debug.maskiert
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/debugId'
+      - $ref: '#/components/parameters/Csrf'
+  /tenants/{tenantId}/forms/{formId}/debug-jobs/{debugId}/export:
+    get:
+      operationId: exportDebug
+      summary: Ausschließlich maskierten Debugexport lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - debug.read
+      - debug.export
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Debug'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      x-required-scope: debug.maskiert
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/debugId'
+  /tenants/{tenantId}/forms/{formId}/debug-jobs/{debugId}/plaintext:
+    get:
+      operationId: getDebugPlaintextEnvelope
+      summary: Geschützte Debugdaten für lokale Klartextansicht laden
+      description: 'ADR 0003 Nr. 9: nur mit Schlüsselzugang, verschlüsselte Ausgabe an Browser. Kein serverseitiger
+        Klartext, kein Klartextexport; TTL 15 Minuten gilt auch hier. Nur interaktive menschliche DB-Sitzung und
+        frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - debug.read
+      - debug.plaintext
+      - content.decrypt
+      x-legacy-routes:
+      - 'NEU: kein direkter Altendpunkt'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ciphertext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '410':
+          $ref: '#/components/responses/E410'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/debugId'
+  /tenants/{tenantId}/test-targets:
+    get:
+      operationId: listTestTargets
+      summary: Verwaltete Testziele ohne Zugangsdaten listen
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R04: nur sichere Projektion (Name, Art, Allowlist-Größe, Zustand), keine Secrets. Auswahl in tests/debug nur mit test.run.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - test.run
+      x-legacy-routes:
+      - 'NEU: ADR 0003 Nr. 9, R04'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: createTestTarget
+      summary: Testziel anlegen
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R04: eigenes Einzelrecht test-target.manage im Kundenbereich; SSRF-Schutz und Empfänger-Allowlist werden serverseitig geprüft, Produktivziele sind ausgeschlossen. Nur menschliche Sitzung, frische Authentifizierung, CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - test-target.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0003 Nr. 9, R04'
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestTargetInput'
+  /tenants/{tenantId}/test-targets/{testTargetId}:
+    patch:
+      operationId: updateTestTarget
+      summary: Testziel ändern oder deaktivieren
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R04: test-target.manage im Bereich des Ziels; If-Match auf Revision. Löschen = enabled=false, Verweise in Protokollen bleiben.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - test-target.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0003 Nr. 9, R04'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/testTargetId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestTargetInput'
+  /tenants/{tenantId}/forms/{formId}/entries/{entryId}/objects:
+    get:
+      operationId: listEntryObjects
+      summary: Objektinventar einer Einsendung ohne Chiffrate
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R02/R07: vollständige Objektmenge der Einsendung mit aktueller Revision, Paketdigest, Nutzchiffratdigest und Generation; Quelle für originalProof. Keine Pakete, kein Klartext. Rolle checkpoint nur über Run-Kontext. Manifest fehlt (Altbestand): manifestState=missing und Resend gesperrt.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      x-legacy-routes:
+      - 'NEU: Vertragsrunde 3 R02'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntryObjects'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/entryId'
+  /tenants/{tenantId}/forms/{formId}/objects/{objectId}/ciphertext:
+    get:
+      operationId: getObjectCiphertext
+      summary: Einzelnes Inhaltsobjekt als Chiffrat laden
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R02: Objekt des Bereichs (Rollen data, attachment, mail-*, legacy-errors, object-metadata) für lokale Entschlüsselung; entspricht dem Recht von getCiphertext. Checkpoints sind ausgeschlossen (404), sie laufen über den Run-Pfad mit flow.resume. Nur menschliche Sitzung, frische Authentifizierung; jeder Abruf wird auditiert.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - content.read
+      - content.decrypt
+      x-legacy-routes:
+      - 'NEU: Vertragsrunde 3 R02'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredObjectCiphertext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/formId'
+      - $ref: '#/components/parameters/objectId'
+  /statistics:
+    get:
+      operationId: getStatistics
+      summary: Bereichsgebundene Bestands- und Ereignisstatistik lesen
+      description: 'VORGESCHLAGEN: pseudonym, keine IP/Formularwerte. kind wählt KPI/Zeitreihe/Status/Formulare/Ads/Ereignisse/Domains;
+        Zeitraumfilter und Berechnungen gemäß mcp.md; Bestand bleibt erhalten.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - statistics.read
+      x-legacy-routes:
+      - /home/
+      - /statistics/
+      - /mcp/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      x-required-scope: statistik.lesen
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - kpis
+          - timeseries
+          - status
+          - forms
+          - ads
+          - events
+          - domains
+      - name: formId
+        in: query
+        schema: &id003
+          $ref: ../flow/common.schema.json#/$defs/uuid
+      - name: domain
+        in: query
+        schema:
+          type: string
+      - name: period
+        in: query
+        schema:
+          type: string
+          enum:
+          - 24h
+          - today
+          - 7d
+          - 30d
+          - year
+          - custom
+      - name: from
+        in: query
+        schema: &id001
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        schema: *id001
+  /statistics/deletions:
+    post:
+      operationId: deleteStatistics
+      summary: Ausgewählte Statistikereignisse löschen, Audit erhalten
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - statistics.delete
+      x-legacy-routes:
+      - /statistics/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatisticDeletionInput'
+  /domains:
+    get:
+      operationId: listDomains
+      summary: 'Registrierte Zuordnungen verwalten: Liste'
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - domain.manage
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: createDomain
+      summary: Domain manuell mit Domainrecht zuordnen
+      description: 'ADR 0003 Nr. 8: kein DNS-Nachweis. Neuanlage inaktiv/testing erzwingen; exakte Ansichtshosteinmaligkeit
+        und Kunde/Formular/Ansicht prüfen. Keine Admin-Domain als Kundenhost. Nur interaktive menschliche DB-Sitzung
+        und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - domain.manage
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainCreateInput'
+  /domains/{domainId}:
+    patch:
+      operationId: updateDomain
+      summary: Domainzuordnung bewusst ändern oder deaktivieren
+      description: 'VORGESCHLAGEN: Produktionsmodus nur auf vorhandenes menschlich bestätigtes Release, mit ausdrücklicher
+        frischer Bestätigung; niemals einen Entwurf als Ziel akzeptieren. Nur interaktive menschliche DB-Sitzung
+        und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - domain.manage
+      x-legacy-routes:
+      - /forms/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '412':
+          $ref: '#/components/responses/E412'
+        '428':
+          $ref: '#/components/responses/E428'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/domainId'
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainInput'
+  /tenants/{tenantId}/key-access:
+    get:
+      operationId: listKeyAccess
+      summary: Kundenschlüsselzugänge ohne private Werte lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - key.manage
+      x-legacy-routes:
+      - /schluessel/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: grantKeyAccess
+      summary: Generationsgebundenen Schlüsselzugang gewähren
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - key.manage
+      x-legacy-routes:
+      - /schluessel/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyAccessInput'
+  /tenants/{tenantId}/key-access/{userId}:
+    delete:
+      operationId: revokeKeyAccess
+      summary: Kundenschlüsselzugang entziehen
+      description: 'VORGESCHLAGEN: letzten erreichbaren Datenzugang schützen, zukünftige Wrap-/Inhaltsabrufe sperren;
+        bereits lokale Schlüssel nicht rückrufbar. Nur interaktive menschliche DB-Sitzung und frische Authentifizierung
+        (VORGESCHLAGEN maximal 5 min); bei Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - key.manage
+      x-legacy-routes:
+      - /schluessel/
+      responses:
+        '204':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/tenantId'
+      - $ref: '#/components/parameters/userId'
+      - $ref: '#/components/parameters/Csrf'
+  /configuration:
+    get:
+      operationId: listConfiguration
+      summary: Verwaltbare nicht geheime Systemkonfiguration lesen
+      description: 'VORGESCHLAGEN: gemeinsamer Prüfpfad gemäß rechte.md; Ressourcenzugehörigkeit serverseitig prüfen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - system.manage
+      x-legacy-routes:
+      - /konfiguration/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: setConfiguration
+      summary: Verwaltbare nicht geheime Systemeinstellung setzen
+      description: 'VORGESCHLAGEN: Allowlist verwaltbarer Einstellungen; kein direkter Schreibpfad zu Release, RP-ID,
+        Proxyvertrauen oder Schlüsselmaterial. Betriebseinstellungen außerhalb dieser Allowlist nicht mutierbar.
+        Nur interaktive menschliche DB-Sitzung und frische Authentifizierung (VORGESCHLAGEN maximal 5 min); bei
+        Mutation zusätzlich CSRF.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - system.manage
+      x-legacy-routes:
+      - /konfiguration/
+      responses:
+        '201':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigurationInput'
+  /audit:
+    get:
+      operationId: getAudit
+      summary: Anmelde-, MCP- und Änderungsereignisse ohne Secrets lesen
+      description: 'VORGESCHLAGEN: Sicht mit systemweitem audit.read, keine Klartexte, Tokens oder Headerwerte;
+        Bereichsfehler separat nur über erlaubte Formularprojektion. Auditpersistenz nicht pauschal manipulationssicher
+        nennen.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - audit.read
+      x-legacy-routes:
+      - /benutzer/anmeldeprotokoll/
+      - /benutzer/mcp-protokoll/
+      - /error-log/
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/List'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /permission-groups:
+    get:
+      operationId: listPermissionGroups
+      summary: listPermissionGroups
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      parameters: []
+    post:
+      operationId: createPermissionGroup
+      summary: createPermissionGroup
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionGroupInput'
+  /permission-groups/{groupId}:
+    patch:
+      operationId: updatePermissionGroup
+      summary: updatePermissionGroup
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - name: groupId
+        in: path
+        required: true
+        schema: &id002
+          $ref: ../flow/common.schema.json#/$defs/uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionGroupInput'
+    delete:
+      operationId: revokePermissionGroup
+      summary: revokePermissionGroup
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - name: groupId
+        in: path
+        required: true
+        schema: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionRevocationInput'
+  /permission-assignments:
+    post:
+      operationId: assignPermissions
+      summary: assignPermissions
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionAssignmentInput'
+  /permission-assignments/{assignmentId}:
+    delete:
+      operationId: revokePermissionAssignment
+      summary: revokePermissionAssignment
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - identity.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - name: assignmentId
+        in: path
+        required: true
+        schema: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionRevocationInput'
+  /api-hosts:
+    post:
+      operationId: configureApiHost
+      summary: configureApiHost
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; ADR 0005 D1 ergänzt optionale Release-Bindung je Formular
+        (releaseBindings, Revision, menschliche Bestätigung; gebundene Hosts nie nach forms.current_release_id); aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - domain.manage
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiHostInput'
+  /runs:
+    post:
+      operationId: executeFlow
+      summary: executeFlow
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - flow.execute
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowExecuteInput'
+  /runs/{runId}/approve:
+    post:
+      operationId: approveFlow
+      summary: approveFlow
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - flow.approve
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - name: runId
+        in: path
+        required: true
+        schema: *id002
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowApprovalInput'
+  /runs/{runId}/resume:
+    post:
+      operationId: resumeFlow
+      summary: resumeFlow
+      description: VORGESCHLAGENER Detailvertrag nach ADR 0004; aktuelle Einzel-/Gruppenrechte, Scope und Revision
+        prüfen. Siehe rechte.md bzw. ../flow/wiederanlauf.md.
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - flow.resume
+      - content.decrypt
+      x-legacy-routes:
+      - 'NEU: ADR 0004'
+      responses:
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+      security:
+      - Session: []
+      x-human-confirmation-required: true
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - name: runId
+        in: path
+        required: true
+        schema: *id002
+      - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowResumeInput'
+  /runs/{runId}/resume-context:
+    get:
+      operationId: getResumeContext
+      summary: Fortsetzungskontext eines Laufs lesen
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R02: liefert Laufrevision, checkpointHash, Suspension, Checkpointobjekt sowie die serverseitig aus Checkpoint und Manifest bestimmte vollständige Objektmenge mit aktuellen Revisionen. Objekte, deren Inhalt der Aufrufer mangels content.read/content.decrypt nicht abrufen darf, erscheinen mit access=denied und machen Resume unmöglich (blocked), sie werden nicht verschwiegen. Kein Klartext, keine Schlüssel. Nur menschliche Sitzung.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - flow.resume
+      x-legacy-routes:
+      - 'NEU: Vertragsrunde 3 R02'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeContext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      parameters:
+      - $ref: '#/components/parameters/runId'
+  /runs/{runId}/checkpoint/ciphertext:
+    get:
+      operationId: getRunCheckpointCiphertext
+      summary: Checkpointchiffrat eines Laufs laden
+      description: 'VORGESCHLAGEN Vertragsrunde 3 R02: ausschließlich das Checkpointobjekt des Laufs (Rolle checkpoint) für lokale Entschlüsselung mit flow.resume; kein Inhaltsrecht daraus ableitbar. Neu autorisiert bei jedem Abruf, no-store.'
+      x-proposal-status: VORGESCHLAGEN
+      x-permissions:
+      - flow.resume
+      x-legacy-routes:
+      - 'NEU: Vertragsrunde 3 R02'
+      responses:
+        '200':
+          description: Erfolg gemäß Vertrag; ausschließlich zulässige Projektion, Cache-Control no-store.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredObjectCiphertext'
+        '400':
+          $ref: '#/components/responses/E400'
+        '401':
+          $ref: '#/components/responses/E401'
+        '403':
+          $ref: '#/components/responses/E403'
+        '404':
+          $ref: '#/components/responses/E404'
+        '409':
+          $ref: '#/components/responses/E409'
+        '413':
+          $ref: '#/components/responses/E413'
+        '422':
+          $ref: '#/components/responses/E422'
+        '429':
+          $ref: '#/components/responses/E429'
+        '503':
+          $ref: '#/components/responses/E503'
+      security:
+      - Session: []
+      parameters:
+      - $ref: '#/components/parameters/runId'
+components:
+  securitySchemes:
+    Session:
+      type: apiKey
+      in: cookie
+      name: __Host-admin_session
+      description: Opake DB-Sitzung, nur Hash persistiert. Volle Sitzung erforderlich, außer ausdrücklich anonymen/Faktor-Operationen.
+    BearerToken:
+      type: http
+      scheme: bearer
+      description: Persönliches Token oder OAuth-Access-Token. Aktuelles Konto, MCP-Erlaubnis, Bereich, Scope und
+        ggf. Grant/Audience prüfen; nie menschliche Bestätigung.
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    formId:
+      name: formId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    draftId:
+      name: draftId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    entryId:
+      name: entryId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    debugId:
+      name: debugId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    sessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    tokenId:
+      name: tokenId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    grantId:
+      name: grantId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    credentialId:
+      name: credentialId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    testTargetId:
+      name: testTargetId
+      in: path
+      required: true
+      schema:
+        $ref: ../flow/common.schema.json#/$defs/uuid
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    objectId:
+      name: objectId
+      in: path
+      required: true
+      schema:
+        $ref: ../flow/common.schema.json#/$defs/uuid
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    runId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        $ref: ../flow/common.schema.json#/$defs/uuid
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    domainId:
+      name: domainId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    jobId:
+      name: jobId
+      in: path
+      required: true
+      schema: *id003
+      description: Kennung im aktuellen autorisierten Bereich; niemals selbst Berechtigungsnachweis.
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+      description: 'Bei jeder cookiebasierten Mutation zwingend, auch Anmeldung; bei reinem Bearerzugriff ohne Cookie
+        nicht verwendet. Fehlend/falsch: 403.'
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+      description: 'VORGESCHLAGEN: exakter ETag des gelesenen Standes; fehlt 428, veraltet 412.'
+    Idempotency:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 190
+      description: 'VORGESCHLAGEN: zusätzlich maximal 190 UTF-8-Byte nach Trimmen. Scope Akteurart+Akteur-ID+Kunde+Aktion+Ziel+Keydigest;
+        Requesthash ist gebundener Wert, kein Teil des Scopes; anderer Inhalt 409. Ledger admin_action_idempotency
+        gemäß ../data/abbildung.md. Kein Klartext zur Wiederholung speichern.'
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Opaker Cursor innerhalb der zuvor autorisierten Auswahl.
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      description: 'VORGESCHLAGEN: Seitengröße, auf serverseitigen Bereich angewandt.'
+  schemas:
+    Problem:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+          description: Deutscher lokalisierbarer Fehlertext ohne Secrets.
+        requestId: *id003
+      required:
+      - code
+      - message
+      - requestId
+      additionalProperties: false
+    Reference:
+      type: object
+      properties:
+        id: *id003
+        revision:
+          type: integer
+          minimum: 1
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+      required:
+      - id
+      - revision
+      - hash
+      additionalProperties: false
+    List:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            description: Ressourcenprojektion gemäß Operationsbeschreibung; nie Secrets oder fremde Objekte. Bei
+              änderbaren Ressourcen enthalten die Projektionen revision und etag.
+        nextCursor:
+          type:
+          - string
+          - 'null'
+      required:
+      - items
+      additionalProperties: false
+    Result:
+      type: object
+      properties:
+        id: *id003
+        status:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+      required:
+      - id
+      - status
+      additionalProperties: false
+    SessionState:
+      type: object
+      properties:
+        secondFactorRequired:
+          type: boolean
+          description: Serverseitige Listener-Policy (ADR 0022). Intern standardmäßig false, öffentlich immer true.
+        state:
+          type: string
+          enum:
+          - anonymous
+          - factor_pending
+          - authenticated
+        csrfToken:
+          type: string
+        subjectId: *id003
+        expiresAt: *id001
+      required:
+      - state
+      - csrfToken
+      - expiresAt
+      additionalProperties: false
+    PasswordLogin:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 190
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          writeOnly: true
+      required:
+      - username
+      - password
+      additionalProperties: false
+    TotpVerify:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          writeOnly: true
+      required:
+      - code
+      additionalProperties: false
+    WebAuthnResponse:
+      type: object
+      properties:
+        challengeId: *id003
+        credential:
+          type: object
+          description: 'VORGESCHLAGEN: standardisierte WebAuthn-Antwort, binäre Werte base64url. Vollständige browser-/bibliotheksspezifische
+            Strukturprüfung in P3 festlegen; nicht ungeprüft übernehmen.'
+      required:
+      - challengeId
+      - credential
+      additionalProperties: false
+    WebAuthnOptions:
+      type: object
+      properties:
+        challengeId: *id003
+        publicKey:
+          type: object
+          description: Serverseitige WebAuthn-Optionen mit fest konfigurierter RP-ID; Strukturprofil VORGESCHLAGEN,
+            in P3 präzisieren.
+        expiresAt: *id001
+      required:
+      - challengeId
+      - publicKey
+      - expiresAt
+      additionalProperties: false
+    Reauthenticate:
+      oneOf:
+      - type: object
+        properties:
+          method:
+            const: password
+          password:
+            type: string
+            writeOnly: true
+            minLength: 1
+        required:
+        - method
+        - password
+        additionalProperties: false
+      - type: object
+        properties:
+          method:
+            const: totp
+          code:
+            type: string
+            pattern: ^[0-9]{6}$
+            writeOnly: true
+        required:
+        - method
+        - code
+        additionalProperties: false
+      - type: object
+        properties:
+          method:
+            const: passkey
+          response:
+            $ref: '#/components/schemas/WebAuthnResponse'
+        required:
+        - method
+        - response
+        additionalProperties: false
+      description: 'VORGESCHLAGEN: nur vorhandene, nach Sitzungspolitik ausreichende Methode. Keine Abschwächung
+        des Zweitfaktors.'
+    SecondFactorPassword:
+      type: object
+      properties:
+        method:
+          const: password
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - method
+      - password
+      additionalProperties: false
+    TenantInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 190
+      required:
+      - name
+      additionalProperties: false
+    UserInput:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 190
+        active:
+          type: boolean
+        tenantIds:
+          type: array
+          items: *id003
+          uniqueItems: true
+        formIds:
+          type: array
+          items: *id003
+          uniqueItems: true
+        grants:
+          type: array
+          items:
+            type: object
+            properties:
+              permission:
+                $ref: '#/components/schemas/Permission'
+              scope:
+                $ref: '#/components/schemas/PermissionScope'
+            required:
+            - permission
+            - scope
+            additionalProperties: false
+          minItems: 0
+          uniqueItems: true
+        mcpAllowed:
+          type: boolean
+        template:
+          type: string
+          enum:
+          - admin
+          - staff
+          - customer
+          description: Nur optionale Vorlage, kein Laufzeitrecht. Nicht automatisch bei späteren Änderungen anwenden.
+        groupIds:
+          type: array
+          items: *id002
+          minItems: 0
+          uniqueItems: true
+      required:
+      - username
+      - active
+      - tenantIds
+      - formIds
+      - grants
+      - mcpAllowed
+      additionalProperties: false
+    FormInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 190
+      required:
+      - name
+      additionalProperties: false
+    DraftCreate:
+      type: object
+      properties:
+        baseReleaseId: *id003
+      required: []
+      additionalProperties: false
+    DraftDocument:
+      type: object
+      properties:
+        form:
+          $ref: ../flow/form.schema.json
+        flow:
+          $ref: ../flow/graph.schema.json
+        views:
+          type: array
+          items:
+            $ref: ../flow/view.schema.json
+          minItems: 1
+      required:
+      - form
+      - flow
+      - views
+      additionalProperties: false
+      description: 'VORGESCHLAGEN: Konfiguration gemäß P2-4; Kunde/IDs/Versionen querprüfen. Keine Systemrechte,
+        produktiven Tokens oder freien Veröffentlichungsfelder. Bibliothek-/Modulbezüge vor Veröffentlichung auflösbar.'
+    Draft:
+      type: object
+      properties:
+        id: *id003
+        revision:
+          type: integer
+          minimum: 1
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        document:
+          $ref: '#/components/schemas/DraftDocument'
+      required:
+      - id
+      - revision
+      - hash
+      - document
+      additionalProperties: false
+    ImportInput:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - package
+          - php
+        source:
+          type: string
+          minLength: 1
+          maxLength: 1048576
+          description: 'VORGESCHLAGEN: Text mit separater Bytegrenze 1 MiB. Bei kind=package exakt der UTF-8-JSON-Text
+            der Exportantwort; nach Parsen gegen ../flow/package.schema.json und transitive Referenzen prüfen. Ausschließlich
+            Entwurf, PHP niemals ausführen.'
+      required:
+      - kind
+      - source
+      additionalProperties: false
+    TestInput:
+      type: object
+      properties:
+        draftId: *id003
+        expectedRevision:
+          type: integer
+          minimum: 1
+        input:
+          type: object
+          description: Synthetische Testwerte gemäß Feldvertrag; sensible Werte redigieren.
+        testTargetId: *id003
+      required:
+      - draftId
+      - expectedRevision
+      - input
+      additionalProperties: false
+    ConfirmationInput:
+      type: object
+      properties:
+        draftId: *id003
+        revision:
+          type: integer
+          minimum: 1
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        confirm:
+          const: true
+      required:
+      - draftId
+      - revision
+      - hash
+      - confirm
+      additionalProperties: false
+      description: Bestätigung nur aus authentifizierter menschlicher Sitzung. confirm allein beweist keine Genehmigung.
+    Confirmation:
+      type: object
+      properties:
+        confirmationId: *id003
+        expiresAt: *id001
+      required:
+      - confirmationId
+      - expiresAt
+      additionalProperties: false
+    PublishInput:
+      type: object
+      properties:
+        draftId: *id003
+        revision:
+          type: integer
+          minimum: 1
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        confirmationId: *id003
+        rebind:
+          $ref: '#/components/schemas/PublishRebindInput'
+      required:
+      - draftId
+      - revision
+      - hash
+      - confirmationId
+      additionalProperties: false
+      description: 'ADR 0005 D1 (VORGESCHLAGEN): Eine Veröffentlichung stellt Domainbindungen und API-Host-Bindungen
+        NICHT automatisch um. Optional listet rebind ausdrücklich bestätigte Umstellungen, die in derselben
+        Transaktion wie die Veröffentlichung laufen; ohne rebind bleibt jede Bindung auf ihrem Release.'
+    PublishRebindInput:
+      type: object
+      properties:
+        domains:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: object
+            properties:
+              domainId: *id003
+              expectedRevision:
+                type: integer
+                minimum: 1
+            required:
+            - domainId
+            - expectedRevision
+            additionalProperties: false
+        apiHostBindings:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: object
+            properties:
+              apiHostId: *id003
+              expectedBindingRevision:
+                type: integer
+                minimum: 1
+            required:
+            - apiHostId
+            - expectedBindingRevision
+            additionalProperties: false
+      additionalProperties: false
+      description: 'ADR 0005 D1 (VORGESCHLAGEN): Die Hash-Bestätigung (confirmationId) deckt diese Zielliste ein
+        (Domain/API-Host, Revision, neues Release). Änderung der Liste oder einer Revision macht die Bestätigung
+        ungültig (409/412). Beide Seiten gehören zum Formular der Veröffentlichung; sonst 422.'
+    Release:
+      $ref: ../flow/release.schema.json
+    DebugInput:
+      type: object
+      properties:
+        releaseId: *id003
+        mode:
+          type: string
+          enum:
+          - observe
+          - test
+        correlationId:
+          type: string
+          maxLength: 190
+      required:
+      - releaseId
+      - mode
+      additionalProperties: false
+    Debug:
+      type: object
+      properties:
+        id: *id003
+        expiresAt: *id001
+        status:
+          type: string
+          enum:
+          - waiting
+          - recording
+          - complete
+          - expired
+          - cancelled
+        events:
+          type: array
+          items:
+            $ref: ../flow/debug-event.schema.json
+      required:
+      - id
+      - expiresAt
+      - status
+      additionalProperties: false
+    TestTargetInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        targetKind:
+          enum:
+          - mail-sink
+          - webhook-sink
+        recipientAllowlist:
+          type: array
+          items:
+            type: string
+            minLength: 3
+            maxLength: 320
+          maxItems: 50
+          uniqueItems: true
+        endpointAlias:
+          type: string
+          maxLength: 190
+        enabled:
+          type: boolean
+        confirm:
+          const: true
+      required:
+      - name
+      - targetKind
+      - enabled
+      - confirm
+      additionalProperties: false
+      description: 'VORGESCHLAGEN R04: keine Zugangsdaten im DTO (credential_ref wird getrennt provisioniert); SSRF-Schutz
+        und Allowlist serverseitig.'
+    StoredObjectRef:
+      type: object
+      properties:
+        objectId:
+          $ref: ../flow/common.schema.json#/$defs/uuid
+        role:
+          enum:
+          - data
+          - attachment
+          - mail-organisation
+          - mail-filler
+          - mail-manifest
+          - legacy-errors
+          - checkpoint
+          - object-metadata
+        ordinal:
+          type: integer
+          minimum: 0
+        revision:
+          type: integer
+          minimum: 0
+          description: Aktuelle Hüllenrevision (ändert sich bei Rewrap).
+        packageSha256:
+          $ref: ../flow/common.schema.json#/$defs/digest
+        payloadSha256:
+          $ref: ../flow/common.schema.json#/$defs/digest
+          description: SHA-256 über iv‖ct‖tag; rewrap-invariant (objektinventar.md R07).
+        generationId:
+          $ref: ../flow/common.schema.json#/$defs/uuid
+        wrap:
+          enum:
+          - hpke
+          - sym
+        byteCount:
+          type: integer
+          minimum: 0
+        access:
+          enum:
+          - allowed
+          - denied
+      required:
+      - objectId
+      - role
+      - ordinal
+      - revision
+      - packageSha256
+      - payloadSha256
+      - generationId
+      - wrap
+      - byteCount
+      - access
+      additionalProperties: false
+    EntryObjects:
+      type: object
+      properties:
+        entryId:
+          $ref: ../flow/common.schema.json#/$defs/uuid
+        manifestState:
+          enum:
+          - present
+          - missing
+        manifestObjectId:
+          oneOf:
+          - $ref: ../flow/common.schema.json#/$defs/uuid
+          - type: 'null'
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredObjectRef'
+      required:
+      - entryId
+      - manifestState
+      - manifestObjectId
+      - objects
+      additionalProperties: false
+    StoredObjectCiphertext:
+      type: object
+      properties:
+        object:
+          $ref: '#/components/schemas/StoredObjectRef'
+        package:
+          type: string
+          description: 'Serialisiertes :2-Paket (paket-v2.md); kein Klartextfallback.'
+      required:
+      - object
+      - package
+      additionalProperties: false
+    ResumeContext:
+      type: object
+      properties:
+        runId:
+          $ref: ../flow/common.schema.json#/$defs/uuid
+        state:
+          enum:
+          - waiting
+          - waiting-manual
+          - paused
+          - uncertain
+        revision:
+          type: integer
+          minimum: 0
+        checkpointHash:
+          $ref: ../flow/common.schema.json#/$defs/digest
+        checkpoint:
+          $ref: '#/components/schemas/StoredObjectRef'
+        manifestObjectId:
+          oneOf:
+          - $ref: ../flow/common.schema.json#/$defs/uuid
+          - type: 'null'
+        requiredObjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredObjectRef'
+          description: Vollständige serverseitig aus Checkpoint und Manifest bestimmte Menge; die originalProof-Objektliste muss exakt diese Menge enthalten.
+        blocked:
+          type: array
+          items:
+            enum:
+            - manifest-missing
+            - object-denied
+            - object-missing
+            - gate-open
+          uniqueItems: true
+          description: Nicht leer = Resume wird abgelehnt.
+      required:
+      - runId
+      - state
+      - revision
+      - checkpointHash
+      - checkpoint
+      - manifestObjectId
+      - requiredObjects
+      - blocked
+      additionalProperties: false
+    Ciphertext:
+      type: object
+      properties:
+        id: *id003
+        tenantId: *id003
+        formId: *id003
+        generationId: *id003
+        format:
+          const: KUBUS-AEAD:2
+        package:
+          type: string
+          description: 'VORGESCHLAGEN: serialisiertes verschlüsseltes Paket; genaue Struktur durch P2-2 zu liefern.
+            Kein Klartextfallback.'
+      required:
+      - id
+      - tenantId
+      - formId
+      - generationId
+      - format
+      - package
+      additionalProperties: false
+    ExportInput:
+      type: object
+      properties:
+        entryIds:
+          type: array
+          items: *id003
+          minItems: 1
+          maxItems: 5000
+          uniqueItems: true
+        format:
+          type: string
+          enum:
+          - encrypted
+          - csv
+          - json
+      required:
+      - entryIds
+      - format
+      additionalProperties: false
+      description: 'VORGESCHLAGEN: verschlüsselte Ausgabe für Browserexport. csv/json erfordern zusätzlich content.decrypt,
+        lokalen Schlüssel und Bestätigung; Server erzeugt keinen Klartextdownload.'
+    ResendInput:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+          - testing
+          - production
+        scope:
+          type: string
+          enum:
+          - organisation
+          - confirmation
+          - both
+        generationId:
+          $ref: ../flow/common.schema.json#/$defs/uuid
+          description: Optionale alte Einzelgenerationsangabe, niemals Autorisierungsbeleg; tatsächliche Generation
+            pro gespeichertem Objekt prüfen.
+        sourceHash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: Digest des serverseitig gespeicherten Originaldatenpakets; zusätzlich vollständiger originalProof/Manifest
+            nötig.
+        fields:
+          type: object
+          additionalProperties: true
+          description: Optionale unveränderte Originalprojektion, vollständig nach AEAD-Öffnung vergleichen; serverseitig
+            ausschließlich Originalbytes verwenden. Kein bearbeiteter Neuversand.
+        attachment:
+          type: string
+          description: 'VORGESCHLAGEN: base64-Klartextanhang im RAM, gesonderte Ingest-Größenlimits; niemals als
+            Queuejob speichern.'
+        originalProof:
+          $ref: '#/components/schemas/OriginalProof'
+        expectedRevision:
+          type: integer
+          minimum: 0
+        manifestHash: &id006
+          $ref: ../flow/common.schema.json#/$defs/digest
+      required:
+      - mode
+      - scope
+      - sourceHash
+      - originalProof
+      - expectedRevision
+      - manifestHash
+      additionalProperties: false
+      description: 'ADR 0004: nur unverändert/originalgebunden; sourceHash allein genügt nicht. CEK-/AEAD-/Bytevergleich
+        und Versandmanifest gemäß ../flow/wiederanlauf.md erforderlich; kein Edit-Flag.'
+    HoldInput:
+      type: object
+      description: 'VORGESCHLAGEN: vollständige Objektliste gemäß ../data/objektinventar.md; Vergleich und Flagänderung
+        atomar. Keine Rechteentscheidung.'
+      properties:
+        held:
+          type: boolean
+        objects:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              objectId: *id003
+              expectedRevision:
+                type: integer
+                minimum: 0
+              expectedSha256:
+                $ref: ../flow/common.schema.json#/$defs/digest
+              sourceGenerationId: *id003
+              replacementPackage:
+                type: string
+                pattern: ^KUBUS-AEAD:2[|]
+                description: Nur HPKE-Nachschutz oder zulässiges sym-Neuwickeln; strenger Kryptoparser zusätzlich
+                  erforderlich.
+            required:
+            - objectId
+            - expectedRevision
+            - expectedSha256
+            - sourceGenerationId
+            additionalProperties: false
+      required:
+      - held
+      - objects
+      additionalProperties: false
+    DeletionInput:
+      type: object
+      properties:
+        entryIds:
+          type: array
+          items: *id003
+          minItems: 1
+          maxItems: 25
+          uniqueItems: true
+        basis:
+          type: string
+          enum:
+          - ART17_LOESCHANTRAG
+          - ART17_WIDERRUF
+          - SONSTIGER_GRUND
+        note:
+          type: string
+          maxLength: 500
+      required:
+      - entryIds
+      - basis
+      additionalProperties: false
+    DomainInput:
+      type: object
+      properties:
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 253
+        tenantId: *id003
+        formId: *id003
+        viewId: *id003
+        releaseId: *id003
+        mode:
+          type: string
+          enum:
+          - testing
+          - production
+        enabled:
+          type: boolean
+        confirm:
+          const: true
+      required:
+      - hostname
+      - tenantId
+      - formId
+      - viewId
+      - mode
+      - enabled
+      - confirm
+      allOf:
+      - if:
+          properties:
+            enabled:
+              const: true
+          required:
+          - enabled
+        then:
+          required:
+          - releaseId
+      additionalProperties: false
+      description: 'Ansichtsdomain: UNIQUE hostname über alle Formulare. Gemeinsame API-Hosts separat über ApiHostInput;
+        niemals Hostdefaultformular. ADR 0005 D1: Die Domain folgt einem neuen Release nie automatisch; Umstellung
+        nur per updateDomain oder ausdrücklich im Veröffentlichungsdialog (PublishInput.rebind).
+        Vertragsrunde 3 R01: Aktivierung verlangt releaseId; Release und Ansicht werden
+        als Auslieferungsstand der Bindung (release_views, Revision per If-Match) gespeichert, produktive Aktivierung
+        nur mit menschlicher Bestätigung dieser Revision. Siehe domains-proxy.md.'
+    TokenInput:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 90
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - statistik.lesen
+            - konfiguration.lesen
+            - entwurf.schreiben
+            - test.ausfuehren
+            - debug.maskiert
+          minItems: 1
+          uniqueItems: true
+        tenantIds:
+          type: array
+          items: *id003
+          minItems: 1
+          uniqueItems: true
+        formIds:
+          type: array
+          items: *id003
+          minItems: 1
+          uniqueItems: true
+      required:
+      - label
+      - expiresInDays
+      - scopes
+      - tenantIds
+      - formIds
+      additionalProperties: false
+    TokenOnce:
+      type: object
+      properties:
+        id: *id003
+        token:
+          type: string
+          description: Nur einmal ausgeben; DB/Audit nur Hash bzw. Kennung.
+        expiresAt: *id001
+      required:
+      - id
+      - token
+      - expiresAt
+      additionalProperties: false
+    PasswordChange:
+      type: object
+      properties:
+        newPassword:
+          type: string
+          minLength: 12
+          maxLength: 1024
+          writeOnly: true
+      required:
+      - newPassword
+      additionalProperties: false
+      description: 'VORGESCHLAGEN: zusätzliche Bytegrenze 1024 prüfen; frische Reauthentifizierung erforderlich.'
+    TotpEnrollment:
+      type: object
+      properties:
+        enrollmentId: *id003
+        secret:
+          type: string
+          description: Nur bei Einrichtung einmal über TLS; niemals Audit/Logs.
+        expiresAt: *id001
+      required:
+      - enrollmentId
+      - secret
+      - expiresAt
+      additionalProperties: false
+    TotpActivate:
+      type: object
+      properties:
+        enrollmentId: *id003
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          writeOnly: true
+      required:
+      - enrollmentId
+      - code
+      additionalProperties: false
+    KeyAccessInput:
+      type: object
+      properties:
+        subjectId: *id003
+        generationIds:
+          type: array
+          items: *id003
+          minItems: 1
+        wrappedKeys:
+          type: array
+          items:
+            type: string
+            description: Nur kryptografische Hüllen, kein privater oder entschlüsselter Schlüssel. Formatabgleich
+              P2-2 offen.
+      required:
+      - subjectId
+      - generationIds
+      - wrappedKeys
+      additionalProperties: false
+      description: 'VORGESCHLAGEN: aktive Kunden-/Generationenbindung prüfen, letzte Zugänge schützen.'
+    ConfigurationInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 190
+        value:
+          type: string
+          description: Nur explizit verwaltbare nicht geheime Einstellung. Zugangsdaten als sichere Referenz außerhalb
+            dieses Vertrags. Direkte Produktionsrelease-Felder ausgeschlossen.
+      required:
+      - name
+      - value
+      additionalProperties: false
+    StatisticDeletionInput:
+      type: object
+      properties:
+        eventIds:
+          type: array
+          items: *id003
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required:
+      - eventIds
+      - reason
+      additionalProperties: false
+    DomainCreateInput:
+      type: object
+      properties:
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 253
+        tenantId: &id004
+          type: string
+          format: uuid
+        formId: *id004
+        viewId: *id004
+        releaseId: *id004
+        mode:
+          const: testing
+        enabled:
+          const: false
+        confirm:
+          const: true
+      required:
+      - hostname
+      - tenantId
+      - formId
+      - viewId
+      - mode
+      - enabled
+      - confirm
+      additionalProperties: false
+      description: 'Ansichtsdomain: UNIQUE hostname über alle Formulare. Gemeinsame API-Hosts separat über ApiHostInput;
+        niemals Hostdefaultformular.'
+    UserCreateInput:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 190
+        active:
+          const: false
+        tenantIds:
+          type: array
+          items: &id005
+            type: string
+            format: uuid
+          uniqueItems: true
+        formIds:
+          type: array
+          items: *id005
+          uniqueItems: true
+        grants:
+          type: array
+          items:
+            type: object
+            properties:
+              permission:
+                $ref: '#/components/schemas/Permission'
+              scope:
+                $ref: '#/components/schemas/PermissionScope'
+            required:
+            - permission
+            - scope
+            additionalProperties: false
+          minItems: 0
+          uniqueItems: true
+        mcpAllowed:
+          type: boolean
+        template:
+          type: string
+          enum:
+          - admin
+          - staff
+          - customer
+          description: Nur optionale Vorlage, kein Laufzeitrecht. Nicht automatisch bei späteren Änderungen anwenden.
+        groupIds:
+          type: array
+          items: *id002
+          minItems: 0
+          uniqueItems: true
+      required:
+      - username
+      - active
+      - tenantIds
+      - formIds
+      - grants
+      - mcpAllowed
+      additionalProperties: false
+    Permission:
+      type: string
+      enum:
+      - account.manage
+      - audit.read
+      - content.decrypt
+      - content.delete
+      - content.export
+      - content.hold
+      - content.read
+      - content.resend
+      - debug.export
+      - debug.plaintext
+      - debug.read
+      - domain.manage
+      - draft.export
+      - draft.write
+      - flow.approve
+      - flow.execute
+      - flow.resume
+      - form.create
+      - form.read
+      - identity.manage
+      - key.manage
+      - privacy.manage
+      - release.publish
+      - statistics.delete
+      - statistics.read
+      - system.manage
+      - test-target.manage
+      - test.run
+      - token.manage
+      description: 'ADR 0004 H02: geschlossener Katalog konfigurierbarer Einzelrechte; unbekannte Rechte ablehnen,
+        keine feste Rollenmatrix.'
+    PermissionScope:
+      oneOf:
+      - type: object
+        properties:
+          kind:
+            const: system
+        required:
+        - kind
+        additionalProperties: false
+      - type: object
+        properties:
+          kind:
+            const: customer
+          tenantId: *id002
+          formId: *id002
+        required:
+        - kind
+        - tenantId
+        additionalProperties: false
+    PermissionGroupInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        scope:
+          $ref: '#/components/schemas/PermissionScope'
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+          minItems: 0
+          uniqueItems: true
+        expectedRevision:
+          type: integer
+          minimum: 0
+      required:
+      - name
+      - scope
+      - permissions
+      - expectedRevision
+      additionalProperties: false
+    PermissionAssignmentInput:
+      type: object
+      properties:
+        subjectId: *id002
+        scope:
+          $ref: '#/components/schemas/PermissionScope'
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+          minItems: 0
+          uniqueItems: true
+        groupIds:
+          type: array
+          items: *id002
+          minItems: 0
+          uniqueItems: true
+        expectedRightsVersion:
+          type: integer
+          minimum: 0
+      required:
+      - subjectId
+      - scope
+      - permissions
+      - groupIds
+      - expectedRightsVersion
+      additionalProperties: false
+    PermissionRevocationInput:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+      required:
+      - expectedRevision
+      additionalProperties: false
+    OriginalObjectProof:
+      type: object
+      properties:
+        objectId: *id002
+        expectedRevision:
+          type: integer
+          minimum: 0
+        expectedSha256: *id006
+        cek:
+          type: string
+          pattern: ^[A-Za-z0-9+/]{43}=$
+          writeOnly: true
+          description: 32 Byte CEK, kanonisches Base64; ausschließlich RAM. Keine Passphrase/Kundenschlüssel.
+      required:
+      - objectId
+      - expectedRevision
+      - expectedSha256
+      - cek
+      additionalProperties: false
+    OriginalProof:
+      type: object
+      properties:
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/OriginalObjectProof'
+          minItems: 1
+          uniqueItems: true
+      required:
+      - objects
+      additionalProperties: false
+    FlowResumeInput:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        checkpointHash: *id006
+        originalProof:
+          $ref: '#/components/schemas/OriginalProof'
+      required:
+      - expectedRevision
+      - checkpointHash
+      - originalProof
+      additionalProperties: false
+    FlowApprovalInput:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        decision:
+          enum:
+          - approved
+          - rejected
+      required:
+      - expectedRevision
+      - decision
+      additionalProperties: false
+    FlowExecuteInput:
+      type: object
+      properties:
+        submissionId: *id002
+        releaseId: *id002
+        runSlot:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9._-]{0,63}$
+        originalProof:
+          $ref: '#/components/schemas/OriginalProof'
+      required:
+      - submissionId
+      - releaseId
+      - runSlot
+      additionalProperties: false
+      description: 'Vertragsrunde 3 R02 (VORGESCHLAGEN): originalProof ist optional und nur zulässig/erforderlich, wenn
+        das Release Klartext der gespeicherten Einsendung benötigt (aus dem Releasemanifest abgeleitet). Fehlt er dann,
+        antwortet der Server 409 mit Problem-Typ plaintext-proof-required, legt keinen Lauf an und verbraucht keinen
+        Idempotenzschlüssel; der Mensch wiederholt mit Nachweis. Der Nachweis ist wie bei resume flüchtig und nicht
+        Teil des Idempotenzdigests.'
+    ApiHostInput:
+      type: object
+      properties:
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 253
+        formIds:
+          type: array
+          items: *id002
+          minItems: 1
+          uniqueItems: true
+        enabled:
+          type: boolean
+        expectedRevision:
+          type: integer
+          minimum: 0
+        releaseBindings:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ApiHostReleaseBinding'
+          description: 'ADR 0005 D1 (VORGESCHLAGEN): optionale Release-Bindung je Formular der Allowlist; Formulare ohne
+            Eintrag bleiben unverändert (neu: ungebunden). formId muss in formIds liegen; Release muss zum Formular
+            gehören und menschlich bestätigt sein.'
+        confirm:
+          const: true
+      required:
+      - hostname
+      - formIds
+      - enabled
+      - expectedRevision
+      additionalProperties: false
+      description: 'Gemeinsamer API-/Ingest-Host. ADR 0005 D1 (VORGESCHLAGEN): Bindung an ein Release ist je Formular
+        möglich (releaseBindings); gebundene Formulare werden an diesem Host nie aus forms.current_release_id bedient.
+        confirm ist Pflicht, sobald eine Bindung gesetzt, geändert oder gelöst wird (menschliche Bestätigung dieser
+        Revision).'
+    ApiHostReleaseBinding:
+      type: object
+      properties:
+        formId: *id003
+        releaseId:
+          oneOf:
+          - type: 'null'
+          - type: string
+            format: uuid
+          description: null = Bindung lösen (ungebunden); Wert = gebundenes, bestätigtes Release des Formulars.
+        expectedBindingRevision:
+          type: integer
+          minimum: 0
+      required:
+      - formId
+      - releaseId
+      - expectedBindingRevision
+      additionalProperties: false
+    ApiHostBinding:
+      type: object
+      properties:
+        apiHostId: *id003
+        hostname:
+          type: string
+        formId: *id003
+        releaseId:
+          oneOf:
+          - type: 'null'
+          - type: string
+            format: uuid
+        bindingRevision:
+          type: integer
+          minimum: 1
+        confirmationAuditId:
+          oneOf:
+          - type: 'null'
+          - type: string
+            format: uuid
+        changedAt:
+          type: string
+          format: date-time
+      required:
+      - apiHostId
+      - hostname
+      - formId
+      - releaseId
+      - bindingRevision
+      additionalProperties: false
+      description: 'ADR 0005 D1 (VORGESCHLAGEN): Projektion der Bindung (api_host_forms). releaseId null = ungebunden.'
+  responses:
+    E400:
+      description: Ungültige Syntax, widersprüchliche Authentifizierung oder Pflichtheader.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E401:
+      description: Anmeldung fehlt oder ist ungültig; Faktorstatus reicht nicht aus.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E403:
+      description: Aktionsrecht, CSRF, menschliche Sitzung oder Schlüsselzugang fehlt.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E404:
+      description: Ressource unbekannt oder außerhalb des zugelassenen Bereichs.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E409:
+      description: Zustands-, Idempotenz-, Hold- oder Zuordnungskonflikt.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E410:
+      description: Debugdaten oder Bestätigung abgelaufen.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E412:
+      description: Stand veraltet; neu lesen und bestätigen.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E413:
+      description: Anfrage oder Auswahl zu groß.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E422:
+      description: Fachliche Validierung abgelehnt.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E428:
+      description: Erforderlicher If-Match fehlt.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    E429:
+      description: Ratenlimit, Backoff oder zeitweiliger Lockout.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+          description: Sekunden bis zum nächsten erlaubten Versuch.
+    E503:
+      description: DB, Sicherheitszustand oder erforderlicher Dienst nicht verfügbar.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+x-rights-contract: 'ADR 0004: Einzelrechte und frei änderbare Gruppen; Admin/Betreuer/Kunde nur Vorlagen. Unbekannte
+  Rechte ablehnen.'
