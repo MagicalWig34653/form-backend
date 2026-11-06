@@ -693,13 +693,19 @@ wait_rollout() {
   done
   fail "Rolling Update $service: Timeout"
 }
+# Der Rollout ist erfolgreich, sobald die App gesund ist. Die öffentliche Erreichbarkeit hängt vom externen Proxy ab und wird
+# deshalb nur gemeldet (kurz, mit Hinweis), nie als Fehler gewertet; Strg+C überspringt die Wartezeit.
 public_health() {
-  local end=$((SECONDS + WAIT_SECONDS)) url=${HEALTHCHECK_URL:-$FORM_ADMIN_ORIGIN/ready}
-  while (( SECONDS < end )); do
-    if curl --fail --silent --show-error --connect-timeout 3 --max-time 5 "$url" >/dev/null 2>&1; then return; fi
-    sleep 3
+  local wait=${PUBLIC_WAIT_SECONDS:-60} url=${HEALTHCHECK_URL:-$FORM_ADMIN_ORIGIN/ready} end skip=0
+  end=$((SECONDS + wait))
+  say "App ist gesund. Prüfe öffentliche Erreichbarkeit: $url (höchstens ${wait}s, Strg+C überspringt)."
+  trap 'skip=1' INT
+  while (( SECONDS < end && skip == 0 )); do
+    if curl --fail --silent --connect-timeout 3 --max-time 5 "$url" >/dev/null 2>&1; then trap 'exit 130' INT; say "Öffentlich erreichbar: $url"; return; fi
+    sleep 2
   done
-  fail 'Öffentliches /ready nicht erreichbar; externen Proxy, DNS, TLS und App prüfen'
+  trap 'exit 130' INT
+  say "Hinweis: $url ist noch nicht erreichbar. Externen Reverse Proxy, DNS und TLS einrichten (Anleitung: Einrichtung > Externer Reverse Proxy); die App selbst läuft."
 }
 swarm_deploy() {
   local state key service
@@ -789,6 +795,7 @@ main() {
     compose run --rm --no-deps -T migrate
     compose up -d --wait --wait-timeout "$WAIT_SECONDS" app
   fi
-  public_health; save_config; UNLOCK_SAFE=1
+  save_config; UNLOCK_SAFE=1
+  public_health
   say "Deployment erfolgreich; Digest in $ENV_FILE (0600). DB und TLS-Proxy bleiben extern."
 }
