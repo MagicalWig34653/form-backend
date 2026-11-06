@@ -430,4 +430,215 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             assert result.returncode == 64 and key + '_FILE' in result.stderr
 
 
+    # ---- settings.sh (Menü/CLI zum Bearbeiten der Env-Datei) und seine Tabellen -------------------------------------------------
+    def bash_44():
+        for cand in (shutil.which('bash'), '/opt/homebrew/bin/bash', '/usr/local/bin/bash', '/usr/bin/bash', '/bin/bash'):
+            if not cand or not os.access(cand, os.X_OK):
+                continue
+            probe = subprocess.run([cand, '-c', '[ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }'])
+            if probe.returncode == 0:
+                return cand
+        return None
+
+    def table_rows(name):
+        rows = {}
+        for line in (ROOT / 'deploy/swarm' / name).read_text().splitlines():
+            if line and not line.startswith('#'):
+                cells = line.split('\t')
+                assert len(cells) == 11, (name, cells[0], len(cells))
+                assert cells[0] not in rows, cells[0]
+                assert cells[8] in ('live', 'restart', 'envOnly') and cells[9] in ('0', '1'), cells[0]
+                kind = cells[2].split(':')[0]
+                assert kind in ('int', 'number', 'bool', 'choice', 'secret', 'text'), (cells[0], cells[2])
+                if kind == 'text':
+                    assert cells[6].isdigit(), (cells[0], 'max fehlt')
+                if kind in ('int', 'number'):
+                    assert cells[5] and cells[6], (cells[0], 'Grenzen fehlen')
+                if kind == 'choice':
+                    assert cells[7], (cells[0], 'Auswahl fehlt')
+                rows[cells[0]] = cells
+        return rows
+
+    registry_rows, extra_rows = table_rows('config-registry.tsv'), table_rows('config-extra.tsv')
+    assert not set(registry_rows) & set(extra_rows)
+    assert set(registry_rows) == registry_envs, set(registry_rows) ^ registry_envs
+    assert not any(r[9] == '1' and r[3] for r in list(registry_rows.values()) + list(extra_rows.values())), 'Secret mit Default'
+    tables = {**registry_rows, **extra_rows}
+    table_used = set()
+    for mode in ('swarm', 'compose'):
+        tpl = ROOT / 'deploy' / mode / ('stack.env.example' if mode == 'swarm' else '.env.example')
+        text = tpl.read_text()
+        tpl_keys = set(re.findall(r'^#?\s*([A-Z][A-Z0-9_]+)=', text, re.M))
+        active = dict(re.findall(r'^([A-Z][A-Z0-9_]+)=(.*)$', text, re.M))
+        table_used |= tpl_keys
+        for key in tpl_keys:
+            # Jede Variable der Vorlage hat Metadaten, oder sie ist KEY_FILE einer Tabellenvariable.
+            assert key in tables or (key.endswith('_FILE') and key[:-5] in tables), f'{mode}: {key} fehlt in den Tabellen'
+        for key, value in active.items():
+            if key in tables and tables[key][8] == 'envOnly' and key not in ('BIND_ADDR', 'PUBLISH_MODE', 'FORM_REPLICAS', 'NETWORK_DRIVER'):
+                assert tables[key][3] == value, f'{mode}: Default von {key}: Tabelle {tables[key][3]!r}, Vorlage {value!r}'
+        for key in registry_rows:
+            assert key in tpl_keys, (mode, key)
+    for key in extra_rows:
+        assert key in table_used, f'{key} in config-extra.tsv, aber in keiner Vorlage'
+
+    bash44 = bash_44()
+    if bash44 is None:
+        print('Grenze: keine Bash 4.4+ gefunden; settings.sh (CLI/Menü) nicht ausgeführt, nur Tabellenkonsistenz geprüft.')
+    else:
+        def settings(mode, envfile, *args, ok=None, input_text='', extra_env=None):
+            script = ROOT / 'deploy' / mode / 'settings.sh'
+            result = subprocess.run([bash44, str(script), '--env', str(envfile), *args], cwd=ROOT, input=input_text, text=True,
+                                    env=dict(os.environ, **(extra_env or {})), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if ok is not None:
+                assert (result.returncode == 0) == ok, (mode, args, result.returncode, result.stdout, result.stderr)
+            return result
+
+        def backups(envfile):
+            return sorted(p.name for p in envfile.parent.glob(envfile.name + '.bak.*'))
+
+        for mode in ('swarm', 'compose'):
+            work = base / ('settings-' + mode)
+            work.mkdir()
+            tmpl = ROOT / 'deploy' / mode / ('stack.env.example' if mode == 'swarm' else '.env.example')
+            # Realistischer Ausgangspunkt: genau das Format, das save_config von setup.sh/update.sh schreibt.
+            run(['bash', '-c', 'MODE=$1 ACTION=setup BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; save_config',
+                 'seed', mode, str(ROOT / 'deploy' / mode), str(work / 'seed.env')], env)
+            envfile = work / 'cfg.env'
+            shutil.copy(work / 'seed.env', envfile)
+            envfile.chmod(0o600)
+            (work / 'cfg.env.bak').write_text('alte-sicherung')
+            help_text = settings(mode, envfile, '--help', ok=True).stdout
+            assert all(opt in help_text for opt in ('--list', '--get', '--set', '--unset', '--check')), help_text
+            # unveränderte Datei: keine Fehler
+            result = settings(mode, envfile, '--check', ok=True)
+            assert 'Ergebnis: 0 Fehler' in result.stdout, result.stdout
+            listing = settings(mode, envfile, '--list', ok=True).stdout
+            assert 'FORM_MCP_TOKEN_RATE_LIMIT' in listing and 'FORM_DB_PASSWORD' in listing and '(Secret)' in listing, listing
+            assert settings(mode, envfile, '--get', 'FORM_DB_PORT', ok=True).stdout == '3306\n'
+            # Geheimnisse: nie ausgeben, nie schreiben (auch nicht aus dem Prozess-ENV)
+            leaked = {'FORM_DB_PASSWORD': 'sekret-db-4711', 'FORM_SERVER_KEY': 'sekret-key-4711'}
+            for secret_key, secret_value in leaked.items():
+                result = settings(mode, envfile, '--get', secret_key, ok=False, extra_env=leaked)
+                assert result.stdout == '' and secret_value not in result.stderr
+                result = settings(mode, envfile, '--set', f'{secret_key}={secret_value}', ok=False, extra_env=leaked)
+                assert secret_value not in result.stdout + result.stderr
+            assert 'sekret' not in settings(mode, envfile, '--list', ok=True, extra_env=leaked).stdout
+            assert 'sekret' not in settings(mode, envfile, '--check', extra_env=leaked).stdout
+            assert 'sekret' not in envfile.read_text() and not backups(envfile)
+            before = envfile.read_bytes()
+            # ungültige Werte werden abgelehnt: Datei und Sicherungen bleiben unberührt
+            for pair in ('FORM_MCP_TOKEN_RATE_LIMIT=0', 'FORM_MCP_TOKEN_RATE_LIMIT=abc', 'FORM_MCP_TOKEN_RATE_LIMIT=060',
+                         'FORM_MCP_TOKEN_RATE_LIMIT=', 'FORM_DB_TLS=maybe', 'FORM_DB_PORT=70000', 'FORM_ADMIN_ORIGIN=http://x.example.org',
+                         'FORM_ADMIN_ORIGIN=https://x.example.org/pfad', 'FORM_ABUSE_HASHES=["zz"]', 'FORM_ABUSE_UA_PATTERNS=nojson',
+                         'FORM_OPS_RECIPIENT=kein-mail', 'FORM_OPS_CONNECTION=nicht-uuid', 'FORM_TRUSTED_PROXIES=300.1.1.1/8',
+                         'FORM_LOG_LEVEL=laut', 'FORM_MAIL_RESTRICTED=TRUE', 'FORM_SDK_DIR=relativ', 'FORM_RP_ID=Gross.example.org',
+                         'FORM_ABUSE_BLOCKED_NETS=10.0.0.0/33', 'FORM_MCP_TOKEN_RATE_LIMIT=1$2', 'FORM_IMAGE_TAG=a b',
+                         'FORM_HTTP_PORT_FILE=/x', 'FORM_UNBEKANNT=1', 'LOG_LEVEL=laut'):
+                result = settings(mode, envfile, '--set', pair, ok=False)
+                assert result.returncode in (2, 3), (pair, result.returncode, result.stderr)
+                assert envfile.read_bytes() == before and not backups(envfile), pair
+            # gültige Änderung: gequoteter Wert, 0600, genau eine Sicherung, bestehende .bak unberührt
+            result = settings(mode, envfile, '--set', 'FORM_MCP_TOKEN_RATE_LIMIT=77', ok=True)
+            assert 'Sicherung:' in result.stdout and 'Gespeichert' in result.stdout, result.stdout
+            assert re.search(r'^FORM_MCP_TOKEN_RATE_LIMIT="77"$', envfile.read_text(), re.M)
+            assert envfile.stat().st_mode & 0o777 == 0o600
+            made = backups(envfile)
+            assert len(made) == 1 and re.fullmatch(r'cfg\.env\.bak\.\d{8}-\d{6}', made[0]), made
+            assert (envfile.parent / made[0]).read_bytes() == before and (envfile.parent / made[0]).stat().st_mode & 0o777 == 0o600
+            assert (work / 'cfg.env.bak').read_text() == 'alte-sicherung'
+            # idempotent
+            after = envfile.read_bytes()
+            result = settings(mode, envfile, '--set', 'FORM_MCP_TOKEN_RATE_LIMIT=77', ok=True)
+            assert envfile.read_bytes() == after and backups(envfile) == made, result.stdout
+            assert settings(mode, envfile, '--get', 'FORM_MCP_TOKEN_RATE_LIMIT', ok=True).stdout == '77\n'
+            # JSON-Liste (einfache Anführungszeichen), danach muss lib.sh die Datei weiter lesen
+            settings(mode, envfile, '--set', 'FORM_ABUSE_UA_PATTERNS=["bot","spam"]', ok=True)
+            assert "FORM_ABUSE_UA_PATTERNS='[\"bot\",\"spam\"]'" in envfile.read_text()
+            assert settings(mode, envfile, '--get', 'FORM_ABUSE_UA_PATTERNS', ok=True).stdout == '["bot","spam"]\n'
+            result = settings(mode, envfile, '--check', ok=True)
+            assert 'Ergebnis: 0 Fehler' in result.stdout, result.stdout
+            # expliziter Leerwert (sperrt im Dashboard) und mehrere Aktionen in einem Aufruf
+            settings(mode, envfile, '--set', 'FORM_OPS_RECIPIENT=', '--set', 'FORM_LOG_LEVEL=debug', ok=True)
+            assert re.search(r'^FORM_OPS_RECIPIENT=""$', envfile.read_text(), re.M) and re.search(r'^FORM_LOG_LEVEL="debug"$', envfile.read_text(), re.M)
+            # Konflikt: einzeln abgelehnt (nichts gespeichert), gemeinsam erlaubt
+            before = envfile.read_bytes(); count = len(backups(envfile))
+            result = settings(mode, envfile, '--set', 'FORM_DB_TLS=disable', ok=False)
+            assert envfile.read_bytes() == before and len(backups(envfile)) == count, result.stderr
+            settings(mode, envfile, '--set', 'FORM_DB_TLS=disable', '--set', 'FORM_ALLOW_INSECURE_DEV=1', ok=True)
+            before = envfile.read_bytes()
+            settings(mode, envfile, '--unset', 'FORM_ALLOW_INSECURE_DEV', ok=False)
+            assert envfile.read_bytes() == before
+            settings(mode, envfile, '--unset', 'FORM_DB_TLS', '--unset', 'FORM_ALLOW_INSECURE_DEV', ok=True)
+            assert 'Ergebnis: 0 Fehler' in settings(mode, envfile, '--check', ok=True).stdout
+            # unset: Zeile wird auskommentiert, wiederholt ohne Änderung
+            settings(mode, envfile, '--unset', 'FORM_MCP_TOKEN_RATE_LIMIT', ok=True)
+            assert re.search(r'^# FORM_MCP_TOKEN_RATE_LIMIT="77"$', envfile.read_text(), re.M)
+            assert not re.search(r'^FORM_MCP_TOKEN_RATE_LIMIT=', envfile.read_text(), re.M)
+            after = envfile.read_bytes(); count = len(backups(envfile))
+            settings(mode, envfile, '--unset', 'FORM_MCP_TOKEN_RATE_LIMIT', ok=True)
+            assert envfile.read_bytes() == after and len(backups(envfile)) == count
+            assert settings(mode, envfile, '--get', 'FORM_MCP_TOKEN_RATE_LIMIT', ok=True).stdout == '60\n'
+            assert envfile.stat().st_mode & 0o777 == 0o600
+            settings(mode, envfile, '--unset', 'NICHT_DA', ok=False)
+            # --check findet kaputte Dateien; Geheimnisse bleiben unsichtbar, --unset löscht sie
+            broken = work / 'broken.env'
+            broken.write_text(envfile.read_text() + 'FOO_BAR="1"\nFORM_DB_PASSWORD="leak-4711"\nFORM_MCP_TOKEN_RATE_LIMIT="0"\nFORM_DB_PORT="1"\nFORM_DB_PORT="2"\nkaputt\n')
+            broken.chmod(0o644)
+            result = settings(mode, broken, '--check', ok=False)
+            out = result.stdout
+            assert 'leak-4711' not in out + result.stderr
+            for needle in ('FOO_BAR', 'FORM_DB_PASSWORD', 'FORM_MCP_TOKEN_RATE_LIMIT=0', 'FORM_DB_PORT steht', 'Dateimodus ist 644', 'Zeile'):
+                assert needle in out, (needle, out)
+            broken.write_text(envfile.read_text() + 'FORM_DB_PASSWORD="leak-4711"\n')
+            settings(mode, broken, '--unset', 'FORM_DB_PASSWORD', ok=True)
+            assert 'leak-4711' not in broken.read_text()
+            # fehlende Datei: Anzeigen geht, Schreiben nie (würde das Setup überspringen)
+            missing = work / 'fehlt.env'
+            assert 'Ergebnis: 0 Fehler' in settings(mode, missing, '--check', ok=True).stdout
+            settings(mode, missing, '--set', 'FORM_MCP_TOKEN_RATE_LIMIT=5', ok=False)
+            assert not missing.exists()
+            # Symlink wird nie beschrieben; laufender Rollout sperrt
+            link = work / 'link.env'
+            link.symlink_to(envfile)
+            before = envfile.read_bytes()
+            settings(mode, link, '--set', 'FORM_MCP_TOKEN_RATE_LIMIT=5', ok=False)
+            assert envfile.read_bytes() == before
+            (work / 'cfg.env.deploy-lock').mkdir()
+            settings(mode, envfile, '--set', 'FORM_MCP_TOKEN_RATE_LIMIT=5', ok=False)
+            (work / 'cfg.env.deploy-lock').rmdir()
+            assert envfile.read_bytes() == before
+            # Menü mit Whiptail-Double: Wert wählen, speichern; "Anwenden" nur als Trockenlauf
+            stubdir = work / 'bin'
+            stubdir.mkdir()
+            answers = work / 'answers'
+            stub = stubdir / 'whiptail'
+            stub.write_text('#!/usr/bin/env python3\nimport pathlib, sys\n'
+                            f'p = pathlib.Path({str(answers)!r})\nq = p.read_text().splitlines() if p.exists() else []\n'
+                            'if not q:\n    sys.exit(1)\nrc, _, out = q[0].partition("|")\np.write_text("\\n".join(q[1:]) + "\\n")\n'
+                            'sys.stderr.write(out)\nsys.exit(int(rc))\n')
+            stub.chmod(0o755)
+            menu_env = {'PATH': str(stubdir) + os.pathsep + os.environ['PATH'], 'SETTINGS_ROWS': '40', 'SETTINGS_COLS': '120'}
+            answers.write_text('\n'.join(['0|Hosts und Listener', '0|FORM_INTERNAL_SECOND_FACTOR', '0|1', '1|', '1|', '0|S', '0|', '0|', '0|']) + '\n')
+            before = envfile.read_bytes(); count = len(backups(envfile))
+            settings(mode, envfile, ok=True, extra_env=menu_env, input_text='\n' * 40)
+            assert re.search(r'^FORM_INTERNAL_SECOND_FACTOR="1"$', envfile.read_text(), re.M)
+            assert len(backups(envfile)) == count + 1 and envfile.stat().st_mode & 0o777 == 0o600
+            answers.write_text('\n'.join(['0|Anwenden', '0|D', '1|']) + '\n')
+            before = envfile.read_bytes()
+            result = settings(mode, envfile, ok=True, extra_env=menu_env, input_text='\n' * 40)
+            assert envfile.read_bytes() == before
+            assert not commands(state), 'Trockenlauf im Menü hat externe Kommandos gestartet'
+            # ohne whiptail/dialog: klare Meldung, CLI geht weiter
+            nodialog = work / 'nodialog'
+            nodialog.mkdir()
+            for tool in ('bash', 'env', 'awk', 'sed', 'cat', 'date', 'mktemp', 'chmod', 'cp', 'mv', 'rm', 'sort', 'dirname', 'stat', 'diff', 'tr', 'cksum', 'grep', 'tput', 'stty', 'chown'):
+                found = shutil.which(tool)
+                if found:
+                    (nodialog / tool).symlink_to(found)
+            result = settings(mode, envfile, extra_env={'PATH': str(nodialog)})
+            assert result.returncode != 0 and 'whiptail' in result.stderr and '--list' in result.stderr, result.stderr
+        print('settings.sh: --list/--get/--set/--unset/--check, Ablehnung ungültiger Werte, Sicherung/0600, Secret-Schutz, Idempotenz und Menü (Whiptail-Double) für Compose/Swarm bestanden.')
+
+
 print('Geprüft: ENV-Inventar/Priorität, Help/Dry-run/Dialog, externe DB-Prüfung ohne Anlage, Migration vor Rollout, Fehlersperre, Digest/0600, Secret-/Dateiwrapper, Swarm-Platzierung und Backup/Restore-Verträge. Orchestrierung mit Kommando-Doubles; keine Docker-Laufzeitprüfung.')

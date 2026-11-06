@@ -1,5 +1,13 @@
 # Tatsächlicher Stand
 
+## settings.sh für Compose/Swarm (06.11.2026, lokal committet, nicht gepusht)
+
+- Gebaut: `deploy/swarm/settings.sh` (gemeinsame Logik, Menü per whiptail oder CLI `--list/--get/--set/--unset/--check/--env`), dünner Wrapper `deploy/compose/settings.sh` (`SETTINGS_MODE=compose`). Bash 4.4+ nötig (macOS 3.2 bricht mit Meldung ab), whiptail optional. Speichern atomar, 0600, Sicherung `<Datei>.bak.JJJJMMTT-HHMMSS`; Geheimnisse (DB-Passwort, Server-Key, Bootstrap-Passwort) nie angezeigt oder geschrieben; Rollout nur über „Jetzt anwenden“ (ruft `update.sh`). `--check` ruft zusätzlich die Validierung aus `lib.sh` (dieselbe wie `update.sh`).
+- Tabellen: `deploy/swarm/config-registry.tsv` (aus `SettingsRegistry.entries` erzeugt, nur Einträge mit ENV-Name; Test `SettingsRegistryTSVTests`, neu erzeugen mit `UPDATE_CONFIG_TSV=1 swift test --filter SettingsRegistryTSVTests`) und handgepflegte `config-extra.tsv` (Deploy-Variablen). `KEY_FILE`-Varianten werden aus der Vorlage abgeleitet. Default einer in der Vorlage aktiven Variablen ist der Vorlagenwert.
+- Eingebunden: Allowlist in `.github/workflows/deploy-branch.yml`, `deploy/branch/README.md`, `site/content/einrichtung.html` (Seite gebaut, `site/check.mjs` ok).
+- Geprüft: `bash -n`, shellcheck; `SettingsRegistryTSVTests` (4 Tests); `scripts/check-deploy.py` erweitert um Tabellenkonsistenz gegen beide Vorlagen und settings.sh-Fälle (CLI, Ablehnung, Backup, Secret-Schutz, Idempotenz, 0600, Menü mit whiptail-Double). Lauf in Debian-Container (Bash 5.2, ohne Docker-Daemon); auf dem macOS-Host fehlt Bash 4.4, dort überspringt der Test die Ausführung (nur Tabellenkonsistenz).
+- Offen: echtes whiptail wurde nicht interaktiv bedient (nur Double); `update.sh` aus dem Menü nur als Trockenlauf getestet; Bash 4.4 (Untergrenze) nicht separat getestet, nur 5.2. Die Sicherung einer Datei mit entferntem Geheimnis enthält das Geheimnis weiter (0600), Hinweis an den Betreiber.
+
 ## Restlücken 3/12/13/14 (06.11.2026)
 
 - FA-136/148: `MigrationRunner.missingTables` (Tabellenabgleich, nur lesend), `migrate` schlägt bei fehlenden Tabellen fehl; Spalten werden nicht verglichen; `/ready` unverändert. Test: geänderte Prüfsumme -> `checksumMismatch`, fehlende Tabelle erkannt.

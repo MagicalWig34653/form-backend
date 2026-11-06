@@ -1,0 +1,30 @@
+#key	group	type	default	unit	min	max	choices	apply	secret	summary
+FORM_OPS_THRESHOLD	Limits	int	1		1	2		live	0	Schwelle der Betriebsmeldungen (1 = Warnung, 2 = nur Fehler); Einstellung ops.threshold.
+FORM_OPS_INTERVAL_SECONDS	Limits	int	900		60	86400		live	0	Prüfintervall der Betriebsüberwachung; Einstellung ops.intervalSeconds.
+FORM_OPS_RETENTION_DAYS	Limits	int	30		1	365		live	0	Aufbewahrung der Betriebsmeldungen in Tagen; Einstellung ops.retentionDays.
+FORM_OPS_RECIPIENT	Limits	text:mailbox				254		live	0	Empfänger der Betriebsmeldungen (E-Mail, leer = keiner); Einstellung ops.recipient.
+FORM_OPS_SENDER	Limits	text:mailbox				254		live	0	Absender der Betriebsmeldungen (E-Mail, leer = Standard); Einstellung ops.sender.
+FORM_OPS_CONNECTION	Limits	text:uuid				36		live	0	UUID der Mail-Verbindung für Betriebsmeldungen (leer = keine); Einstellung ops.connection.
+FORM_ABUSE_BLOCKED_NETS	Missbrauchsschutz	text:cidrs				4096		live	0	Gesperrte Netze (CIDR, kommagetrennt); Einstellung abuse.blockedNets.
+FORM_ABUSE_UA_PATTERNS	Missbrauchsschutz	text:jsonpatterns	[]			4096		live	0	Gesperrte User-Agent-Muster als JSON-Liste (Teilstrings, ohne Groß-/Kleinschreibung); Einstellung abuse.uaPatterns.
+FORM_ABUSE_HASHES	Missbrauchsschutz	text:jsonhashes	[]			4096		live	0	Gesperrte Absender-Hashes als JSON-Liste (64 Hex-Zeichen); Einstellung abuse.hashes.
+FORM_ABUSE_THRESHOLD	Missbrauchsschutz	int	5		1	1000		live	0	Fehlversuche bis zur automatischen Sperre; Einstellung abuse.threshold.
+FORM_ABUSE_WINDOW_SECONDS	Missbrauchsschutz	int	600		1	86400		live	0	Zeitfenster für die Zählung der Fehlversuche; Einstellung abuse.windowSeconds.
+FORM_ABUSE_BAN_SECONDS	Missbrauchsschutz	int	7200		1	86400		live	0	Dauer der automatischen Sperre; Einstellung abuse.banSeconds.
+FORM_MAIL_RESTRICTED	Missbrauchsschutz	bool	false					live	0	Mailversand nur an erlaubte Empfänger (true/false); Einstellung mail.restricted.
+FORM_MAIL_ALLOWED_RECIPIENTS	Missbrauchsschutz	text:jsonrecipients	[]			4096		live	0	Erlaubte Empfänger als JSON-Liste von E-Mail-Adressen; Einstellung mail.allowedRecipients.
+FORM_MIGRATION_ALLOWED_NETS	Umstieg	text:cidrs				4096		live	0	Netze (CIDR), aus denen der Umstieg erlaubt ist; Einstellung migration.allowedNets.
+FORM_MAIL_ALLOWED_NETS	Mail-Netze	text:cidrs				4096		restart	0	Private Mail-/SDK-Zielnetze (CIDR, kommagetrennt; leer = nur öffentliche Ziele); Einstellung mail.allowedNets.
+FORM_LOG_LEVEL	Limits	choice	info				trace|debug|info|notice|warning|error|critical	restart	0	Log-Stufe der Anwendung; Einstellung log.level.
+FORM_SDK_DIR	Speicher	text:path	/app/sdk			4096		restart	0	Verzeichnis des SDK-Bundles im Container; Einstellung sdk.directory.
+FORM_WEBHOOK_MAX_PER_FORM	Webhook-Limits	int	5		0	10000		live	0	Webhooks je Formular (0 = keine); Einstellung webhook.perForm.
+FORM_WEBHOOK_MAX_PER_CUSTOMER	Webhook-Limits	int	20		0	100000		live	0	Webhooks je Kunde (0 = keine); Einstellung webhook.perCustomer.
+FORM_WEBHOOK_MAX_BACKLOG_PER_CUSTOMER	Webhook-Limits	int	1000		0	10000000		live	0	Maximale offene Webhook-Zustellungen je Kunde; Einstellung webhook.backlog.
+FORM_MCP_TOKEN_RATE_LIMIT	MCP-Token-Ratelimit	int	60		1	100000		live	0	MCP-Anfragen je Token und Minute; Einstellung mcp.requestsPerMinute.
+FORM_INGEST_REQUESTS_PER_MINUTE	Ingest-Ratelimit	int	60		0	1000000		live	0	Einsendungen je Minute und Quelle (0 = aus); Einstellung ingest.requestsPerMinute.
+FORM_OAUTH_AUTHORIZE_BASE_URL	MCP-OAuth	text:origin				255		restart	0	Öffentliche Basis-Origin der OAuth-Autorisierung (https, leer = Admin-Origin); Einstellung oauth.authorizeBaseURL.
+FORM_OAUTH_REGISTRATIONS_PER_HOUR	MCP-OAuth	int	200		1	100000		live	0	OAuth-Client-Registrierungen je Stunde; Einstellung oauth.registrationsPerHour.
+FORM_OAUTH_MAX_UNUSED_CLIENTS	MCP-OAuth	int	1000		1	100000		live	0	Höchstzahl unbenutzter OAuth-Clients; Einstellung oauth.maxUnusedClients.
+FORM_OAUTH_ISSUER	MCP-OAuth	text:origin				255		restart	0	OAuth-Aussteller (https-Origin, leer = Admin-Origin); Einstellung oauth.issuer.
+FORM_ADMIN_ORIGIN	Hosts	text:origin				255		restart	0	Öffentliche HTTPS-Origin der Verwaltung (ohne Pfad); Einstellung admin.origin.
+FORM_RP_ID	Hosts	text:host				253		restart	0	Passkey-RP-ID (Hostname in Kleinbuchstaben); bei vorhandenen Passkeys nicht ändern; Einstellung admin.rpID.

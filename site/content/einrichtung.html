@@ -28,6 +28,13 @@ deploy/swarm/admin.sh bootstrap-admin admin</code></pre>
 git pull --ff-only
 deploy/swarm/update.sh                 # Compose: sudo deploy/compose/update.sh</code></pre>
 <p>Das Image ist öffentlich unter <code>ghcr.io/magicalwig34653/form-backend</code> (Tags <code>latest</code> und Commit-SHA, amd64 und arm64) abrufbar. Für feste Versionen <code>--tag COMMIT_SHA</code> an <code>update.sh</code> übergeben. Ein Image-Rollback setzt das Datenbankschema nicht zurück; vorher Datenbank und Schlüssel sichern.</p>
+<h3>Einstellungen ändern</h3>
+<pre><code>deploy/swarm/settings.sh                          # Menü (whiptail); Compose: deploy/compose/settings.sh
+deploy/swarm/settings.sh --list                   # alle Variablen mit Wert, Default und Quelle
+deploy/swarm/settings.sh --set FORM_MCP_TOKEN_RATE_LIMIT=120
+deploy/swarm/settings.sh --unset FORM_MCP_TOKEN_RATE_LIMIT
+deploy/swarm/settings.sh --check                  # Typen, Grenzen, Konflikte, unbekannte Variablen, Secrets</code></pre>
+<p><code>settings.sh</code> prüft jeden Wert, speichert atomar mit Modus 0600 und legt vorher eine Sicherung <code>.bak.JJJJMMTT-HHMMSS</code> an. Geheimnisse (DB-Passwort, Server-Key, Bootstrap-Passwort) zeigt und schreibt es nie. Es rollt nichts aus: erst „Jetzt anwenden“ im Menü (nach Bestätigung) oder <code>update.sh</code> setzt die neuen Werte in Kraft. Das Skript braucht Bash 4.4 oder neuer (Linux-Server); das Menü zusätzlich <code>whiptail</code>, die CLI-Aktionen nicht.</p>
 <div class="note warn"><p>Die Skripte sind mit Kommando-Doubles und Docker-Konfigurationsprüfungen getestet. Ein vollständiger Lauf mit echtem Swarm, externer TLS-Datenbank und Restore ist als Betriebsabnahme noch nicht belegt.</p></div>
 <h2>ENV-Konfiguration</h2>
 <p>Die vollständigen kommentierten Inventare stehen in den beiden ENV-Vorlagen. Priorität: Defaults, gespeicherte Datei, Prozess-ENV, CLI-Image-/Dateioptionen. Die Dateien enthalten einfache <code>KEY=VALUE</code>-Werte und werden ohne Shell-Ausführung geparst. Konfigurationsdatei und Sicherung werden mit Modus 0600 gespeichert; geheime Werte gehören in geschützte Dateien oder Secrets.</p>
