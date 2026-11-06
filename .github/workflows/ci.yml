@@ -28,7 +28,7 @@ jobs:
         run: node site/build.mjs --base /${GITHUB_REPOSITORY#*/}/
       - name: Check links, anchors, structure
         run: node site/check.mjs
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
