@@ -7,6 +7,8 @@
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
 
   let {
     editor,
@@ -72,44 +74,52 @@
   });
 </script>
 
-<h2 class="text-lg font-medium">{t.formWork.sdk}</h2>
-<p class="text-muted-foreground max-w-prose text-sm">{t.formWork.sdkIntro}</p>
-{#if creds}
-  <p role="alert" class="max-w-prose text-sm font-medium">{t.formWork.once}</p>
-  <label for="creds-file" class="text-sm font-medium">{t.formWork.file}</label>
-  <textarea
-    id="creds-file"
-    readonly
-    rows="12"
-    class="border-border bg-background max-w-xl rounded-md border p-3 font-mono text-xs"
-    value={file}></textarea>
-  <div class="flex gap-2">
-    <Button type="button" variant="outline" onclick={() => void copy()}>{t.admin.copy}</Button>
-    <Button type="button" variant="outline" onclick={download}>{t.formWork.download}</Button>
+<Panel title={t.formWork.sdk} description={t.formWork.sdkIntro}>
+  <div class="flex flex-col gap-3">
+    {#if creds}
+      <Banner tone="warn">{t.formWork.once}</Banner>
+      <label for="creds-file" class="text-sm font-medium">{t.formWork.file}</label>
+      <textarea
+        id="creds-file"
+        readonly
+        rows="12"
+        class="border-border bg-surface-sunken max-w-2xl rounded-[var(--r-ctl)] border p-3 font-mono text-xs"
+        value={file}></textarea>
+      <div class="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onclick={() => void copy()}>{t.admin.copy}</Button>
+        <Button type="button" variant="outline" onclick={download}>{t.formWork.download}</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onclick={() => {
+            creds = null;
+            copied = '';
+          }}>{t.formWork.forget}</Button
+        >
+      </div>
+      <Notice message={copied} kind="ok" />
+    {:else}
+      <p class="text-muted-foreground text-sm">{t.formWork.notConfigured}</p>
+      {#if !canIssue}<Banner tone="danger">{t.formWork.denied}</Banner>{/if}
+      {#if canIssue}<div>
+          <Button
+            type="button"
+            disabled={busy || !canIssue || !editor.detail?.currentReleaseId}
+            aria-describedby={!editor.detail?.currentReleaseId ? 'issue-reason' : undefined}
+            onclick={() => void createCredentials()}>{t.formWork.issue}</Button
+          >
+          {#if !editor.detail?.currentReleaseId}<p
+              id="issue-reason"
+              class="text-muted-foreground mt-2 text-[length:var(--fs-small)]"
+            >
+              {t.formWork.needsRelease}
+            </p>{/if}
+        </div>{/if}
+    {/if}
+    <Notice message={sdkMessage} />
+    {#if busy}<p role="status" aria-busy="true" class="text-muted-foreground text-sm">
+        {slow ? t.formWork.slow : t.admin.loading}
+      </p>{/if}
   </div>
-  <Button
-    type="button"
-    variant="ghost"
-    onclick={() => {
-      creds = null;
-      copied = '';
-    }}>{t.formWork.forget}</Button
-  >
-  <Notice message={copied} kind="ok" />
-{:else}
-  <p>{t.formWork.notConfigured}</p>
-  {#if !canIssue}<p role="alert">{t.formWork.denied}</p>
-  {:else if !editor.detail?.currentReleaseId}<p>{t.formWork.needsRelease}</p>{/if}
-  {#if canIssue}<div>
-      <Button
-        type="button"
-        disabled={busy || !canIssue || !editor.detail?.currentReleaseId}
-        onclick={() => void createCredentials()}>{t.formWork.issue}</Button
-      >
-    </div>{/if}
-{/if}
-<Notice message={sdkMessage} />
-
-{#if busy}<p role="status" aria-busy="true">{slow ? t.formWork.slow : t.admin.loading}</p>{/if}
-<h2 class="mt-4 text-lg font-medium">{t.formWork.domains}</h2>
-<p class="text-muted-foreground max-w-prose text-sm">{t.formWork.domainsPending}</p>
+</Panel>
+<Panel title={t.formWork.domains} description={t.formWork.domainsPending} />

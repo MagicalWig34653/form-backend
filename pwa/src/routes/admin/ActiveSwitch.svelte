@@ -4,6 +4,7 @@
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
 
   let {
     tenant,
@@ -27,7 +28,13 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-3">
-  <p class="text-sm" role="status">{active ? t.admin.form.activeOn : t.admin.form.activeOff}</p>
+  <p class="text-sm" role="status">
+    <StatusChip
+      tone={active ? 'ok' : 'warn'}
+      label={active ? t.admin.form.activeOn : t.admin.form.activeOff}
+      pulse={active}
+    />
+  </p>
   <Button type="button" variant="outline" disabled={busy} onclick={() => void toggle()}
     >{active ? t.admin.form.deactivate : t.admin.form.activate}</Button
   >

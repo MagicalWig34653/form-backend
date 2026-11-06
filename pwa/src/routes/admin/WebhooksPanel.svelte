@@ -73,9 +73,9 @@
 
 <section class="space-y-4" aria-busy={loading || busy}>
   <p class="text-muted-foreground max-w-prose text-sm">{text.intro}</p>
-  {#if error}<p role="alert" class="text-destructive text-sm">{error}</p>{/if}
+  {#if error}<p role="alert" class="text-danger text-sm">{error}</p>{/if}
   {#if created?.privateKey}
-    <div role="status" class="border-border bg-muted space-y-2 rounded-md border p-3 text-sm">
+    <div role="status" class="border-ok/30 bg-ok-soft space-y-2 rounded-md border p-4 text-sm">
       <p class="font-medium">{text.keyOnce}</p>
       <code class="block break-all select-all">{created.privateKey}</code>
       <Button variant="outline" onclick={() => (created = null)}>{text.keySaved}</Button>
@@ -91,7 +91,7 @@
   {#if loading}<p role="status">{t.admin.loading}</p>
   {:else if items.length === 0}<p class="text-muted-foreground text-sm">{text.empty}</p>
   {:else}
-    <ul class="divide-border border-border divide-y rounded-md border">
+    <ul class="divide-border-subtle border-border-subtle surface-card divide-y">
       {#each items as hook (hook.id)}
         <li class="flex flex-wrap items-center gap-3 p-3 text-sm">
           <span class="min-w-0 flex-1 break-all">{hook.targetURL}</span>

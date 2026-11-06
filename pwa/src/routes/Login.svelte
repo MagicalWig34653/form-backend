@@ -14,13 +14,9 @@
   import { Button } from '$lib/components/ui/button';
   import { Label } from '$lib/components/ui/label';
   import { Input } from '$lib/components/ui/input';
-  import {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent,
-  } from '$lib/components/ui/card';
+  import AuthShell from '$lib/components/auth/AuthShell.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
   import { Dialog, DialogTrigger, DialogClose, DialogContent } from '$lib/components/ui/dialog';
 
   interface Props {
@@ -189,81 +185,71 @@
   onMount(() => void load());
 </script>
 
-<div class="mb-6 text-center">
-  <p class="text-ui-accent-ink mb-3 text-xs font-semibold tracking-widest uppercase">
-    {t.shell.secure}
-  </p>
-  <p class="text-muted-foreground text-sm">{t.shell.loginIntro}</p>
-</div>
-<Card class="mx-auto w-full max-w-md p-8">
-  <CardHeader>
-    <CardTitle id="page-title" tabindex={-1}>{t.login.title}</CardTitle>
-    <CardDescription>{t.login.description}</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <div aria-live="polite" class="min-h-6">
-      {#if message}<p role="alert" class="text-destructive text-sm">{message}</p>{/if}
-    </div>
-
-    {#if step === 'recovery'}
-      {#if !keyring.unlocked}<p>{t.recovery.fallback}</p>{/if}
-      <RecoveryStep oncomplete={continueLogin} />
-      <Button
-        onclick={() => {
-          keyring.lock();
-          step = 'passkey';
-        }}>{t.recovery.other}</Button
+<AuthShell title={t.login.title} description={t.login.description} intro={t.shell.loginIntro}>
+  <div class="min-h-6">
+    {#if message}
+      <p
+        role="alert"
+        class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
       >
-      <Button onclick={continueLogin}>{t.recovery.skip}</Button>
-    {:else if step === 'loading'}
-      <p>{t.login.loading}</p>
-    {:else if step === 'unavailable'}
-      <Button type="button" onclick={() => void load()}>{t.login.retry}</Button>
-    {:else if step === 'passkey'}
-      <p class="mb-4 text-sm font-medium">{t.login.passkeyStep}</p>
-      <Button type="button" disabled={busy} onclick={() => void startPasskey()}
-        >{t.login.passkeyButton}</Button
-      >
-    {:else if step === 'password'}
-      <form class="flex flex-col gap-5" onsubmit={(e) => void submitPassword(e)}>
-        <p class="text-sm font-medium">{t.login.passwordStep}</p>
-        <div class="flex flex-col gap-1.5">
-          <Label for="password">{t.login.password}</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-            bind:value={password}
-          />
-        </div>
-        <Button type="submit" disabled={busy}>{t.login.submit}</Button>
-      </form>
-    {:else}
-      <p>{t.login.done}</p>
-      <Button type="button" variant="outline" onclick={() => void logout()}>{t.login.logout}</Button
-      >
+        <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+          ><NavIcon name="danger" size={16} /></span
+        >{message}
+      </p>
     {/if}
+  </div>
 
-    <Dialog>
-      <DialogTrigger>
-        {#snippet child({ props })}
-          <Button {...props} type="button" variant="ghost">{t.login.help}</Button>
-        {/snippet}
-      </DialogTrigger>
-      <DialogContent title={t.login.helpTitle} description={t.login.helpBody}>
-        <DialogClose>
-          {#snippet child({ props })}
-            <Button {...props} variant="outline">{t.login.close}</Button>
-          {/snippet}
-        </DialogClose>
-      </DialogContent>
-    </Dialog>
-  </CardContent>
+  {#if step === 'recovery'}
+    {#if !keyring.unlocked}<p>{t.recovery.fallback}</p>{/if}
+    <RecoveryStep oncomplete={continueLogin} />
+    <Button
+      variant="outline"
+      onclick={() => {
+        keyring.lock();
+        step = 'passkey';
+      }}>{t.recovery.other}</Button
+    >
+    <Button variant="ghost" onclick={continueLogin}>{t.recovery.skip}</Button>
+  {:else if step === 'loading'}
+    <div aria-busy="true" class="flex flex-col gap-3">
+      <p role="status" class="text-muted-foreground text-sm">{t.login.loading}</p>
+      <Skeleton class="h-10" />
+    </div>
+  {:else if step === 'unavailable'}
+    <Button type="button" onclick={() => void load()}>{t.login.retry}</Button>
+  {:else if step === 'passkey'}
+    <p class="text-sm font-medium">{t.login.passkeyStep}</p>
+    <Button type="button" class="w-full" disabled={busy} onclick={() => void startPasskey()}
+      >{t.login.passkeyButton}</Button
+    >
+    <p class="text-muted-foreground text-xs leading-[18px]">{t.auth.passkeyHint}</p>
+    <p class="text-muted-foreground text-xs leading-[18px]">{t.auth.passkeyNote}</p>
+  {:else if step === 'password'}
+    <form class="flex flex-col gap-5" onsubmit={(e) => void submitPassword(e)}>
+      <p class="text-sm font-medium">{t.login.passwordStep}</p>
+      <div class="flex flex-col gap-1.5">
+        <Label for="password">{t.login.password}</Label>
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          bind:value={password}
+        />
+      </div>
+      <Button type="submit" class="w-full" disabled={busy}>{t.login.submit}</Button>
+    </form>
+  {:else}
+    <p class="text-ok flex items-center gap-2 font-medium">
+      <NavIcon name="check" size={18} />{t.login.done}
+    </p>
+    <Button type="button" variant="outline" onclick={() => void logout()}>{t.login.logout}</Button>
+  {/if}
+
   {#if totpAllowed && (step === 'passkey' || step === 'password')}
-    <details class="mt-4">
-      <summary>{c.login}</summary>
+    <details class="bg-surface-sunken rounded-md px-4 py-3">
+      <summary class="min-h-6 cursor-pointer text-sm font-medium">{c.login}</summary>
       <form onsubmit={(e) => void submitTotp(e)} class="mt-3 flex flex-col gap-3">
         {#if step === 'passkey'}
           <Label for="totp-user">{c.username}</Label><Input
@@ -293,4 +279,19 @@
       </form>
     </details>
   {/if}
-</Card>
+
+  <Dialog>
+    <DialogTrigger>
+      {#snippet child({ props })}
+        <Button {...props} type="button" variant="ghost" class="self-center">{t.login.help}</Button>
+      {/snippet}
+    </DialogTrigger>
+    <DialogContent title={t.login.helpTitle} description={t.login.helpBody}>
+      <DialogClose>
+        {#snippet child({ props })}
+          <Button {...props} variant="outline">{t.login.close}</Button>
+        {/snippet}
+      </DialogClose>
+    </DialogContent>
+  </Dialog>
+</AuthShell>

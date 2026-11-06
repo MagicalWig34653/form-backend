@@ -40,9 +40,38 @@ field_ok() {
   [[ -z "$FIELD_ERR" ]]
 }
 # Dialog (whiptail/dialog) nur mit Terminal; sonst einfache Zeilenabfrage.
+# Das Terminal wird einmal beim Laden geprüft: in $(...) ist stdout nie ein Terminal.
+LIB_STDOUT_TTY=0; [[ ! -t 1 ]] || LIB_STDOUT_TTY=1
 dialog_tool() {
-  [[ -t 0 && -t 1 && -z "${FORM_PLAIN_PROMPT:-}" ]] || return 1
+  [[ -t 0 && "$LIB_STDOUT_TTY" == 1 && -z "${FORM_PLAIN_PROMPT:-}" ]] || return 1
   command -v whiptail 2>/dev/null || command -v dialog 2>/dev/null
+}
+# Beschriftungen der Setup-Felder (Zeilenabfrage und Menü teilen sie).
+field_label() {
+  case "$1" in
+    STACK) printf 'Stack-/Projektname' ;;
+    FORM_ADMIN_ORIGIN) printf 'Öffentliche HTTPS-Origin' ;;
+    FORM_RP_ID) printf 'Passkey RP-ID' ;;
+    FORM_DB_HOST) printf 'Externer MariaDB-Host (bereits bereitgestellt)' ;;
+    FORM_DB_PORT) printf 'MariaDB-Port' ;;
+    FORM_DB_USER) printf 'Vorhandener DB-Benutzer' ;;
+    FORM_DB_NAME) printf 'Vorhandene Datenbank' ;;
+    FORM_DB_TLS) printf 'DB-TLS (verify/disable)' ;;
+    FORM_ALLOW_INSECURE_DEV) printf 'Unverschlüsselte DB braucht Entwicklungsfreigabe (1 = ja; erlaubt auch unsichere Mail-/Deploy-Ziele)' ;;
+    FORM_IMAGE_TAG) printf 'Image-Tag' ;;
+    FORM_REPLICAS) printf 'App-Replikate (zusätzlich zu app-pinned)' ;;
+    FORM_PLACEMENT_CONSTRAINTS) printf 'App-Constraints (kommagetrennt; leer = keine)' ;;
+    FORM_PLACEMENT_PREFERENCES) printf 'App-Präferenzen (z.B. spread=node.labels.zone)' ;;
+    FORM_PINNED_NODE) printf 'Fester Knoten (Hostname/Node-ID; leer = aus)' ;;
+    FORM_PINNED_REPLICAS) printf 'Zusätzliche Replikate auf festem Knoten' ;;
+    FORM_EXCLUDE_LABEL) printf 'Ausgeschlossenes Node-Label (z.B. reserved; leer = aus)' ;;
+    FORM_PUBLIC_PUBLISH_PORT) printf 'Öffentlicher Listener: Veröffentlichungsport (leer = keiner)' ;;
+    FORM_PUBLISH_PORT) printf 'Veröffentlichungsport app (leer = keiner)' ;;
+    FORM_PINNED_PUBLISH_PORT) printf 'Veröffentlichungsport app-pinned (anderer Port; leer = keiner)' ;;
+    PUBLISH_MODE) printf 'Veröffentlichungsmodus (ingress/host)' ;;
+    FORM_PUBLISH_BIND) printf 'Swarm-Bind (nur leer/0.0.0.0; keine einzelne Host-IP)' ;;
+    *) printf '%s' "$1" ;;
+  esac
 }
 ask() {
   local key=$1 label=$2 default=${3-${!1}} answer tool
@@ -67,6 +96,148 @@ Eingabe ungültig: $FIELD_ERR}" 13 72 "$default" 3>&1 1>&2 2>&3) || fail 'Eingab
 ask_optional() {
   ask "$1" "$2 (- löscht den Wert)"
   if [[ "${!1}" == - ]]; then printf -v "$1" '%s' ''; fi
+}
+# ---- Setup-Menü (whiptail/dialog): Übersicht aller Pflichtwerte, Auswahl bearbeitet ein Feld. ----
+# Nur im interaktiven Setup ohne Env-Datei; nichts wird geschrieben, bevor "Jetzt installieren" bestätigt ist.
+SM_OPTIONAL=' FORM_PLACEMENT_CONSTRAINTS FORM_PLACEMENT_PREFERENCES FORM_PINNED_NODE FORM_EXCLUDE_LABEL FORM_PUBLIC_PUBLISH_PORT FORM_PUBLISH_PORT FORM_PINNED_PUBLISH_PORT FORM_PUBLISH_BIND '
+# Dialog aufrufen; Auswahl/Eingabe landet in SM_OUT, Rückgabe = Exit-Code des Tools (Esc/Abbrechen != 0).
+sm_size() {
+  local rows cols
+  rows=$(stty size 2>/dev/null | awk '{print $1}' || true); cols=$(stty size 2>/dev/null | awk '{print $2}' || true)
+  [[ "$rows" =~ ^[0-9]+$ && "$rows" -ge 14 ]] || rows=24
+  [[ "$cols" =~ ^[0-9]+$ && "$cols" -ge 50 ]] || cols=80
+  SM_H=$((rows - 2)); (( SM_H <= 30 )) || SM_H=30
+  SM_W=$((cols - 4)); (( SM_W <= 100 )) || SM_W=100
+}
+sm_wt() {
+  sm_size
+  SM_OUT=$("$SM_TOOL" --backtitle 'form-backend: Einrichtung' --ok-button OK --cancel-button Abbrechen "$@" 3>&1 1>&2 2>&3)
+}
+sm_msg() { SM_OUT=''; sm_size; sm_wt --title "$1" --scrolltext --msgbox "$2" "$SM_H" "$SM_W" || true; }
+# Zusätzliche Menüprüfung: field_ok plus Pflicht-/Bereichsregeln, Rückgabe 0 = ok.
+sm_value_ok() {
+  local key=$1 v=$2
+  if [[ " $SM_OPTIONAL " == *" $key "* && -z "$v" ]]; then FIELD_ERR=''; return 0; fi
+  field_ok "$key" "$v" || return 1
+  case "$key" in
+    FORM_DB_PORT|FORM_PUBLIC_PUBLISH_PORT|FORM_PUBLISH_PORT|FORM_PINNED_PUBLISH_PORT)
+      if [[ ! "$v" =~ ^[0-9]{1,5}$ ]] || (( 10#$v < 1 || 10#$v > 65535 )); then FIELD_ERR='Port 1 bis 65535'; return 1; fi ;;
+    FORM_REPLICAS|FORM_PINNED_REPLICAS)
+      [[ "$v" =~ ^[1-9][0-9]{0,5}$ ]] || { FIELD_ERR='Positive Zahl erwartet'; return 1; } ;;
+    FORM_ALLOW_INSECURE_DEV)
+      [[ "$v" == 0 || "$v" == 1 ]] || { FIELD_ERR='0 oder 1'; return 1; } ;;
+    FORM_PUBLISH_BIND)
+      [[ -z "$v" || "$v" == 0.0.0.0 ]] || { FIELD_ERR='Nur leer oder 0.0.0.0'; return 1; } ;;
+    STACK|FORM_ADMIN_ORIGIN|FORM_RP_ID|FORM_DB_HOST|FORM_DB_USER|FORM_DB_NAME|FORM_IMAGE_TAG)
+      [[ -n "$v" ]] || { FIELD_ERR='Pflichtfeld'; return 1; } ;;
+  esac
+  FIELD_ERR=''
+}
+# Ein Feld per Eingabefenster ändern; ungültig = erneut fragen, Abbrechen = Wert bleibt.
+sm_edit() {
+  local key=$1 default=${!1} err=''
+  while :; do
+    sm_size
+    sm_wt --title "$key" --inputbox "$(field_label "$key")${err:+
+
+Eingabe ungültig: $err}" 13 "$SM_W" "$default" || return 1
+    if sm_value_ok "$key" "$SM_OUT"; then break; fi
+    err=$FIELD_ERR; default=$SM_OUT
+  done
+  printf -v "$key" '%s' "$SM_OUT"
+  case "$key" in
+    FORM_ADMIN_ORIGIN) sm_sync_rp ;;
+    FORM_RP_ID) SM_RP_MANUAL=1 ;;
+  esac
+}
+# RP-ID folgt dem Origin-Host, solange sie nicht von Hand geändert wurde.
+sm_rp_from_origin() { local h=${FORM_ADMIN_ORIGIN#https://}; printf '%s' "${h%%:*}"; }
+sm_sync_rp() {
+  if [[ "$SM_RP_MANUAL" != 1 ]] && field_ok FORM_ADMIN_ORIGIN "$FORM_ADMIN_ORIGIN"; then FORM_RP_ID=$(sm_rp_from_origin); fi
+  return 0
+}
+sm_name() {
+  case "$1" in
+    STACK) printf 'Stack' ;; FORM_ADMIN_ORIGIN) printf 'Origin (HTTPS)' ;; FORM_RP_ID) printf 'Passkey RP-ID' ;;
+    FORM_DB_HOST) printf 'DB-Host' ;; FORM_DB_PORT) printf 'DB-Port' ;; FORM_DB_USER) printf 'DB-Benutzer' ;;
+    FORM_DB_NAME) printf 'Datenbank' ;; FORM_DB_TLS) printf 'DB-TLS' ;; FORM_ALLOW_INSECURE_DEV) printf 'Entwicklungsfreigabe' ;;
+    FORM_IMAGE_TAG) printf 'Image-Tag' ;; FORM_REPLICAS) printf 'Replikate' ;;
+    FORM_PLACEMENT_CONSTRAINTS) printf 'Constraints' ;; FORM_PLACEMENT_PREFERENCES) printf 'Praeferenzen' ;;
+    FORM_PINNED_NODE) printf 'Fester Knoten' ;; FORM_PINNED_REPLICAS) printf 'Replikate fest' ;;
+    FORM_EXCLUDE_LABEL) printf 'Ausschluss-Label' ;; FORM_PUBLIC_PUBLISH_PORT) printf 'Port oeffentlich' ;;
+    FORM_PUBLISH_PORT) printf 'Port app' ;; FORM_PINNED_PUBLISH_PORT) printf 'Port app-pinned' ;;
+    PUBLISH_MODE) printf 'Portmodus' ;; FORM_PUBLISH_BIND) printf 'Swarm-Bind' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+sm_password() {
+  sm_wt --title 'DB-Passwort' --passwordbox 'Passwort des bestehenden DB-Benutzers (wird nie angezeigt und nicht in der Env-Datei gespeichert; leer = nicht setzen).' 11 "$SM_W" || return 1
+  FORM_DB_PASSWORD=$SM_OUT; SM_OUT=''
+}
+sm_password_state() {
+  if [[ -n "${FORM_DB_PASSWORD:-}" ]]; then printf 'gesetzt'
+  elif [[ -s "${PASSWORD_ARG:-${DB_PASSWORD_SOURCE_FILE:-$BASE/secrets/db_password}}" ]]; then printf 'Datei vorhanden'
+  else printf 'nicht gesetzt'; fi
+}
+sm_value() { local v=${!1:-}; if [[ -n "$v" ]]; then printf '%s' "$v"; else printf '%s' "$([[ " $SM_OPTIONAL " == *" $1 "* ]] && echo '(leer)' || echo '(fehlt)')"; fi; }
+# Gesammelte Probleme (leer = alles gültig): Felder, Platzhalter, Passwort, danach die volle Validierung in einer Unterschale.
+sm_problems() {
+  local key out='' host hint
+  for key in "${SM_KEYS[@]}"; do
+    sm_value_ok "$key" "${!key:-}" || out+="$key: ${FIELD_ERR:-ungültig}"$'\n'
+  done
+  for key in FORM_ADMIN_ORIGIN FORM_DB_HOST; do
+    host=${!key:-}
+    [[ "$host" != *example.org* && "$host" != *example.com* ]] || out+="$key: Platzhalter ($host) ersetzen"$'\n'
+  done
+  [[ "$(sm_password_state)" != 'nicht gesetzt' ]] || out+=$'FORM_DB_PASSWORD: DB-Passwort nicht gesetzt\n'
+  if [[ -z "$out" ]]; then
+    hint=$( (finalize_config) 2>&1 >/dev/null) || out=${hint#Fehler: }
+  fi
+  printf '%s' "$out"
+}
+sm_plan() { ( finalize_config; plan ) 2>&1; }
+setup_menu() {
+  local sel='' problems tag text
+  SM_TOOL=$(dialog_tool) || fail 'Dialogprogramm fehlt'
+  SM_RP_MANUAL=0
+  [[ "$FORM_RP_ID" == "$(sm_rp_from_origin)" ]] || SM_RP_MANUAL=1
+  while :; do
+    sm_size
+    SM_KEYS=(STACK FORM_ADMIN_ORIGIN FORM_RP_ID FORM_DB_HOST FORM_DB_PORT FORM_DB_USER FORM_DB_NAME FORM_DB_TLS)
+    [[ "$FORM_DB_TLS" != disable ]] || SM_KEYS+=(FORM_ALLOW_INSECURE_DEV)
+    SM_KEYS+=(FORM_IMAGE_TAG)
+    [[ "$MODE" != swarm ]] || SM_KEYS+=(FORM_REPLICAS FORM_PLACEMENT_CONSTRAINTS FORM_PLACEMENT_PREFERENCES FORM_PINNED_NODE FORM_PINNED_REPLICAS FORM_EXCLUDE_LABEL FORM_PUBLIC_PUBLISH_PORT FORM_PUBLISH_PORT FORM_PINNED_PUBLISH_PORT PUBLISH_MODE FORM_PUBLISH_BIND)
+    local -a items=()
+    for tag in "${SM_KEYS[@]}"; do
+      items+=("$tag" "$(printf '%-24s %s' "$(sm_name "$tag")" "$(sm_value "$tag")")")
+      [[ "$tag" != FORM_DB_NAME ]] || items+=(FORM_DB_PASSWORD "$(printf '%-24s %s' 'DB-Passwort (verdeckt)' "$(sm_password_state)")")
+    done
+    items+=(DRYRUN 'Trockenlauf anzeigen' INSTALL 'Jetzt installieren')
+    sm_wt --title "Einrichtung $MODE" ${sel:+--default-item "$sel"} --menu 'Wert wählen, um ihn zu ändern. Nichts wird vor "Jetzt installieren" geschrieben.' "$SM_H" "$SM_W" $((SM_H - 8)) "${items[@]}" \
+      || fail 'Einrichtung abgebrochen; nichts geändert'
+    sel=$SM_OUT
+    case "$sel" in
+      FORM_DB_PASSWORD) sm_password || true ;;
+      DRYRUN)
+        problems=$(sm_problems)
+        if [[ -n "$problems" ]]; then sm_msg 'Noch nicht vollständig' "Zuerst beheben:
+$problems"; else sm_msg 'Trockenlauf' "$(sm_plan)"; fi ;;
+      INSTALL)
+        problems=$(sm_problems)
+        if [[ -n "$problems" ]]; then sm_msg 'Installation nicht möglich' "Zuerst beheben:
+$problems"
+        else
+          text="Installation von $STACK ($MODE) mit Image-Tag $FORM_IMAGE_TAG starten?"
+          if sm_wt --title 'Jetzt installieren' --yes-button Ja --no-button Nein --yesno "$text" 9 "$SM_W"; then return 0; fi
+        fi ;;
+      *)
+        sm_edit "$sel" || true
+        if [[ "$sel" == FORM_DB_TLS && "$FORM_DB_TLS" == disable && "$FORM_ALLOW_INSECURE_DEV" != 1 ]]; then
+          FORM_ALLOW_INSECURE_DEV=1; sm_edit FORM_ALLOW_INSECURE_DEV || FORM_ALLOW_INSECURE_DEV=0
+        fi ;;
+    esac
+  done
 }
 absolute_path() {
   [[ "$1" == /* ]] && printf '%s' "$1" || printf '%s/%s' "$(dirname "$ENV_FILE")" "$1"
@@ -282,34 +453,44 @@ initialize() {
   read_config "$TEMPLATE"
   [[ ! -f "$ENV_FILE" ]] || read_config "$ENV_FILE"
   for ((i=1; i<${#ENV_KEYS[@]}; i++)); do printf -v "${ENV_KEYS[i]}" '%s' "${ENV_VALUES[i]}"; done
+  MENU_USED=0
   if [[ "$ACTION" == setup && "$NONINTERACTIVE" == 0 && ! -f "$ENV_FILE" ]]; then
-    ask STACK 'Stack-/Projektname'
-    ask FORM_ADMIN_ORIGIN 'Öffentliche HTTPS-Origin'
-    local rp_default=${FORM_ADMIN_ORIGIN#https://}
-    ask FORM_RP_ID 'Passkey RP-ID' "${rp_default%%:*}"
-    ask FORM_DB_HOST 'Externer MariaDB-Host (bereits bereitgestellt)'
-    ask FORM_DB_PORT 'MariaDB-Port'
-    ask FORM_DB_USER 'Vorhandener DB-Benutzer'
-    ask FORM_DB_NAME 'Vorhandene Datenbank'
-    ask FORM_DB_TLS 'DB-TLS (verify/disable)'
-    [[ "$FORM_DB_TLS" != disable ]] || ask FORM_ALLOW_INSECURE_DEV 'Unverschlüsselte DB braucht Entwicklungsfreigabe (1 = ja; erlaubt auch unsichere Mail-/Deploy-Ziele)' 1
-    ask FORM_IMAGE_TAG 'Image-Tag'
-    if [[ "$MODE" == swarm ]]; then
-      ask FORM_REPLICAS 'App-Replikate (zusätzlich zu app-pinned)'
+    if [[ -n "$(dialog_tool || true)" ]]; then
+      setup_menu; MENU_USED=1
+    else
+      ask STACK "$(field_label STACK)"
+      ask FORM_ADMIN_ORIGIN "$(field_label FORM_ADMIN_ORIGIN)"
+      local rp_default=${FORM_ADMIN_ORIGIN#https://}
+      ask FORM_RP_ID "$(field_label FORM_RP_ID)" "${rp_default%%:*}"
+      ask FORM_DB_HOST "$(field_label FORM_DB_HOST)"
+      ask FORM_DB_PORT "$(field_label FORM_DB_PORT)"
+      ask FORM_DB_USER "$(field_label FORM_DB_USER)"
+      ask FORM_DB_NAME "$(field_label FORM_DB_NAME)"
+      ask FORM_DB_TLS "$(field_label FORM_DB_TLS)"
+      [[ "$FORM_DB_TLS" != disable ]] || ask FORM_ALLOW_INSECURE_DEV "$(field_label FORM_ALLOW_INSECURE_DEV)" 1
+      ask FORM_IMAGE_TAG "$(field_label FORM_IMAGE_TAG)"
+      if [[ "$MODE" == swarm ]]; then
+        ask FORM_REPLICAS "$(field_label FORM_REPLICAS)"
+      fi
     fi
   fi
-  if [[ "$MODE" == swarm && "$NONINTERACTIVE" == 0 ]]; then
-    ask_optional FORM_PLACEMENT_CONSTRAINTS 'App-Constraints (kommagetrennt; leer = keine)'
-    ask_optional FORM_PLACEMENT_PREFERENCES 'App-Präferenzen (z.B. spread=node.labels.zone)'
-    ask_optional FORM_PINNED_NODE 'Fester Knoten (Hostname/Node-ID; leer = aus)'
-    ask FORM_PINNED_REPLICAS 'Zusätzliche Replikate auf festem Knoten'
-    ask_optional FORM_EXCLUDE_LABEL 'Ausgeschlossenes Node-Label (z.B. reserved; leer = aus)'
-    ask_optional FORM_PUBLIC_PUBLISH_PORT 'Öffentlicher Listener: Veröffentlichungsport (leer = keiner)'
-    ask_optional FORM_PUBLISH_PORT 'Veröffentlichungsport app (leer = keiner)'
-    ask_optional FORM_PINNED_PUBLISH_PORT 'Veröffentlichungsport app-pinned (anderer Port; leer = keiner)'
-    ask PUBLISH_MODE 'Veröffentlichungsmodus (ingress/host)'
-    ask_optional FORM_PUBLISH_BIND 'Swarm-Bind (nur leer/0.0.0.0; keine einzelne Host-IP)'
+  if [[ "$MODE" == swarm && "$NONINTERACTIVE" == 0 && "$MENU_USED" == 0 ]]; then
+    ask_optional FORM_PLACEMENT_CONSTRAINTS "$(field_label FORM_PLACEMENT_CONSTRAINTS)"
+    ask_optional FORM_PLACEMENT_PREFERENCES "$(field_label FORM_PLACEMENT_PREFERENCES)"
+    ask_optional FORM_PINNED_NODE "$(field_label FORM_PINNED_NODE)"
+    ask FORM_PINNED_REPLICAS "$(field_label FORM_PINNED_REPLICAS)"
+    ask_optional FORM_EXCLUDE_LABEL "$(field_label FORM_EXCLUDE_LABEL)"
+    ask_optional FORM_PUBLIC_PUBLISH_PORT "$(field_label FORM_PUBLIC_PUBLISH_PORT)"
+    ask_optional FORM_PUBLISH_PORT "$(field_label FORM_PUBLISH_PORT)"
+    ask_optional FORM_PINNED_PUBLISH_PORT "$(field_label FORM_PINNED_PUBLISH_PORT)"
+    ask PUBLISH_MODE "$(field_label PUBLISH_MODE)"
+    ask_optional FORM_PUBLISH_BIND "$(field_label FORM_PUBLISH_BIND)"
   fi
+  finalize_config
+}
+# Abgeleitete Werte, Quellen und Validierung; auch aus dem Setup-Menü (Unterschale) für Prüfung/Trockenlauf genutzt.
+finalize_config() {
+  local key i
   if [[ -n "$TAG_ARG" ]]; then FORM_IMAGE_TAG=$TAG_ARG; FORM_IMAGE=''; fi
   # An explicit process tag deliberately replaces a saved digest.
   if [[ -n "${FORM_IMAGE_TAG+x}" ]]; then

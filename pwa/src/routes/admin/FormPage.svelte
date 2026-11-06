@@ -8,10 +8,17 @@
   import { session } from '$lib/session.svelte';
   import { createEditor } from '$lib/draft/editor.svelte';
   import { router } from '$lib/router.svelte';
-  import { formPath, tenantPath, type Tab } from '$lib/routes';
+  import { formPath, type Tab } from '$lib/routes';
   import { describeError } from '$lib/admin/describe';
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
+  import { formContext } from '$lib/formContext.svelte';
   import AbusePanel from './AbusePanel.svelte';
   import FieldsTab from './FieldsTab.svelte';
   import MailTab from './MailTab.svelte';
@@ -49,6 +56,23 @@
     { name: t.formWork.integration, target: 'keys' as Tab },
   ]);
   const configuration = $derived(tab === 'fields' || tab === 'mail');
+  const customer = $derived(session.tenants.find((x) => x.id === tenant)?.name ?? '');
+  const published = $derived(!!editor.detail?.currentReleaseId);
+  const tabActive = (target: Tab): boolean =>
+    tab === target || (target === 'fields' && configuration);
+  const tabClass = (current: boolean): string =>
+    `relative inline-flex min-h-11 items-center px-3.5 text-[length:var(--fs-body)] font-medium whitespace-nowrap transition-colors after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full ${current ? 'text-foreground after:bg-ui-accent' : 'text-muted-foreground hover:text-foreground after:bg-transparent'}`;
+  const linkButton =
+    'inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-medium';
+  // The shell breadcrumb can show the real form name from this shared context.
+  $effect(() => {
+    formContext.tenant = tenant;
+    formContext.form = form;
+    formContext.name = editor.detail?.name ?? '';
+    return () => {
+      formContext.tenant = formContext.form = formContext.name = '';
+    };
+  });
   function leave(): boolean {
     return !dirty || confirm(t.formWork.unsaved);
   }
@@ -138,93 +162,135 @@
   });
 </script>
 
+{#snippet checkItem(done: boolean | null, label: string, target?: Tab)}
+  <li class="flex min-h-11 items-center gap-3">
+    <span
+      aria-hidden="true"
+      class={`flex size-6 shrink-0 items-center justify-center rounded-full ${done ? 'bg-ok-soft text-ok' : done === false ? 'bg-idle-soft text-idle' : 'bg-info-soft text-info'}`}
+      ><NavIcon name={done ? 'check' : done === false ? 'x' : 'info'} size={13} /></span
+    >
+    {#if target && !done}
+      <a
+        class="min-w-0 flex-1 underline-offset-4 hover:underline"
+        href={formPath(tenant, form, target)}
+        onclick={(e) => navigate(e, target)}>{label}</a
+      >
+    {:else}
+      <span class="min-w-0 flex-1">{label}</span>
+    {/if}
+    <span class="text-muted-foreground shrink-0 text-[length:var(--fs-small)]"
+      >{done ? t.formUi.stateDone : done === false ? t.formUi.stateOpen : t.formUi.stateCheck}</span
+    >
+  </li>
+{/snippet}
+
 <section class="flex min-w-0 flex-col gap-5">
   <AccessStatus />
-  <a href={tenantPath(tenant)} class="text-muted-foreground w-fit text-sm underline"
-    >← {t.admin.forms.title}</a
-  >
-  <div class="flex flex-wrap items-start justify-between gap-4">
-    <div class="space-y-2">
-      <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold">
-        {editor.detail?.name ?? t.formWork.title}
-      </h1>
+  <PageHeader hero title={editor.detail?.name ?? t.formWork.title} description={customer}>
+    {#snippet badges()}
       {#if editor.detail}
-        <p class="text-muted-foreground text-sm">
-          {editor.detail.active ? t.formWork.active : t.formWork.inactive} · {t.admin.form.release}
-          {editor.detail.currentReleaseVersion ?? '—'}
-        </p>
-        <p class="text-muted-foreground text-sm">
-          {editor.draft
+        {#if !published}
+          <StatusChip tone="idle" label={t.formUi.notPublishedChip} />
+        {:else}
+          <StatusChip
+            tone={editor.detail.active ? 'ok' : 'idle'}
+            label={editor.detail.active ? t.formWork.active : t.formWork.inactive}
+          />
+          <StatusChip
+            tone="idle"
+            label={t.lists.version.replace(
+              '{n}',
+              String(editor.detail.currentReleaseVersion ?? '—'),
+            )}
+          />
+        {/if}
+        <StatusChip
+          tone={editor.draft ? 'info' : 'idle'}
+          label={editor.draft
             ? t.formWork.saved.replace('{n}', String(editor.draft.revision))
-            : t.formWork.noDraft}
-        </p>
+            : t.formUi.noDraftChip}
+        />
       {/if}
-    </div>
-    <div class="flex flex-wrap gap-2">
+    {/snippet}
+    {#snippet actions()}
       {#if canEdit}<a
-          class="border-border rounded-md border px-4 py-3 text-sm"
+          class={`${linkButton} border-border hover:bg-secondary border`}
           href={formPath(tenant, form, 'fields')}
           onclick={(e) => navigate(e, 'fields')}>{t.formWork.edit}</a
         >{/if}
       {#if canPublish}<a
-          class="bg-primary text-primary-foreground rounded-md px-4 py-3 text-sm font-medium"
+          class={`${linkButton} bg-primary text-primary-foreground hover:opacity-90`}
           href={formPath(tenant, form, 'publish')}
           onclick={(e) => navigate(e, 'publish')}>{t.formWork.publish}</a
         >{/if}
-    </div>
-  </div>
-  <nav aria-label={t.admin.form.tabsLabel} class="border-border flex flex-wrap gap-1 border-b">
-    {#each navigation as item (item.target)}
+    {/snippet}
+  </PageHeader>
+  <nav
+    aria-label={t.admin.form.tabsLabel}
+    class="border-border-subtle -mx-4 overflow-x-auto border-b px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
+  >
+    <div class="flex w-max min-w-full gap-0.5">
+      {#each navigation as item (item.target)}
+        <a
+          href={formPath(tenant, form, item.target)}
+          aria-current={tabActive(item.target) ? 'page' : undefined}
+          onclick={(e) => navigate(e, item.target)}
+          class={tabClass(tabActive(item.target))}>{item.name}</a
+        >
+      {/each}
       <a
-        href={formPath(tenant, form, item.target)}
-        aria-current={tab === item.target || (item.target === 'fields' && configuration)
-          ? 'page'
-          : undefined}
-        onclick={(e) => navigate(e, item.target)}
-        class={`border-b-2 px-3 py-3 text-sm font-medium ${tab === item.target || (item.target === 'fields' && configuration) ? 'border-primary text-foreground' : 'text-muted-foreground border-transparent'}`}
-        >{item.name}</a
+        href={formPath(tenant, form) + '#statistics'}
+        class={tabClass(false)}
+        onclick={(e) => navigate(e, 'overview')}>{t.formWork.statistics}</a
       >
-    {/each}
-    <a
-      href={formPath(tenant, form) + '#statistics'}
-      class="text-muted-foreground px-3 py-3 text-sm"
-      onclick={(e) => navigate(e, 'overview')}>{t.formWork.statistics}</a
-    >
+    </div>
   </nav>
   {#if editor.loading}
-    <div aria-busy="true" class="border-border min-h-64 rounded-xl border p-6">
-      <p role="status">{slow ? t.formWork.slow : t.admin.loading}</p>
-      <div class="bg-muted mt-6 h-32 rounded-md"></div>
+    <div aria-busy="true" class="flex min-h-64 flex-col gap-4">
+      <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+        {slow ? t.formWork.slow : t.admin.loading}
+      </p>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {#each [0, 1, 2, 3] as n (n)}<Skeleton class="h-24 rounded-[var(--r-card)]" />{/each}
+      </div>
+      <Skeleton class="h-48 rounded-[var(--r-card)]" />
     </div>
   {:else if !editor.detail}
-    <p role="alert">
+    <Banner tone="danger">
       {editor.error?.status === 403
         ? t.formWork.denied
         : editor.error?.status === 404
           ? t.formWork.unavailable
           : t.formWork.loadError}
-    </p>
-    <div><Button onclick={() => void editor.load()}>{t.admin.retry}</Button></div>
+      {#snippet action()}
+        <Button variant="outline" onclick={() => void editor.load()}>{t.admin.retry}</Button>
+      {/snippet}
+    </Banner>
   {:else}
     {#if editor.error && !editor.draft}
-      <p role="alert">{describeError(editor.error)}</p>
-      <div>
-        <Button variant="outline" onclick={() => void editor.load()}>{t.admin.retry}</Button>
-      </div>
+      <Banner tone="danger">
+        {describeError(editor.error)}
+        {#snippet action()}
+          <Button variant="outline" onclick={() => void editor.load()}>{t.admin.retry}</Button>
+        {/snippet}
+      </Banner>
     {:else if configuration}
-      <nav aria-label={t.formWork.configuration} class="flex flex-wrap gap-2">
-        {#each ['fields', 'mail'] as target (target)}
-          <a
-            class="border-border rounded-md border px-3 py-2 text-sm"
-            aria-current={!extra && tab === target ? 'page' : undefined}
-            href={formPath(tenant, form, target as Tab)}
-            onclick={(e) => navigate(e, target as Tab)}
-            >{target === 'fields' ? t.formWork.fields : t.formWork.mail}</a
-          >
-        {/each}
+      <nav aria-label={t.formWork.configuration} class="flex flex-wrap items-center gap-2">
+        <div class="bg-surface-sunken flex gap-1 rounded-lg p-1">
+          {#each ['fields', 'mail'] as target (target)}
+            <a
+              class={`inline-flex min-h-9 items-center rounded-md px-3 text-sm font-medium ${!extra && tab === target ? 'bg-surface-card text-foreground shadow-[var(--shadow-card)]' : 'text-muted-foreground hover:text-foreground'}`}
+              aria-current={!extra && tab === target ? 'page' : undefined}
+              href={formPath(tenant, form, target as Tab)}
+              onclick={(e) => navigate(e, target as Tab)}
+              >{target === 'fields' ? t.formWork.fields : t.formWork.mail}</a
+            >
+          {/each}
+        </div>
         {#each ['webhooks', 'storage', 'flow'] as target (target)}
           <Button
             variant={extra === target ? 'secondary' : 'ghost'}
+            class="min-h-9"
             onclick={() => {
               if (leave()) {
                 fieldsDirty = abuseDirty = false;
@@ -235,9 +301,8 @@
         {/each}
       </nav>
     {/if}
-    <section class="bg-card border-border flex min-w-0 flex-col gap-4 rounded-xl border p-4 sm:p-6">
-      {#if extra && configuration}
-        <h2 class="text-lg font-medium">{t.formWork[extra as 'webhooks' | 'storage' | 'flow']}</h2>
+    {#if extra && configuration}
+      <Panel title={t.formWork[extra as 'webhooks' | 'storage' | 'flow']}>
         {#if extra === 'webhooks'}
           <WebhooksPanel {tenant} {form} />
         {:else}
@@ -245,76 +310,106 @@
             {t.formWork[`${extra}Pending` as 'storagePending' | 'flowPending']}
           </p>
         {/if}
-      {:else if tab === 'overview'}
-        <h2 class="text-lg font-medium">{t.shell.overview}</h2>
-        {#if !editor.detail.currentReleaseId}<p>{t.formWork.unpublished}</p>{/if}
-        {#if canPublish && editor.detail.currentReleaseId}
-          <ActiveSwitch
-            {tenant}
-            {form}
-            active={editor.detail.active}
-            onchange={() => editor.load()}
-          />
-        {/if}
-        {#if canEdit && editor.detail.currentReleaseId}
-          <div>
-            <Button
-              variant="outline"
-              disabled={editor.saving}
-              onclick={async () => {
-                if (await editor.createDraft()) router.navigate(formPath(tenant, form, 'fields'));
-              }}>{t.admin.form.newDraft}</Button
-            >
-          </div>
-          <p class="text-muted-foreground text-xs">{t.admin.form.newDraftHint}</p>
-        {/if}
-        <dl class="grid gap-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt class="font-medium">{t.formWork.mail}</dt>
-            <dd class="text-muted-foreground">
-              {editor.detail.mailConnectionId ? t.admin.mail.connection : t.formWork.noRoute}
-            </dd>
-          </div>
-          <div>
-            <dt class="font-medium">{t.formWork.integration}</dt>
-            <dd>
-              <a
-                class="underline"
-                href={formPath(tenant, form, 'keys')}
-                onclick={(e) => navigate(e, 'keys')}>{t.formWork.integrationCheck}</a
-              >
-            </dd>
-          </div>
-        </dl>
-        <div id="statistics" class="scroll-mt-20" aria-busy={statsLoading}>
-          {#if statsLoading}<p role="status" class="min-h-40">
+      </Panel>
+    {:else if tab === 'overview'}
+      {#if !published}
+        <Banner tone="info">{t.formWork.unpublished}</Banner>
+      {/if}
+      <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <div
+          id="statistics"
+          class="flex min-w-0 scroll-mt-20 flex-col gap-5"
+          aria-busy={statsLoading}
+        >
+          {#if statsLoading}
+            <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
               {statsSlow ? t.formWork.slow : t.admin.loading}
             </p>
-          {:else if statsError}<p role="alert">{statsError}</p>
-            <Button variant="outline" onclick={() => void loadStats()}>{t.admin.retry}</Button>
-          {:else if stats}<StatisticsChart {stats} days={30} /><AdsStatisticsPanel
-              {tenant}
-              {form}
-            />{/if}
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {#each [0, 1, 2] as n (n)}<Skeleton class="h-24 rounded-[var(--r-card)]" />{/each}
+            </div>
+            <Skeleton class="h-48 rounded-[var(--r-card)]" />
+          {:else if statsError}
+            <Banner tone="danger">
+              {statsError}
+              {#snippet action()}
+                <Button variant="outline" onclick={() => void loadStats()}>{t.admin.retry}</Button>
+              {/snippet}
+            </Banner>
+          {:else if stats}
+            <StatisticsChart {stats} days={30} />
+            <AdsStatisticsPanel {tenant} {form} />
+          {/if}
         </div>
-      {:else if tab === 'entries'}<EntriesTab {tenant} {form} />
-      {:else if editor.error && !editor.draft}
-        <!-- The failed draft load must never be shown as an empty draft. -->
-      {:else if (configuration && !canEdit) || (tab === 'publish' && !canPublish)}
-        <p role="alert">{t.formWork.denied}</p>
-      {:else if tab === 'fields'}<FieldsTab
-          {editor}
-          ondirty={(value) => (fieldsDirty = value)}
-        /><AbusePanel {editor} {tenant} {form} ondirty={(value) => (abuseDirty = value)} />
-      {:else if tab === 'mail'}<MailTab
+        <div class="flex min-w-0 flex-col gap-5">
+          <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
+            <ul class="divide-border-subtle -my-1 divide-y">
+              {@render checkItem(
+                published,
+                t.formUi.setupPublished,
+                canPublish ? 'publish' : undefined,
+              )}
+              {@render checkItem(published && editor.detail.active, t.formUi.setupAccepting)}
+              {@render checkItem(
+                !!editor.detail.mailConnectionId,
+                t.formUi.setupMail,
+                canEdit ? 'mail' : undefined,
+              )}
+              {@render checkItem(null, t.formUi.setupIntegration, 'keys')}
+            </ul>
+          </Panel>
+          {#if published && (canPublish || canEdit)}
+            <Panel title={t.formUi.actionsTitle} description={t.formUi.actionsHint}>
+              <div class="flex flex-col gap-4">
+                {#if canPublish}
+                  <ActiveSwitch
+                    {tenant}
+                    {form}
+                    active={editor.detail.active}
+                    onchange={() => editor.load()}
+                  />
+                {/if}
+                {#if canEdit}
+                  <div class="flex flex-col gap-1.5">
+                    <div>
+                      <Button
+                        variant="outline"
+                        disabled={editor.saving}
+                        onclick={async () => {
+                          if (await editor.createDraft())
+                            router.navigate(formPath(tenant, form, 'fields'));
+                        }}>{t.admin.form.newDraft}</Button
+                      >
+                    </div>
+                    <p class="text-muted-foreground text-[length:var(--fs-small)]">
+                      {t.admin.form.newDraftHint}
+                    </p>
+                  </div>
+                {/if}
+              </div>
+            </Panel>
+          {/if}
+        </div>
+      </div>
+    {:else if tab === 'entries'}<EntriesTab {tenant} {form} />
+    {:else if editor.error && !editor.draft}
+      <!-- The failed draft load must never be shown as an empty draft. -->
+    {:else if (configuration && !canEdit) || (tab === 'publish' && !canPublish)}
+      <Banner tone="danger">{t.formWork.denied}</Banner>
+    {:else if tab === 'fields'}
+      <FieldsTab {editor} ondirty={(value) => (fieldsDirty = value)} />
+      <AbusePanel {editor} {tenant} {form} ondirty={(value) => (abuseDirty = value)} />
+    {:else if tab === 'mail'}
+      <Panel>
+        <MailTab
           {editor}
           {tenant}
           {form}
           canAssign={canPublish}
           ondirty={(value) => (fieldsDirty = value)}
         />
-      {:else if tab === 'publish'}<PublishTab {editor} {tenant} {form} canBump={canEdit} />
-      {:else}<KeysTab {editor} {tenant} {form} {canIssue} />{/if}
-    </section>
+      </Panel>
+    {:else if tab === 'publish'}<PublishTab {editor} {tenant} {form} canBump={canEdit} />
+    {:else}<KeysTab {editor} {tenant} {form} {canIssue} />{/if}
   {/if}
 </section>

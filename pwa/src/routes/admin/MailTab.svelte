@@ -17,6 +17,7 @@
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import Row from '$lib/components/admin/Row.svelte';
   import Select from '$lib/components/admin/Select.svelte';
   import Textarea from '$lib/components/admin/Textarea.svelte';
@@ -215,11 +216,10 @@
         <Input id="mail-from-name" bind:value={f.fromName} maxlength={100} autocomplete="off" />
       </Row>
 
-      <fieldset class="border-border flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
         <legend class="px-1 font-medium"
           ><label class="flex items-center gap-2"
-            ><input type="checkbox" bind:checked={f.organisation.enabled} class="size-4" />{t.admin
-              .mail.orgEnabled}</label
+            ><Checkbox bind:checked={f.organisation.enabled} />{t.admin.mail.orgEnabled}</label
           ></legend
         >
         {#if f.organisation.enabled}
@@ -277,7 +277,7 @@
         {/if}
       </fieldset>
 
-      <fieldset class="border-border flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
         <legend class="px-1 font-medium">{t.admin.mail.derived.title}</legend>
         <p class="text-muted-foreground max-w-prose text-sm">{t.admin.mail.derived.hint}</p>
         {#if problem('derived')}<p role="alert" class="text-destructive text-sm">
@@ -349,11 +349,10 @@
         </div>
       </fieldset>
 
-      <fieldset class="border-border flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
         <legend class="px-1 font-medium"
           ><label class="flex items-center gap-2"
-            ><input type="checkbox" bind:checked={f.confirmation.enabled} class="size-4" />{t.admin
-              .mail.confEnabled}</label
+            ><Checkbox bind:checked={f.confirmation.enabled} />{t.admin.mail.confEnabled}</label
           ></legend
         >
         {#if f.confirmation.enabled}

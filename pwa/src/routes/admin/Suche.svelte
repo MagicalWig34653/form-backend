@@ -3,6 +3,9 @@
   import { t } from '$lib/i18n';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import FilterBar from '$lib/components/admin/FilterBar.svelte';
+  import DateField from '$lib/components/admin/DateField.svelte';
+  import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import { Dialog, DialogContent, DialogClose } from '$lib/components/ui/dialog';
   import Notice from '$lib/components/admin/Notice.svelte';
   import Export from './Export.svelte';
@@ -23,6 +26,8 @@
   let query = $state(''),
     from = $state(''),
     until = $state('');
+  let fromInvalid = $state(false),
+    untilInvalid = $state(false);
   let rows = $state<LocalRow[]>([]),
     selected = $state<string[]>([]);
   let rights = $state<Access | null>(null);
@@ -34,6 +39,15 @@
   let epoch = 0;
   const visible = $derived(rows.filter((row) => matches(row, { query, from, until })));
   const chosen = $derived(visible.filter((row) => selected.includes(row.id)));
+  const deleteReason = $derived(
+    busy
+      ? ''
+      : !rights?.canDelete
+        ? t.listUi.deleteNotAllowed
+        : !chosen.some((row) => !row.unreadable)
+          ? t.listUi.deleteNeedsSelection
+          : '',
+  );
   function invalidatePeriod(): void {
     epoch++;
     rows = [];
@@ -49,6 +63,7 @@
     loaded = false;
     confirmation = false;
     query = '';
+    from = until = '';
     message = '';
   }
   function check(run: number): void {
@@ -71,6 +86,10 @@
     selected = [];
     loaded = false;
     message = '';
+    if (fromInvalid || untilInvalid) {
+      message = t.listUi.dateInvalid;
+      return;
+    }
     if (from && until && from > until) {
       message = ui.invalidPeriod;
       return;
@@ -138,82 +157,122 @@
   });
 </script>
 
-<section class="bg-card my-4 min-w-0 space-y-4 rounded-xl border p-4 sm:p-6" aria-label={ui.title}>
-  <h3 class="text-lg font-semibold">{ui.title}</h3>
-  <p class="text-muted-foreground text-sm">{ui.intro}</p>
+<section class="surface-card min-w-0 space-y-4 px-5 py-4" aria-labelledby="local-search-title">
+  <div>
+    <h2
+      id="local-search-title"
+      class="text-[length:var(--fs-h2)] leading-[26px] font-semibold tracking-tight"
+    >
+      {ui.title}
+    </h2>
+    <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-[18px]">
+      {ui.intro}
+    </p>
+  </div>
   <form
-    class="grid gap-3 sm:grid-cols-3"
     onsubmit={(event) => {
       event.preventDefault();
       void search();
     }}
   >
-    <label class="space-y-2 text-sm"
-      >{ui.query}<Input type="search" bind:value={query} disabled={busy} /></label
-    >
-    <label class="space-y-2 text-sm"
-      >{ui.from}<Input
-        type="date"
-        onchange={invalidatePeriod}
+    <FilterBar collapsible={false}>
+      <label class="flex min-w-52 flex-[2] flex-col gap-1.5 text-sm font-medium"
+        >{ui.query}<Input type="search" bind:value={query} disabled={busy} /></label
+      >
+      <DateField
+        id="local-from"
+        label={ui.from}
         bind:value={from}
-        disabled={busy}
-      /></label
-    >
-    <label class="space-y-2 text-sm"
-      >{ui.until}<Input
-        type="date"
+        bind:invalid={fromInvalid}
         onchange={invalidatePeriod}
-        bind:value={until}
         disabled={busy}
-      /></label
-    >
-    <Button type="submit" disabled={busy}>{ui.search}</Button>
-    <Button type="button" variant="outline" onclick={clear}>{ui.clear}</Button>
+        class="min-w-36 flex-1"
+      />
+      <DateField
+        id="local-until"
+        label={ui.until}
+        bind:value={until}
+        bind:invalid={untilInvalid}
+        onchange={invalidatePeriod}
+        disabled={busy}
+        class="min-w-36 flex-1"
+      />
+      {#snippet trailing()}
+        <Button type="submit" disabled={busy}>{ui.search}</Button>
+        <Button type="button" variant="outline" onclick={clear}>{ui.clear}</Button>
+      {/snippet}
+    </FilterBar>
   </form>
-  {#if busy}<p role="status">{ui.progress.replace('{n}', String(progress))}</p>{/if}
+  {#if busy}<p role="status" class="text-muted-foreground text-sm">
+      {ui.progress.replace('{n}', String(progress))}
+    </p>{/if}
   <Notice {message} />
   {#if loaded}
-    <p role="status">{ui.count.replace('{n}', String(visible.length))}</p>
-    <p class="text-sm">{ui.unknownHint}</p>
-    <Button
-      variant="outline"
-      disabled={busy}
-      onclick={() => (selected = visible.map((row) => row.id))}>{ui.selectAll}</Button
-    >
-    <ul class="space-y-2">
-      {#each visible as row (row.id)}
-        <li class="min-w-0 rounded-lg border p-3">
-          <label class="flex min-h-11 items-center gap-3 break-all"
-            ><input
-              type="checkbox"
-              bind:group={selected}
-              value={row.id}
-              disabled={busy}
-            />{row.receivedAt ?? ui.noDate} · {row.id}</label
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <p role="status" class="font-medium">{ui.count.replace('{n}', String(visible.length))}</p>
+      <Button
+        variant="outline"
+        disabled={busy}
+        onclick={() => (selected = visible.map((row) => row.id))}>{ui.selectAll}</Button
+      >
+    </div>
+    <p class="text-muted-foreground text-[length:var(--fs-small)] leading-5">{ui.unknownHint}</p>
+    {#if visible.length === 0}
+      <EmptyState icon="search" title={t.admin.entriesPage.filteredEmpty} />
+    {:else}
+      <ul class="divide-border-subtle border-border-subtle divide-y border-y">
+        {#each visible as row (row.id)}
+          <li class="min-w-0 py-1.5">
+            <label class="flex min-h-11 items-center gap-3 break-all"
+              ><input
+                type="checkbox"
+                class="size-6 shrink-0 accent-[var(--ui-accent)]"
+                bind:group={selected}
+                value={row.id}
+                disabled={busy}
+              /><span class="tabular-nums">{row.receivedAt ?? ui.noDate}</span>
+              <span class="text-muted-foreground text-[length:var(--fs-small)]">· {row.id}</span
+              ></label
+            >
+            {#if row.unreadable}<p class="text-muted-foreground pl-9 text-sm">
+                {ui.unknown}
+              </p>{:else}<pre
+                class="bg-surface-sunken ml-9 max-h-48 overflow-auto rounded-md p-3 text-sm break-all whitespace-pre-wrap">{JSON.stringify(
+                  row.fields,
+                  null,
+                  2,
+                )}</pre>{/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    <div class="border-border-subtle flex flex-col gap-4 rounded-[var(--r-card)] border p-4">
+      <Export
+        {tenant}
+        {form}
+        rows={chosen}
+        allowed={rights?.canExport ?? false}
+        disabled={busy}
+        onFailure={failure}
+      />
+      <div class="border-border-subtle flex flex-col gap-2 border-t pt-4">
+        <div>
+          <Button
+            variant="outline"
+            class="text-destructive"
+            disabled={busy || !rights?.canDelete || !chosen.some((row) => !row.unreadable)}
+            aria-describedby={deleteReason ? 'delete-reason' : undefined}
+            onclick={() => (confirmation = true)}>{ui.delete}</Button
           >
-          {#if row.unreadable}<p class="text-sm">{ui.unknown}</p>{:else}<pre
-              class="max-h-48 overflow-auto whitespace-pre-wrap break-all text-sm">{JSON.stringify(
-                row.fields,
-                null,
-                2,
-              )}</pre>{/if}
-        </li>
-      {/each}
-    </ul>
-    <Export
-      {tenant}
-      {form}
-      rows={chosen}
-      allowed={rights?.canExport ?? false}
-      disabled={busy}
-      onFailure={failure}
-    />
-    <Button
-      variant="outline"
-      class="text-destructive"
-      disabled={busy || !rights?.canDelete || !chosen.some((row) => !row.unreadable)}
-      onclick={() => (confirmation = true)}>{ui.delete}</Button
-    >
+        </div>
+        {#if deleteReason}<p
+            id="delete-reason"
+            class="text-muted-foreground text-[length:var(--fs-small)]"
+          >
+            {deleteReason}
+          </p>{/if}
+      </div>
+    </div>
   {/if}
 </section>
 <Dialog bind:open={confirmation}>

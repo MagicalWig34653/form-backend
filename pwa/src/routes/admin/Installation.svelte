@@ -3,8 +3,16 @@
   import { keyring } from '$lib/crypto/keyring.svelte';
   import { onMount } from 'svelte';
   import { http } from '$lib/api';
+  import { t } from '$lib/i18n';
   import { setupSteps } from '$lib/setup';
   import { router } from '$lib/router.svelte';
+  import { Button } from '$lib/components/ui/button';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
+  const ui = t.installationPage;
   let step = $state(0);
   let error = $state('');
   let required = $state(false);
@@ -27,10 +35,9 @@
           step = Number(
             settings.data.items.find((i) => i.definition.key === 'setup.step')?.value ?? '0',
           );
-        } else error = 'Bitte erneut anmelden, um die Einrichtung fortzusetzen.';
+        } else error = ui.errSettings;
       }
-    } else
-      error = 'Die Einrichtung konnte nicht geladen werden. Bitte erneut anmelden und versuchen.';
+    } else error = ui.errLoad;
     loading = false;
   }
   async function advance(next = 1) {
@@ -41,39 +48,77 @@
     if (r.ok) {
       revision = r.data.revision;
       step = next;
-    } else error = 'Der Fortschritt konnte nicht gespeichert werden. Bitte erneut laden.';
+    } else error = ui.errSave;
   }
+  const link =
+    'hover:bg-surface-sunken flex min-h-11 items-center gap-3 rounded-md px-2 -mx-2 underline-offset-4 hover:underline';
 </script>
 
-<h1 id="page-title" tabindex="-1">Einrichtung</h1>
-{#if loading}<p role="status">Einrichtung wird geladen …</p>
-{:else if error}<p role="alert">{error}</p>
-  <button onclick={load}>Erneut versuchen</button>
-{:else if required}
-  <p>Richten Sie Ihr Formular-Backend ein.</p>
-  <p>Schritt {step + 1} von 6</p>
-  <ol aria-label="Einrichtungsschritte">
-    {#each setupSteps as label, index (label)}<li
-        aria-current={step === index ? 'step' : undefined}
-      >
-        {index + 1}
-        {label}
-      </li>{/each}
-  </ol>
-  {#if step === 0}
-    <h2>Ihr Administrationskonto einrichten</h2>
-    <p>Ihr Konto und Passkey wurden über den installationsgebundenen Setup-Link eingerichtet.</p>
-    <button onclick={() => void advance()}>Weiter</button>
-  {:else if step === 1}
-    <RecoveryStep oncomplete={() => void advance(2)} />
-    <button onclick={() => (step = 0)}>Zurück</button>
+<section class="flex min-w-0 max-w-3xl flex-col gap-5">
+  <PageHeader hero title={ui.title} description={required ? ui.intro : undefined} />
+  {#if loading}
+    <div aria-busy="true" class="flex flex-col gap-3">
+      <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+        {ui.loading}
+      </p>
+      <Skeleton class="h-16 rounded-[var(--r-card)]" />
+      <Skeleton class="h-40 rounded-[var(--r-card)]" />
+    </div>
+  {:else if error}
+    <Banner tone="danger">
+      {error}
+      {#snippet action()}
+        <Button variant="outline" onclick={load}>{ui.retry}</Button>
+      {/snippet}
+    </Banner>
+  {:else if required}
+    <div class="surface-card px-5 py-4">
+      <p class="text-muted-foreground mb-3 text-[length:var(--fs-small)]">
+        {ui.progress.replace('{n}', String(step + 1))}
+      </p>
+      <ol aria-label={ui.stepsLabel} class="grid gap-2 sm:grid-cols-6 sm:gap-1">
+        {#each setupSteps as label, index (label)}
+          {@const state = index < step ? 'done' : index === step ? 'current' : 'todo'}
+          <li
+            aria-current={state === 'current' ? 'step' : undefined}
+            class="flex items-center gap-2 sm:flex-col sm:items-start sm:gap-1.5"
+          >
+            <span
+              aria-hidden="true"
+              class={`flex size-7 shrink-0 items-center justify-center rounded-full text-[length:var(--fs-small)] font-semibold ${state === 'done' ? 'bg-ok-soft text-ok' : state === 'current' ? 'bg-primary text-primary-foreground' : 'bg-idle-soft text-idle'}`}
+              >{#if state === 'done'}<NavIcon name="check" size={14} />{:else}{index + 1}{/if}</span
+            >
+            <span
+              class={`text-[length:var(--fs-small)] leading-4 ${state === 'current' ? 'font-semibold' : 'text-muted-foreground'}`}
+              ><span class="sr-only">{index + 1} </span>{label}</span
+            >
+          </li>
+        {/each}
+      </ol>
+    </div>
+    {#if step === 0}
+      <Panel title={ui.accountTitle} description={ui.accountBody}>
+        <div class="mt-2"><Button onclick={() => void advance()}>{ui.next}</Button></div>
+      </Panel>
+    {:else if step === 1}
+      <Panel>
+        <RecoveryStep oncomplete={() => void advance(2)} />
+        <div class="mt-4">
+          <Button variant="outline" onclick={() => (step = 0)}>{ui.back}</Button>
+        </div>
+      </Panel>
+    {:else}
+      <Banner tone="ok">{ui.recoverySaved}</Banner>
+    {/if}
+    <Panel title={ui.nextTitle}>
+      <nav aria-label={ui.nextTitle} class="flex flex-col">
+        <a class={link} href="/connections">{ui.mail}</a>
+        <a class={link} href="/settings">{ui.addresses}</a>
+        <a class={link} href="/migration">{ui.migration}</a>
+      </nav>
+    </Panel>
   {:else}
-    <p>Ihr Wiederherstellungscode ist gesichert. Fahren Sie mit Mail und Adressen fort.</p>
+    <Banner tone="info">{ui.done}</Banner>
   {/if}
-  <a href="/connections">Mail-Verbindung anlegen und testen</a>
-  <a href="/settings">Adressen &amp; Betrieb prüfen</a>
-  <a href="/migration">Daten übernehmen (optional)</a>
-{:else}<p>
-    Die Einrichtung ist abgeschlossen oder Sie haben kein Systemrecht für die Einrichtung.
-  </p>{/if}
-<button onclick={() => router.navigate('/t')}>Zum Überblick</button>
+  <div><Button variant="outline" onclick={() => router.navigate('/t')}>{ui.overview}</Button></div>
+</section>

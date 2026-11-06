@@ -45,7 +45,14 @@ it('zeigt ENV-Sperre und Neustart; sendet nur Änderungen mit Revision', async (
   expect(((await screen.findByLabelText('mail.allowedNets')) as HTMLInputElement).disabled).toBe(
     true,
   );
-  expect(screen.getByText(/Quelle: env/).textContent).toContain('Neustart nötig');
+  const row = screen.getByLabelText('mail.allowedNets').closest('[data-setting]')!;
+  expect(row.textContent).toContain('Quelle:');
+  expect(row.textContent).toContain('ENV');
+  expect(row.textContent).toContain('Durch ENV gesperrt');
+  expect(row.textContent).toContain('Neustart nötig');
+  expect(screen.getByLabelText('mail.allowedNets').getAttribute('aria-describedby')).toBe(
+    'mail.allowedNets-hint',
+  );
   await fireEvent.input(screen.getByLabelText('mcp.requestsPerMinute'), {
     target: { value: '90' },
   });

@@ -2,7 +2,7 @@
   import type { HTMLInputAttributes } from 'svelte/elements';
   import { cn } from '$lib/utils';
   let {
-    checked = $bindable(false),
+    checked = $bindable(),
     class: className,
     ...rest
   }: Omit<HTMLInputAttributes, 'type'> = $props();
@@ -11,6 +11,6 @@
 <input
   type="checkbox"
   bind:checked
-  class={cn('size-5 shrink-0 accent-[var(--ui-accent)] disabled:opacity-50', className)}
+  class={cn('size-6 shrink-0 accent-[var(--ui-accent)] disabled:opacity-50', className)}
   {...rest}
 />

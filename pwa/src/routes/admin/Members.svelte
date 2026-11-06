@@ -9,6 +9,10 @@
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import { Checkbox } from '$lib/components/ui/checkbox';
 
   let { tenant }: { tenant: string } = $props();
   const m = t.admin.members;
@@ -57,7 +61,10 @@
     members = r.data.items;
     assignable = r.data.assignable;
     chosen = Object.fromEntries(
-      members.map((x) => [x.accountId, Object.fromEntries(x.permissions.map((p) => [p, true]))]),
+      members.map((x) => [
+        x.accountId,
+        Object.fromEntries(assignable.map((p) => [p, x.permissions.includes(p)])),
+      ]),
     );
     loaded = true;
   }
@@ -85,16 +92,18 @@
   });
 </script>
 
-<section class="flex flex-col gap-4">
-  <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold">{m.title}</h1>
-  <p class="text-muted-foreground max-w-prose text-sm">{m.intro}</p>
+<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+  <PageHeader title={m.title} description={m.intro} />
   {#if !loaded}
-    <p>{t.admin.loading}</p>
+    <div aria-busy="true" class="flex flex-col gap-3">
+      <span class="sr-only" role="status">{t.admin.loading}</span>
+      <Skeleton class="h-32" /><Skeleton class="h-32" />
+    </div>
   {:else}
     <ul class="flex flex-col gap-4">
       {#each members as x (x.accountId)}
-        <li class="rounded-md border p-3">
-          <h2 class="font-medium">
+        <li class="surface-card px-5 py-4">
+          <h2 class="font-semibold">
             {x.username}{x.accountId === session.me?.id ? ` ${m.you}` : ''}
           </h2>
           {#if x.inherited.length > 0}
@@ -103,19 +112,19 @@
             </p>
           {/if}
           <fieldset
-            class="mt-2 grid grid-cols-2 gap-1 text-sm"
+            class="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2"
             disabled={x.accountId === session.me?.id}
           >
             <legend class="sr-only">{x.username}</legend>
             {#each assignable as p (p)}
-              <label class="flex items-center gap-2">
-                <input type="checkbox" bind:checked={chosen[x.accountId]![p]} />
+              <label class="flex min-h-8 items-center gap-2">
+                <Checkbox bind:checked={chosen[x.accountId]![p]} />
                 <span>{p}</span>
               </label>
             {/each}
           </fieldset>
           {#if x.accountId !== session.me?.id}
-            <div class="mt-2">
+            <div class="mt-3">
               <Button type="button" variant="outline" disabled={busy} onclick={() => void save(x)}
                 >{m.save}</Button
               >
@@ -126,11 +135,14 @@
     </ul>
   {/if}
   {#if session.me?.systemAdministrator}
-    <h2 class="text-lg font-medium">{c.accounts}</h2>
+    <h2 class="text-[length:var(--fs-h2)] font-semibold">{c.accounts}</h2>
     <ul class="flex flex-col gap-3">
       {#each accounts as x (x.id)}
-        <li class="rounded-md border p-3">
-          <p>{x.username} · {x.active ? c.active : c.locked}</p>
+        <li class="surface-card px-5 py-4">
+          <p class="flex flex-wrap items-center gap-2">
+            <span class="font-medium">{x.username}</span>
+            <StatusChip tone={x.active ? 'ok' : 'idle'} label={x.active ? c.active : c.locked} />
+          </p>
           <div class="mt-2 flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -149,4 +161,4 @@
     </ul>
   {/if}
   <Notice message={message || ok} kind={message ? 'error' : 'ok'} />
-</section>
+</div>

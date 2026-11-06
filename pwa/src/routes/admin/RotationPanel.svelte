@@ -10,6 +10,7 @@
   import { session } from '$lib/session.svelte';
   import { describeError } from '$lib/admin/describe';
   import { Button } from '$lib/components/ui/button';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import Notice from '$lib/components/admin/Notice.svelte';
 
   let { tenant, onchange }: { tenant: string; onchange: () => void } = $props();
@@ -157,8 +158,8 @@
       <legend class="text-sm font-medium">{r.recipients}</legend>
       {#each candidates as candidate (candidate.accountId)}
         <div class="flex flex-wrap items-center gap-2 text-sm">
-          <label
-            ><input type="checkbox" bind:checked={selected[candidate.accountId]} disabled={busy} />
+          <label class="flex items-center gap-2"
+            ><Checkbox bind:checked={selected[candidate.accountId]} disabled={busy} />
             {candidate.username} · {fingerprints[candidate.accountId] ?? ''}</label
           >
           <Button

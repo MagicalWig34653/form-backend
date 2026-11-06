@@ -8,6 +8,9 @@
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   let {
     editor,
@@ -28,6 +31,11 @@
   let confirmationId = '';
   let slow = $state(false);
   let reviewed = $state('');
+  const checks = $derived([
+    { label: t.formWork.fieldsCheck, target: 'fields' },
+    { label: t.formWork.mailCheck, target: 'mail' },
+    { label: t.formWork.integrationCheck, target: 'keys' },
+  ]);
   const stamp = $derived(
     editor.draft ? `${editor.draft.id}:${editor.draft.revision}:${editor.draft.hash}` : '',
   );
@@ -104,95 +112,118 @@
   }
 </script>
 
-<h2 class="text-lg font-medium">{t.formWork.publish}</h2>
-<p class="max-w-prose text-sm">{t.admin.publish.intro}</p>
-
-<p class="text-muted-foreground max-w-prose text-sm">{t.formWork.versionHint}</p>
+<Panel title={t.formWork.publish} description={t.admin.publish.intro}>
+  <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)]">
+    {t.formWork.versionHint}
+  </p>
+</Panel>
 {#if editor.draft}
-  <section class="bg-muted/30 border-border rounded-lg border p-4">
-    <h3 class="mb-3 font-medium">{t.formWork.checks}</h3>
-    <ul class="space-y-2 text-sm">
-      <li>
-        <a class="underline" href={router.path.replace(/publish$/, 'fields')}
-          >{t.formWork.fieldsCheck}</a
-        >
-      </li>
-      <li>
-        <a class="underline" href={router.path.replace(/publish$/, 'mail')}
-          >{t.formWork.mailCheck}</a
-        >
-      </li>
-      <li>
-        <a class="underline" href={router.path.replace(/publish$/, 'keys')}
-          >{t.formWork.integrationCheck}</a
-        >
-      </li>
-    </ul>
-    <p class="text-muted-foreground mt-3 text-sm">{t.formWork.checkHint}</p>
-  </section>
-  <div class="flex max-w-md flex-col gap-3">
-    {#if canBump}<div class="flex flex-col gap-1">
-        <div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={editor.saving || busy}
-            onclick={() => void bump()}>{t.admin.publish.bump}</Button
-          >
-        </div>
-        <p class="text-muted-foreground text-xs">{t.admin.publish.bumpHint}</p>
+  <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <Panel title={t.formWork.checks} description={t.formWork.checkHint}>
+      <ul class="divide-border-subtle -my-1 divide-y">
+        {#each checks as check (check.target)}
+          <li>
+            <a
+              class="hover:bg-surface-sunken -mx-2 flex min-h-11 items-center gap-3 rounded-md px-2"
+              href={router.path.replace(/publish$/, check.target)}
+            >
+              <span
+                aria-hidden="true"
+                class="bg-info-soft text-info flex size-6 shrink-0 items-center justify-center rounded-full"
+                ><NavIcon name="info" size={13} /></span
+              >
+              <span class="min-w-0 flex-1 underline-offset-4">{check.label}</span>
+              <span aria-hidden="true" class="text-muted-foreground"
+                ><NavIcon name="chevron" size={14} /></span
+              >
+            </a>
+          </li>
+        {/each}
+      </ul>
+    </Panel>
+    <Panel title={t.formUi.publishAction}>
+      <div class="flex max-w-md flex-col gap-4">
+        {#if canBump}<div class="flex flex-col gap-1.5">
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={editor.saving || busy}
+                onclick={() => void bump()}>{t.admin.publish.bump}</Button
+              >
+            </div>
+            <p class="text-muted-foreground text-[length:var(--fs-small)]">
+              {t.admin.publish.bumpHint}
+            </p>
+          </div>
+        {/if}
+        <label class="flex min-h-11 items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            bind:checked={confirmed}
+            disabled={busy || conflict}
+            class="mt-0.5 size-6 shrink-0 accent-[var(--ui-accent)] disabled:opacity-50"
+          />
+          <span class="pt-0.5">{t.formWork.review}</span>
+        </label>
+        <Notice
+          message={message || (editor.error ? describeError(editor.error) : ok)}
+          kind={message || editor.error ? 'error' : 'ok'}
+        />
+        {#if conflict}
+          <Banner tone="danger">
+            {t.formWork.conflict}
+            {#snippet action()}
+              <Button
+                variant="outline"
+                onclick={async () => {
+                  await editor.load();
+                  conflict = false;
+                  confirmed = false;
+                  keyFor = '';
+                }}>{t.formWork.reload}</Button
+              >
+            {/snippet}
+          </Banner>
+        {/if}
+        {#if busy}<p role="status" aria-busy="true" class="text-muted-foreground text-sm">
+            {slow ? t.formWork.slow : t.formWork.publishing}
+          </p>{/if}
+        {#if needLogin}
+          <Banner tone="danger">
+            {t.admin.publish.reauth}
+            {#snippet action()}
+              <Button type="button" onclick={() => void reauthenticate(router.path)}
+                >{t.admin.publish.reauthButton}</Button
+              >
+            {/snippet}
+          </Banner>
+        {:else}
+          <div>
+            <Button
+              type="button"
+              disabled={!confirmed || busy || editor.saving || conflict}
+              aria-describedby={!confirmed && !busy && !conflict ? 'publish-reason' : undefined}
+              onclick={() => void publish()}>{t.admin.publish.action}</Button
+            >
+            {#if !confirmed && !busy && !conflict}<p
+                id="publish-reason"
+                class="text-muted-foreground mt-2 text-[length:var(--fs-small)]"
+              >
+                {t.formUi.publishDisabledReason}
+              </p>{/if}
+          </div>
+        {/if}
       </div>
-    {/if}
-    <label class="flex items-start gap-2 text-sm">
-      <input
-        type="checkbox"
-        bind:checked={confirmed}
-        disabled={busy || conflict}
-        class="mt-0.5 size-4"
-      />
-      {t.formWork.review}
-    </label>
-    <Notice
-      message={message || (editor.error ? describeError(editor.error) : ok)}
-      kind={message || editor.error ? 'error' : 'ok'}
-    />
-    {#if conflict}<p role="alert" class="text-sm">{t.formWork.conflict}</p>
-      <div>
-        <Button
-          variant="outline"
-          onclick={async () => {
-            await editor.load();
-            conflict = false;
-            confirmed = false;
-            keyFor = '';
-          }}>{t.formWork.reload}</Button
-        >
-      </div>{/if}
-    {#if busy}<p role="status" aria-busy="true">
-        {slow ? t.formWork.slow : t.formWork.publishing}
-      </p>{/if}
-    {#if needLogin}
-      <p role="alert" class="text-sm">{t.admin.publish.reauth}</p>
-      <div>
-        <Button type="button" onclick={() => void reauthenticate(router.path)}
-          >{t.admin.publish.reauthButton}</Button
-        >
-      </div>
-    {:else}
-      <div>
-        <Button
-          type="button"
-          disabled={!confirmed || busy || editor.saving || conflict}
-          onclick={() => void publish()}>{t.admin.publish.action}</Button
-        >
-      </div>
-    {/if}
+    </Panel>
   </div>
 {:else}
-  <p>{t.formWork.noDraft}</p>
-  {#if canBump}<div>
-      <Button disabled={editor.saving} onclick={() => void editor.createDraft()}
-        >{t.admin.form.createDraft}</Button
-      >
-    </div>{/if}
+  <Panel>
+    <p>{t.formWork.noDraft}</p>
+    {#if canBump}<div class="mt-3">
+        <Button disabled={editor.saving} onclick={() => void editor.createDraft()}
+          >{t.admin.form.createDraft}</Button
+        >
+      </div>{/if}
+  </Panel>
 {/if}

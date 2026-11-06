@@ -22,6 +22,17 @@
   } = $props();
   const ui = t.localExport;
   let busy = $state(false);
+  const blocked = $derived(disabled || busy || !allowed || !rows.length);
+  // The reason sits next to the disabled buttons, not only in the rights model.
+  const reason = $derived(
+    disabled || busy
+      ? ''
+      : !allowed
+        ? t.listUi.exportNotAllowed
+        : !rows.length
+          ? t.listUi.exportNeedsSelection
+          : '',
+  );
   let epoch = 0;
   onMount(() => {
     const off = keyring.onLock(() => epoch++);
@@ -66,16 +77,25 @@
   }
 </script>
 
-<div class="flex flex-wrap gap-3">
-  <p class="w-full text-sm">{ui.downloadHint}</p>
-  <Button
-    variant="outline"
-    disabled={disabled || busy || !allowed || !rows.length}
-    onclick={() => void download('csv')}>{ui.csv}</Button
-  >
-  <Button
-    variant="outline"
-    disabled={disabled || busy || !allowed || !rows.length}
-    onclick={() => void download('json')}>{ui.json}</Button
-  >
+<div class="flex flex-col gap-2" role="group" aria-label={t.listUi.exportTitle}>
+  <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-5">
+    {ui.downloadHint}
+  </p>
+  <div class="flex flex-wrap gap-2">
+    <Button
+      variant="outline"
+      disabled={blocked}
+      aria-describedby={reason ? 'export-reason' : undefined}
+      onclick={() => void download('csv')}>{ui.csv}</Button
+    >
+    <Button
+      variant="outline"
+      disabled={blocked}
+      aria-describedby={reason ? 'export-reason' : undefined}
+      onclick={() => void download('json')}>{ui.json}</Button
+    >
+  </div>
+  {#if reason}<p id="export-reason" class="text-muted-foreground text-[length:var(--fs-small)]">
+      {reason}
+    </p>{/if}
 </div>

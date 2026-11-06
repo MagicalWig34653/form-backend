@@ -5,6 +5,8 @@
   import { normalizeRecovery } from '$lib/crypto/keys';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import Row from '$lib/components/admin/Row.svelte';
   let confirmation = $state('');
   let wrong = $state(false);
   function confirm(): void {
@@ -18,19 +20,34 @@
 </script>
 
 {#if keyring.pendingCode}
-  <section role="group" aria-label={t.access.title} class="space-y-3 rounded-md border p-3">
-    <h2 class="font-medium">{t.access.title}</h2>
+  <section
+    role="group"
+    aria-label={t.access.title}
+    class="surface-card border-warn/40 space-y-3 p-5"
+  >
+    <h2 class="text-[length:var(--fs-h2)] font-semibold">{t.access.title}</h2>
     <p>{t.access.warning}</p>
-    <p class="font-mono break-all select-all" data-testid="recovery-code">{keyring.pendingCode}</p>
-    <label for="access-code-confirm">{t.access.confirmLabel}</label>
-    <Input id="access-code-confirm" type="password" bind:value={confirmation} autocomplete="off" />
+    <p
+      class="bg-surface-sunken rounded-md px-3 py-2 font-mono break-all select-all"
+      data-testid="recovery-code"
+    >
+      {keyring.pendingCode}
+    </p>
+    <Row id="access-code-confirm" label={t.access.confirmLabel}>
+      <Input
+        id="access-code-confirm"
+        type="password"
+        bind:value={confirmation}
+        autocomplete="off"
+      />
+    </Row>
     <Button type="button" onclick={confirm}>{t.access.confirm}</Button>
-    {#if wrong}<p role="alert">{t.access.wrong}</p>{/if}
+    {#if wrong}<p role="alert" class="text-danger text-sm">{t.access.wrong}</p>{/if}
   </section>
 {:else if !keyring.unlocked}
-  <p role="status" class="text-muted-foreground text-sm">{t.access.locked}</p>
+  <Banner tone="warn">{t.access.locked}</Banner>
 {/if}
 {#if accessAutomation.busy}
-  <p role="status" class="text-muted-foreground text-sm">{t.access.updating}</p>
+  <Banner tone="warn">{t.access.updating}</Banner>
 {/if}
-{#if accessAutomation.message}<p role="status" class="text-sm">{accessAutomation.message}</p>{/if}
+{#if accessAutomation.message}<Banner tone="info">{accessAutomation.message}</Banner>{/if}

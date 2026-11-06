@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## Setup-Menü (07.11.2026)
+
+- `deploy/{swarm,compose}/setup.sh` (interaktiv, Terminal, whiptail/dialog, noch keine Env-Datei): Hauptmenü statt Einzelfenster, Logik gemeinsam in `deploy/swarm/lib.sh` (`setup_menu`, `field_label`, `finalize_config`). Felder mit `field_ok`-Prüfung, RP-ID folgt dem Origin bis zur manuellen Änderung, DB-Passwort per passwordbox nur als Variable/Secret-Datei (nie Env-Datei, nie angezeigt). „Trockenlauf anzeigen“, „Jetzt installieren“ (blockiert bei ungültigem Feld, Platzhalter example.org/.com oder fehlendem Passwort, dann Bestätigung), Abbrechen ohne Änderung. „Verbindung prüfen“ bewusst weggelassen (Swarm-Check legt Dienste an, Seiteneffekte). Zeilenabfrage unverändert (kein Terminal, kein Dialogprogramm, `FORM_PLAIN_PROMPT=1`, `--non-interactive`, `--dry-run`).
+- Fund: `dialog_tool` prüfte `-t 1` innerhalb von `$(...)`, dort nie ein Terminal; der bisherige Dialogpfad von `ask` war damit tot. Terminalprüfung jetzt einmal beim Laden von lib.sh.
+- Tests: `scripts/check-deploy.py` mit Pseudo-Terminal und whiptail-Double (Abbruch, Blockade, abgelehnte Eingabe, Trockenlauf, voller Swarm-Lauf mit Doubles inkl. Passwort nur in Secret-Datei, Compose-Trockenlauf). Echtes whiptail wurde nicht interaktiv bedient.
+
 ## settings.sh für Compose/Swarm (06.11.2026, lokal committet, nicht gepusht)
 
 - Gebaut: `deploy/swarm/settings.sh` (gemeinsame Logik, Menü per whiptail oder CLI `--list/--get/--set/--unset/--check/--env`), dünner Wrapper `deploy/compose/settings.sh` (`SETTINGS_MODE=compose`). Bash 4.4+ nötig (macOS 3.2 bricht mit Meldung ab), whiptail optional. Speichern atomar, 0600, Sicherung `<Datei>.bak.JJJJMMTT-HHMMSS`; Geheimnisse (DB-Passwort, Server-Key, Bootstrap-Passwort) nie angezeigt oder geschrieben; Rollout nur über „Jetzt anwenden“ (ruft `update.sh`). `--check` ruft zusätzlich die Validierung aus `lib.sh` (dieselbe wie `update.sh`).

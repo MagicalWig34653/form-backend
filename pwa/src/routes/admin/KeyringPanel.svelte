@@ -10,6 +10,7 @@
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
 
@@ -193,7 +194,7 @@
       {#each candidates.filter((c) => !c.hasAccess) as c (c.accountId)}
         <li class="flex flex-col gap-1 text-sm">
           <label class="flex items-start gap-2">
-            <input type="checkbox" bind:checked={verified[c.accountId]} />
+            <Checkbox bind:checked={verified[c.accountId]} />
             <span
               >{k.fingerprintConfirm
                 .replace('{name}', c.username)

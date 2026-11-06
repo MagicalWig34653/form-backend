@@ -7,13 +7,8 @@
   import { Button } from '$lib/components/ui/button';
   import { Label } from '$lib/components/ui/label';
   import { Input } from '$lib/components/ui/input';
-  import {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent,
-  } from '$lib/components/ui/card';
+  import AuthShell from '$lib/components/auth/AuthShell.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   interface Props {
     api?: AuthApi;
@@ -71,43 +66,52 @@
   }
 </script>
 
-<div class="mb-6 text-center">
-  <p class="text-ui-accent-ink mb-3 text-xs font-semibold tracking-widest uppercase">
-    {t.shell.secure}
-  </p>
-  <p class="text-muted-foreground text-sm">{t.shell.setupIntro}</p>
-</div>
-<Card class="mx-auto w-full max-w-md p-8">
-  <CardHeader>
-    <CardTitle id="page-title" tabindex={-1}>{t.setup.title}</CardTitle>
-    <CardDescription>{t.setup.description}</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <div aria-live="polite" class="min-h-6">
-      {#if message}<p role="alert" class="text-destructive text-sm">{message}</p>{/if}
-    </div>
-    {#if done}
-      <p>{t.setup.done}</p>
-      {#if secondFactorRequired}<p>{t.setup.passwordRequired}</p>{/if}
-      <Button type="button" onclick={() => router.navigate('/login')}>{t.setup.toLogin}</Button>
-    {:else if !token}
-      <p role="alert" class="text-destructive text-sm">{t.setup.missingToken}</p>
-    {:else}
-      <form class="flex flex-col gap-5" onsubmit={(e) => void start(e)}>
-        <div class="flex flex-col gap-1.5">
-          <Label for="label">{t.setup.label}</Label>
-          <Input
-            id="label"
-            name="label"
-            maxlength={120}
-            required
-            bind:value={label}
-            aria-describedby="label-hint"
-          />
-          <p id="label-hint" class="text-muted-foreground text-sm">{t.setup.labelHint}</p>
-        </div>
-        <Button type="submit" disabled={busy}>{t.setup.start}</Button>
-      </form>
+<AuthShell title={t.setup.title} description={t.setup.description} intro={t.shell.setupIntro}>
+  <div class="min-h-6">
+    {#if message}
+      <p
+        role="alert"
+        class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+      >
+        <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+          ><NavIcon name="danger" size={16} /></span
+        >{message}
+      </p>
     {/if}
-  </CardContent>
-</Card>
+  </div>
+  {#if done}
+    <p class="text-ok flex items-center gap-2 font-medium">
+      <NavIcon name="check" size={18} />{t.setup.done}
+    </p>
+    {#if secondFactorRequired}<p class="text-sm">{t.setup.passwordRequired}</p>{/if}
+    <Button type="button" class="w-full" onclick={() => router.navigate('/login')}
+      >{t.setup.toLogin}</Button
+    >
+  {:else if !token}
+    <p
+      role="alert"
+      class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+    >
+      <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+        ><NavIcon name="danger" size={16} /></span
+      >{t.setup.missingToken}
+    </p>
+  {:else}
+    <form class="flex flex-col gap-5" onsubmit={(e) => void start(e)}>
+      <div class="flex flex-col gap-1.5">
+        <Label for="label">{t.setup.label}</Label>
+        <Input
+          id="label"
+          name="label"
+          maxlength={120}
+          required
+          bind:value={label}
+          aria-describedby="label-hint"
+        />
+        <p id="label-hint" class="text-muted-foreground text-sm">{t.setup.labelHint}</p>
+      </div>
+      <Button type="submit" class="w-full" disabled={busy}>{t.setup.start}</Button>
+    </form>
+    <p class="text-muted-foreground text-xs leading-[18px]">{t.auth.passkeyNote}</p>
+  {/if}
+</AuthShell>

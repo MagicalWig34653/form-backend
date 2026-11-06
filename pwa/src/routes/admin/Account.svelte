@@ -15,6 +15,10 @@
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
 
   const a = t.admin.account;
   const c = t.accountsPackage;
@@ -137,151 +141,185 @@
   onMount(() => void load());
 </script>
 
-<section class="flex flex-col gap-4">
-  <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold">{a.title}</h1>
-  <h2 class="text-lg font-medium">{t.access.security}</h2>
-  <AccessStatus />
-  <RecoveryStep security />
-  <details>
-    <summary>{t.access.advanced}</summary>
-    {#each session.tenants as tenant (tenant.id)}
-      <h3>{tenant.name}</h3>
-      <KeyringPanel
-        tenant={tenant.id}
-        keyId={customerKids[tenant.id] ?? null}
-        onchange={() => void load()}
-      />
-      <RotationPanel tenant={tenant.id} onchange={() => {}} />
-    {/each}
-  </details>
-  <h2 class="text-lg font-medium">{c.totp}</h2>
-  <p class="max-w-prose text-sm">{c.totpHint}</p>
-  <p>{totpEnabled ? c.enabled : c.disabled}</p>
-  {#if !totpEnabled}
-    <Button type="button" variant="outline" disabled={busy} onclick={() => void changeTotp('POST')}
-      >{c.setup}</Button
-    >
-    {#if totpSecret}
-      <p class="max-w-prose text-sm">{c.setupHint}</p>
-      <p class="font-mono select-all">{totpSecret}</p>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void changeTotp('PUT');
-        }}
-        class="flex max-w-xl flex-col gap-3"
-      >
-        <Row id="totp-code" label={c.code}
-          ><Input
-            id="totp-code"
-            bind:value={totpCode}
-            inputmode="numeric"
-            pattern={'[0-9]{6}'}
-            maxlength={6}
-            autocomplete="one-time-code"
-            required
-          /></Row
-        >
-        <Button type="submit" disabled={busy}>{c.confirm}</Button>
-      </form>
-    {/if}
-  {:else}
-    <form
-      onsubmit={(e) => {
-        e.preventDefault();
-        void changeTotp('DELETE');
-      }}
-      class="flex max-w-xl flex-col gap-3"
-    >
-      <Row id="totp-password" label={c.password}
-        ><Input
-          id="totp-password"
-          type="password"
-          bind:value={totpPassword}
-          autocomplete="current-password"
-          required
-        /></Row
-      >
-      <Button type="submit" variant="outline" disabled={busy}>{c.remove}</Button>
-    </form>
-  {/if}
-  <h2 class="text-lg font-medium">{a.passkeys}</h2>
-  {#if !loaded}
-    <p>{t.admin.loading}</p>
-  {:else if keys.length === 0}
-    <p>{a.noPasskeys}</p>
-  {:else}
-    <ul class="flex max-w-xl flex-col gap-2">
-      {#each keys as k (k.credentialId)}
-        <li class="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
-          <span>{k.label}{k.unlocksKeys ? ` · ${a.unlocksKeys}` : ''}</span>
+<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+  <PageHeader title={a.title} />
+  <Panel title={t.access.security}>
+    <div class="flex flex-col gap-4">
+      <AccessStatus />
+      <RecoveryStep security />
+      <details class="bg-surface-sunken rounded-md px-4 py-3">
+        <summary class="min-h-6 cursor-pointer text-sm font-medium">{t.access.advanced}</summary>
+        <div class="mt-3 flex flex-col gap-4">
+          {#each session.tenants as tenant (tenant.id)}
+            <h3 class="font-medium">{tenant.name}</h3>
+            <KeyringPanel
+              tenant={tenant.id}
+              keyId={customerKids[tenant.id] ?? null}
+              onchange={() => void load()}
+            />
+            <RotationPanel tenant={tenant.id} onchange={() => {}} />
+          {/each}
+        </div>
+      </details>
+    </div>
+  </Panel>
+  <Panel title={c.totp} id="totp">
+    <div class="flex flex-col gap-4">
+      <p class="text-muted-foreground max-w-prose text-sm">{c.totpHint}</p>
+      <p>
+        <StatusChip
+          tone={totpEnabled ? 'ok' : 'idle'}
+          label={totpEnabled ? c.enabled : c.disabled}
+        />
+      </p>
+      {#if !totpEnabled}
+        <div>
           <Button
             type="button"
             variant="outline"
-            disabled={busy || keys.length < 2}
-            onclick={() => void remove(k)}>{a.remove}</Button
+            disabled={busy}
+            onclick={() => void changeTotp('POST')}>{c.setup}</Button
           >
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
-  <Button
-    type="button"
-    variant="outline"
-    onclick={() => {
-      showPassword = !showPassword;
-    }}>{a.setPassword}</Button
-  >
-  {#if showPassword}
-    <form onsubmit={(e) => void savePassword(e)} class="flex max-w-xl flex-col gap-3">
-      <Row id="own-password" label={a.password}>
-        <Input
-          id="own-password"
-          type="password"
-          bind:value={ownPassword}
-          required
-          minlength={12}
-          maxlength={256}
-          autocomplete="new-password"
-        />
-      </Row>
-      <Button type="submit" disabled={busy}>{a.savePassword}</Button>
-    </form>
-  {/if}
-
+        </div>
+        {#if totpSecret}
+          <p class="max-w-prose text-sm">{c.setupHint}</p>
+          <p class="bg-surface-sunken rounded-md px-3 py-2 font-mono break-all select-all">
+            {totpSecret}
+          </p>
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              void changeTotp('PUT');
+            }}
+            class="flex max-w-xl flex-col gap-3"
+          >
+            <Row id="totp-code" label={c.code}
+              ><Input
+                id="totp-code"
+                bind:value={totpCode}
+                inputmode="numeric"
+                pattern={'[0-9]{6}'}
+                maxlength={6}
+                autocomplete="one-time-code"
+                required
+              /></Row
+            >
+            <div><Button type="submit" disabled={busy}>{c.confirm}</Button></div>
+          </form>
+        {/if}
+      {:else}
+        <form
+          onsubmit={(e) => {
+            e.preventDefault();
+            void changeTotp('DELETE');
+          }}
+          class="flex max-w-xl flex-col gap-3"
+        >
+          <Row id="totp-password" label={c.password}
+            ><Input
+              id="totp-password"
+              type="password"
+              bind:value={totpPassword}
+              autocomplete="current-password"
+              required
+            /></Row
+          >
+          <div><Button type="submit" variant="outline" disabled={busy}>{c.remove}</Button></div>
+        </form>
+      {/if}
+    </div>
+  </Panel>
+  <Panel title={a.passkeys}>
+    {#if !loaded}
+      <div aria-busy="true" class="flex flex-col gap-2">
+        <span class="sr-only" role="status">{t.admin.loading}</span>
+        <Skeleton class="h-12" /><Skeleton class="h-12" />
+      </div>
+    {:else if keys.length === 0}
+      <p class="text-muted-foreground text-sm">{a.noPasskeys}</p>
+    {:else}
+      <ul class="flex flex-col gap-2">
+        {#each keys as k (k.credentialId)}
+          <li
+            class="border-border-subtle bg-surface-sunken flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
+          >
+            <span class="min-w-0 break-words"
+              >{k.label}{k.unlocksKeys ? ` · ${a.unlocksKeys}` : ''}</span
+            >
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || keys.length < 2}
+              onclick={() => void remove(k)}>{a.remove}</Button
+            >
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </Panel>
+  <Panel title={a.setPassword}>
+    <div class="flex flex-col gap-4">
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={showPassword}
+          onclick={() => {
+            showPassword = !showPassword;
+          }}>{a.setPassword}</Button
+        >
+      </div>
+      {#if showPassword}
+        <form onsubmit={(e) => void savePassword(e)} class="flex max-w-xl flex-col gap-3">
+          <Row id="own-password" label={a.password}>
+            <Input
+              id="own-password"
+              type="password"
+              bind:value={ownPassword}
+              required
+              minlength={12}
+              maxlength={256}
+              autocomplete="new-password"
+            />
+          </Row>
+          <div><Button type="submit" disabled={busy}>{a.savePassword}</Button></div>
+        </form>
+      {/if}
+    </div>
+  </Panel>
   {#if session.me?.systemAdministrator}
-    <h2 class="text-lg font-medium">{a.create}</h2>
-    <form onsubmit={(e) => void create(e)} class="flex max-w-xl flex-col gap-3">
-      <Row id="new-username" label={a.username}>
-        <Input
-          id="new-username"
-          bind:value={username}
-          required
-          autocomplete="off"
-          spellcheck={false}
-        />
-      </Row>
-      {#if secondFactorRequired}
-        <Row id="new-password" label={a.password}>
+    <Panel title={a.create}>
+      <form onsubmit={(e) => void create(e)} class="flex max-w-xl flex-col gap-3">
+        <Row id="new-username" label={a.username}>
           <Input
-            id="new-password"
-            type="password"
-            bind:value={password}
+            id="new-username"
+            bind:value={username}
             required
-            minlength={12}
-            autocomplete="new-password"
+            autocomplete="off"
+            spellcheck={false}
           />
         </Row>
+        {#if secondFactorRequired}
+          <Row id="new-password" label={a.password}>
+            <Input
+              id="new-password"
+              type="password"
+              bind:value={password}
+              required
+              minlength={12}
+              autocomplete="new-password"
+            />
+          </Row>
+        {/if}
+        <div><Button type="submit" disabled={busy}>{a.createBtn}</Button></div>
+      </form>
+      {#if link}
+        <div role="group" class="bg-surface-sunken mt-4 max-w-prose rounded-md p-3">
+          <p class="text-sm font-medium">{a.link}</p>
+          <p class="my-2 font-mono text-sm break-all select-all" data-testid="setup-link">{link}</p>
+        </div>
       {/if}
-      <div><Button type="submit" disabled={busy}>{a.createBtn}</Button></div>
-    </form>
-    {#if link}
-      <div role="group" class="max-w-prose rounded-md border p-3">
-        <p class="text-sm font-medium">{a.link}</p>
-        <p class="my-2 font-mono text-sm break-all select-all" data-testid="setup-link">{link}</p>
-      </div>
-    {/if}
+    </Panel>
   {/if}
   <Notice message={message || ok} kind={message ? 'error' : 'ok'} />
-</section>
+</div>

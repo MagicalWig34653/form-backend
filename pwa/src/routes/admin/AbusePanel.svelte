@@ -5,6 +5,12 @@
   import { formOf } from '$lib/draft/doc';
   import type { JsonObject } from '$lib/api/admin';
   import type { Editor } from '$lib/draft/editor.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Row from '$lib/components/admin/Row.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import { Button } from '$lib/components/ui/button';
+  import { Input } from '$lib/components/ui/input';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   let {
     editor,
     tenant,
@@ -69,28 +75,35 @@
   }
 </script>
 
-<section class="rounded-lg border p-4">
-  <h2>{text.title}</h2>
-  <p>{text.help}</p>
-  {#if testMode}<p role="status">{text.testWarning}</p>{/if}
+<Panel title={text.title} description={text.help}>
+  {#if testMode}<div class="mb-4"><Banner tone="warn">{text.testWarning}</Banner></div>{/if}
   <form
     onsubmit={save}
     oninput={() => (changed = true)}
     onchange={() => (changed = true)}
-    class="flex flex-col gap-3"
+    class="flex max-w-xl flex-col gap-4"
   >
-    <label>{text.siteKey}<input bind:value={siteKey} maxlength="100" /></label>
-    <label
-      >{text.secret}<input
+    <Row id="abuse-site-key" label={text.siteKey}>
+      <Input id="abuse-site-key" bind:value={siteKey} maxlength={100} />
+    </Row>
+    <Row id="abuse-secret" label={text.secret}>
+      <Input
+        id="abuse-secret"
         type="password"
         bind:value={secret}
-        maxlength="200"
+        maxlength={200}
         autocomplete="new-password"
-      /></label
+      />
+    </Row>
+    <label class="flex min-h-8 items-center gap-2 text-sm"
+      ><Checkbox bind:checked={closed} />{text.closed}</label
     >
-    <label><input type="checkbox" bind:checked={closed} />{text.closed}</label>
-    <label><input type="checkbox" bind:checked={testMode} />{text.test}</label>
-    <button disabled={!editor.draft || busy || editor.saving}>{text.save}</button>
+    <label class="flex min-h-8 items-center gap-2 text-sm"
+      ><Checkbox bind:checked={testMode} />{text.test}</label
+    >
+    <div>
+      <Button type="submit" disabled={!editor.draft || busy || editor.saving}>{text.save}</Button>
+    </div>
   </form>
-  {#if notice}<p role="status">{notice}</p>{/if}
-</section>
+  {#if notice}<p role="status" class="mt-3 text-sm">{notice}</p>{/if}
+</Panel>

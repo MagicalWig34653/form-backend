@@ -1,13 +1,12 @@
 <script lang="ts">
   import AccessStatus from './AccessStatus.svelte';
   import { accessAutomation } from '$lib/crypto/automation.svelte';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi, http } from '$lib/api';
   import { session } from '$lib/session.svelte';
   import { Table } from '$lib/components/ui/table';
   import { Select } from '$lib/components/ui/select';
-  import { Badge } from '$lib/components/ui/badge';
   import type { FormListItem } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
   import { formPath } from '$lib/routes';
@@ -17,6 +16,15 @@
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
+  import { keyring } from '$lib/crypto/keyring.svelte';
+  import { OverviewLoader } from '$lib/stats/loader.svelte';
+  import { dailySeries, total } from '$lib/stats/series';
+  import TenantOverview from './overview/TenantOverview.svelte';
+  import KpiTile from './overview/KpiTile.svelte';
+  import Sparkline from './overview/Sparkline.svelte';
 
   let { tenant }: { tenant: string } = $props();
 
@@ -45,6 +53,19 @@
               : !f.active)),
     ),
   );
+  const loader = new OverviewLoader(adminApi, handleSessionError);
+  // (Re)load the per-form figures whenever the list of forms changes; metadata only, nothing is decrypted.
+  $effect(() => {
+    const list = items;
+    if (list && list.length > 0)
+      untrack(() => {
+        void loader.load(tenant, list);
+      });
+  });
+  const rowSeries = (id: string): (number | null)[] | null => {
+    const snap = loader.snapshots.get(id);
+    return snap?.stats ? dailySeries(snap.stats, 'submits') : null;
+  };
   let name = $state('');
   let busy = $state(false);
   let message = $state('');
@@ -108,6 +129,7 @@
 
   onMount(() => void load());
   onDestroy(() => {
+    loader.cancel();
     controller?.abort();
     clearTimeout(timer);
   });
@@ -115,19 +137,37 @@
 
 <section class="flex min-w-0 flex-col gap-4">
   <AccessStatus />
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold">{t.admin.forms.title}</h1>
-      <p class="text-muted-foreground text-sm">
-        {session.tenants.find((c) => c.id === tenant)?.name} · {t.lists.formsIntro}
-      </p>
+  <PageHeader
+    hero
+    title={t.admin.forms.title}
+    description={`${session.tenants.find((c) => c.id === tenant)?.name ?? ''} · ${t.lists.formsIntro}`}
+  >
+    {#snippet actions()}
+      {#if canCreate}<Button
+          onclick={() => {
+            showCreate = true;
+          }}>{t.lists.createForm}</Button
+        >{/if}
+    {/snippet}
+  </PageHeader>
+  {#if items === null && loading}
+    <div class="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-busy="true">
+      {#each [0, 1, 2, 3] as n (n)}<KpiTile
+          label={t.overview.kpiSubmits}
+          status="loading"
+          index={n}
+        />{/each}
     </div>
-    {#if canCreate}<Button
-        onclick={() => {
-          showCreate = true;
-        }}>{t.lists.createForm}</Button
-      >{/if}
-  </div>
+  {:else if items !== null && items.length > 0}
+    <TenantOverview
+      {tenant}
+      forms={items}
+      {loader}
+      locked={!keyring.unlocked}
+      moreForms={nextCursor !== null}
+      onreload={() => void loader.load(tenant, items ?? [])}
+    />
+  {/if}
   <div class="grid gap-3 sm:grid-cols-2">
     <Row id="forms-search" label={t.lists.searchForms}
       ><Input id="forms-search" type="search" bind:value={query} /></Row
@@ -169,7 +209,7 @@
         ><caption class="sr-only">{t.admin.forms.title}</caption>
         <thead
           ><tr
-            >{#each [t.lists.name, t.lists.publication, t.lists.draft, t.lists.tasks] as heading (heading)}<th
+            >{#each [t.lists.name, t.lists.publication, t.overview.activity, t.lists.tasks] as heading (heading)}<th
                 scope="col">{heading}</th
               >{/each}</tr
           ></thead
@@ -186,12 +226,28 @@
                   }}>{f.name}</a
                 >
                 <div class="mt-1">
-                  <Badge>{f.active ? t.lists.active : t.lists.inactive}</Badge>
+                  <StatusChip
+                    tone={!f.currentReleaseId ? 'info' : f.active ? 'ok' : 'idle'}
+                    label={f.active ? t.lists.active : t.lists.inactive}
+                  />
                 </div></th
               >
-              <td>{f.currentReleaseId ? t.lists.published : t.lists.unpublished}</td><td
-                >{t.lists.unknown}</td
-              >
+              <td>{f.currentReleaseId ? t.lists.published : t.lists.unpublished}</td><td>
+                {#if loader.snapshots.get(f.id)?.statsStatus === 'loading' || !loader.snapshots.has(f.id)}
+                  <Skeleton class="h-6 w-24" />
+                {:else if rowSeries(f.id)}
+                  {@const series = rowSeries(f.id) ?? []}
+                  <div class="flex items-center gap-2">
+                    <Sparkline
+                      class="max-h-8 w-24"
+                      values={series}
+                      label={t.overview.sparkLabel
+                        .replace('{metric}', t.overview.kpiSubmits)
+                        .replace('{values}', series.map((v) => (v === null ? '–' : v)).join(', '))}
+                    /><span class="text-sm tabular-nums">{total(series) ?? '–'}</span>
+                  </div>
+                {:else}<span class="text-muted-foreground">{t.overview.activityNone}</span>{/if}
+              </td>
               <td
                 ><a
                   class="underline underline-offset-4"

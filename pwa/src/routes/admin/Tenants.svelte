@@ -1,8 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { Tenant } from '$lib/api/admin';
-  import { Table } from '$lib/components/ui/table';
-  import { Select } from '$lib/components/ui/select';
+  import DataTable, { type Column } from '$lib/components/admin/DataTable.svelte';
+  import FilterBar from '$lib/components/admin/FilterBar.svelte';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import EmptyState from '$lib/components/admin/EmptyState.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import AccessStatus from './AccessStatus.svelte';
   import { accessAutomation } from '$lib/crypto/automation.svelte';
   import { t } from '$lib/i18n';
@@ -36,6 +42,21 @@
       c.name.toLocaleLowerCase('de').includes(query.trim().toLocaleLowerCase('de')),
     ),
   );
+  // Real data only: the rights column exists when the API reports customer-wide rights.
+  const hasRights = $derived((items ?? []).some((c) => c.permissions.length > 0));
+  const columns = $derived<Column[]>([
+    { id: 'name', header: t.lists.name },
+    ...(hasRights ? [{ id: 'rights', header: t.listUi.rights, hideBelow: 'sm' as const }] : []),
+    { id: 'action', header: t.lists.action, align: 'right' as const, srOnlyHeader: true },
+  ]);
+  function rights(permissions: string[]): string[] {
+    const list: string[] = [t.listUi.rightsRead];
+    if (permissions.includes('draft.write')) list.push(t.listUi.rightsEdit);
+    if (permissions.includes('release.publish')) list.push(t.listUi.rightsPublish);
+    if (permissions.includes('key.manage')) list.push(t.listUi.rightsKeys);
+    if (permissions.includes('form.create')) list.push(t.listUi.rightsCreate);
+    return list;
+  }
   async function load(): Promise<void> {
     controller?.abort();
     clearTimeout(timer);
@@ -94,105 +115,129 @@
   }
 </script>
 
-<section class="flex min-w-0 flex-col gap-4">
+<section class="flex min-w-0 flex-col gap-5">
   <AccessStatus />
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold">{t.admin.tenants.title}</h1>
-      <p class="text-muted-foreground text-sm">{t.lists.intro}</p>
+  <PageHeader hero title={t.admin.tenants.title} description={t.lists.intro}>
+    {#snippet actions()}
+      {#if session.me?.systemAdministrator}<Button
+          onclick={() => {
+            showCreate = true;
+          }}>{t.lists.createCustomer}</Button
+        >{/if}
+    {/snippet}
+  </PageHeader>
+  <FilterBar collapsible={false} activeCount={query.trim() ? 1 : 0} onreset={() => (query = '')}>
+    <div class="min-w-48 flex-1">
+      <Row id="customer-search" label={t.lists.searchCustomers}
+        ><Input id="customer-search" type="search" bind:value={query} /></Row
+      >
     </div>
-    {#if session.me?.systemAdministrator}<Button
-        onclick={() => {
-          showCreate = true;
-        }}>{t.lists.createCustomer}</Button
-      >{/if}
-  </div>
-  <div class="grid gap-3 sm:grid-cols-2">
-    <Row id="customer-search" label={t.lists.searchCustomers}
-      ><Input id="customer-search" type="search" bind:value={query} /></Row
-    >
-    <Row id="customer-scope" label={t.lists.status}
-      ><Select id="customer-scope"><option>{t.lists.all}</option></Select></Row
-    >
-  </div>
-  <div role="status" class="text-muted-foreground text-sm">
+    {#snippet trailing()}
+      {#if items !== null}<span
+          class="text-muted-foreground flex min-h-10 items-center text-[length:var(--fs-small)] tabular-nums"
+          >{items.length === 1
+            ? t.listUi.customerCountOne
+            : t.listUi.customerCount.replace('{n}', String(items.length))}</span
+        >{/if}
+    {/snippet}
+  </FilterBar>
+  <div role="status" class="text-muted-foreground text-[length:var(--fs-small)] empty:hidden">
     {loading ? (slow ? t.lists.slow : t.admin.loading) : ''}
   </div>
-  {#if loadError}<p role="alert">{loadError}</p>
-    <div><Button variant="outline" onclick={() => void load()}>{t.lists.retry}</Button></div>{/if}
-  <div aria-busy={loading} class="bg-card border-border min-h-48 rounded-xl border">
-    {#if loading && items === null}<div class="flex flex-col gap-4 p-4" aria-hidden="true">
-        {#each [1, 2, 3] as n (n)}<div class="bg-muted h-10 rounded"></div>{/each}
-      </div>
-    {:else if items !== null && items.length === 0}<p class="p-6">
-        {session.me?.systemAdministrator ? t.lists.noCustomers : t.lists.noAccess}
-      </p>
-    {:else if items !== null && visible.length === 0}<div class="p-6">
-        <p>{t.lists.noCustomerMatches}</p>
-        <Button
-          variant="outline"
-          onclick={() => {
-            query = '';
-          }}>{t.lists.reset}</Button
-        >
-      </div>
-    {:else if items !== null}<Table
-        ><caption class="sr-only">{t.admin.tenants.title}</caption><thead
-          ><tr
-            >{#each [t.lists.name, t.lists.forms, t.lists.setup, t.lists.action] as heading (heading)}<th
-                scope="col">{heading}</th
-              >{/each}</tr
-          ></thead
-        >
-        <tbody
-          >{#each visible as c (c.id)}<tr
-              ><th scope="row" class="font-medium">{c.name}</th><td>{t.lists.unknown}</td><td
-                >{pending?.id === c.id
-                  ? busy
-                    ? t.lists.preparing
-                    : incomplete
-                      ? t.lists.incomplete
-                      : t.lists.unknown
-                  : t.lists.unknown}</td
-              ><td
-                ><a
-                  class="underline underline-offset-4"
-                  aria-label={`${t.lists.open}: ${c.name}`}
-                  href={tenantPath(c.id)}
-                  onclick={(e) => {
-                    e.preventDefault();
-                    router.navigate(tenantPath(c.id));
-                  }}>{t.lists.open}</a
-                ></td
-              ></tr
-            >{/each}</tbody
-        >
-      </Table>{/if}
-  </div>
-  <p class="text-muted-foreground text-sm">{t.lists.countHint}</p>
+  {#if loadError}
+    <Banner tone="danger">
+      {loadError}
+      {#snippet action()}
+        <Button variant="outline" onclick={() => void load()}>{t.lists.retry}</Button>
+      {/snippet}
+    </Banner>
+  {/if}
+  <Panel flush>
+    <div aria-busy={loading} class="min-h-48">
+      {#if loading && items === null}
+        <div class="flex flex-col gap-3 p-4" aria-hidden="true">
+          {#each [1, 2, 3] as n (n)}<Skeleton class="h-11 rounded-md" />{/each}
+        </div>
+      {:else if items !== null && items.length === 0}
+        <EmptyState
+          icon="customers"
+          title={session.me?.systemAdministrator ? t.lists.noCustomers : t.lists.noAccess}
+        />
+      {:else if items !== null && visible.length === 0}
+        <EmptyState icon="search" title={t.lists.noCustomerMatches}>
+          {#snippet action()}
+            <Button
+              variant="outline"
+              onclick={() => {
+                query = '';
+              }}>{t.lists.reset}</Button
+            >
+          {/snippet}
+        </EmptyState>
+      {:else if items !== null}
+        <DataTable label={t.admin.tenants.title} {columns} rows={visible} rowKey={(c) => c.id}>
+          {#snippet cell(c, column)}
+            {#if column.id === 'name'}
+              <span class="flex min-w-0 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  class="bg-ui-accent-soft text-ui-accent-ink flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                  >{c.name.trim().slice(0, 1).toLocaleUpperCase('de')}</span
+                >
+                <span class="min-w-0 break-words">{c.name}</span>
+                {#if pending?.id === c.id && (busy || incomplete)}
+                  <StatusChip
+                    tone={busy ? 'info' : 'warn'}
+                    pulse={busy}
+                    label={busy ? t.lists.preparing : t.lists.incomplete}
+                  />
+                {/if}
+              </span>
+            {:else if column.id === 'rights'}
+              <span class="flex flex-wrap gap-1.5">
+                {#each rights(c.permissions) as right (right)}<StatusChip
+                    tone="idle"
+                    label={right}
+                  />{/each}
+              </span>
+            {:else}
+              <a
+                class="border-border hover:bg-secondary inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium"
+                aria-label={`${t.lists.open}: ${c.name}`}
+                href={tenantPath(c.id)}
+                onclick={(e) => {
+                  e.preventDefault();
+                  router.navigate(tenantPath(c.id));
+                }}>{t.lists.open}</a
+              >
+            {/if}
+          {/snippet}
+        </DataTable>
+      {/if}
+    </div>
+  </Panel>
   {#if session.me?.systemAdministrator && showCreate}
-    <form
-      onsubmit={(e) => void create(e)}
-      class="bg-card border-border flex max-w-xl flex-col gap-3 rounded-xl border p-5"
-      aria-busy={busy}
-    >
-      <h2 class="text-lg font-medium">{t.lists.createCustomer}</h2>
-      <Row id="tenant-name" label={t.admin.tenants.name} hint={t.admin.tenants.freshHint}
-        ><Input
-          id="tenant-name"
-          bind:value={name}
-          disabled={!!pending}
-          required
-          maxlength={190}
-          autocomplete="off"
-        /></Row
-      >
-      <Notice {message} />
-      <div>
-        <Button type="submit" disabled={busy}
-          >{pending ? t.lists.resume : t.lists.createCustomer}</Button
-        >
-      </div>
+    <form onsubmit={(e) => void create(e)} aria-busy={busy}>
+      <Panel title={t.lists.createCustomer} class="max-w-xl">
+        <div class="mt-2 flex flex-col gap-3">
+          <Row id="tenant-name" label={t.admin.tenants.name} hint={t.admin.tenants.freshHint}
+            ><Input
+              id="tenant-name"
+              bind:value={name}
+              disabled={!!pending}
+              required
+              maxlength={190}
+              autocomplete="off"
+            /></Row
+          >
+          <Notice {message} />
+          <div>
+            <Button type="submit" disabled={busy}
+              >{pending ? t.lists.resume : t.lists.createCustomer}</Button
+            >
+          </div>
+        </div>
+      </Panel>
     </form>
   {/if}
 </section>

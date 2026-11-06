@@ -11,6 +11,10 @@
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import DraftGate from './DraftGate.svelte';
   import StatisticsChart from './StatisticsChart.svelte';
   import AdsStatisticsPanel from './AdsStatisticsPanel.svelte';
@@ -65,36 +69,47 @@
   }
 </script>
 
-<section aria-label={t.lists.readStatus} class="bg-card border-border rounded-xl border p-5">
+<section aria-label={t.lists.readStatus} class="surface-card px-5 py-4">
   <dl class="grid gap-4 sm:grid-cols-3">
     <div>
-      <dt class="text-muted-foreground text-sm">{t.lists.publication}</dt>
-      <dd class="mt-1 font-medium">
-        {editor.detail?.currentReleaseVersion != null
-          ? t.lists.version.replace('{n}', String(editor.detail.currentReleaseVersion))
-          : t.lists.unpublished}
+      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.publication}</dt>
+      <dd class="mt-1.5">
+        <StatusChip
+          tone={editor.detail?.currentReleaseVersion != null ? 'ok' : 'idle'}
+          label={editor.detail?.currentReleaseVersion != null
+            ? t.lists.version.replace('{n}', String(editor.detail.currentReleaseVersion))
+            : t.lists.unpublished}
+        />
       </dd>
     </div>
     <div>
-      <dt class="text-muted-foreground text-sm">{t.lists.status}</dt>
-      <dd class="mt-1 font-medium">{editor.detail?.active ? t.lists.active : t.lists.inactive}</dd>
+      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.status}</dt>
+      <dd class="mt-1.5">
+        <StatusChip
+          tone={editor.detail?.active ? 'ok' : 'idle'}
+          label={editor.detail?.active ? t.lists.active : t.lists.inactive}
+        />
+      </dd>
     </div>
     <div>
-      <dt class="text-muted-foreground text-sm">{t.lists.draft}</dt>
-      <dd class="mt-1 font-medium">
-        {editor.draft
-          ? t.lists.draftState.replace('{n}', String(editor.draft.revision))
-          : editor.error
-            ? t.lists.unknown
-            : t.admin.form.noDraft}
+      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.draft}</dt>
+      <dd class="mt-1.5">
+        <StatusChip
+          tone={editor.draft ? 'info' : 'idle'}
+          label={editor.draft
+            ? t.lists.draftState.replace('{n}', String(editor.draft.revision))
+            : editor.error
+              ? t.lists.unknown
+              : t.admin.form.noDraft}
+        />
       </dd>
     </div>
   </dl>
 </section>
 {#if !editor.detail?.currentReleaseId}
-  <p>{t.lists.noRelease}</p>
+  <Banner tone="info">{t.lists.noRelease}</Banner>
 {:else}
-  <div class="flex max-w-prose flex-col gap-1">
+  <div class="flex max-w-prose flex-col gap-1.5">
     <div>
       <Button
         type="button"
@@ -103,14 +118,13 @@
         onclick={() => void editor.createDraft()}>{t.admin.form.newDraft}</Button
       >
     </div>
-    <p class="text-muted-foreground text-xs">{t.admin.form.newDraftHint}</p>
+    <p class="text-muted-foreground text-[length:var(--fs-small)]">{t.admin.form.newDraftHint}</p>
   </div>
 {/if}
 
-<section class="bg-card border-border flex flex-col gap-5 rounded-xl border p-6">
-  <h2 class="text-lg font-medium">{t.admin.form.draft}</h2>
+<Panel title={t.admin.form.draft}>
   <DraftGate {editor}>
-    <form onsubmit={(e) => void save(e)} class="flex max-w-md flex-col gap-3">
+    <form onsubmit={(e) => void save(e)} class="mt-3 flex max-w-md flex-col gap-3">
       <Row id="draft-title" label={t.admin.form.title}>
         <Input id="draft-title" bind:value={text} required maxlength={190} />
       </Row>
@@ -120,32 +134,33 @@
       />
       <div class="flex items-center gap-3">
         <Button type="submit" disabled={editor.saving}>{t.admin.form.titleSave}</Button>
-        <span class="text-muted-foreground text-xs"
+        <span class="text-muted-foreground text-[length:var(--fs-small)]"
           >{t.admin.form.revision.replace('{n}', String(editor.draft?.revision ?? 0))}</span
         >
       </div>
     </form>
   </DraftGate>
-</section>
+</Panel>
 
 <section
   id="statistics"
   aria-label={t.lists.statsLabel}
   aria-busy={statsLoading}
-  class="scroll-mt-20"
+  class="flex scroll-mt-20 flex-col gap-4"
 >
-  <div role="status" class="text-muted-foreground text-sm">
+  <div role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
     {statsLoading ? (slow ? t.lists.slow : t.lists.statsLoading) : ''}
   </div>
-  {#if statsLoading && !stats}<div
-      class="bg-muted min-h-48 rounded-xl"
-      aria-hidden="true"
-    ></div>{/if}
-  {#if statsError}<p role="alert">{statsError}</p>
-    <Button variant="outline" onclick={() => void loadStats()}>{t.lists.retry}</Button>{/if}
+  {#if statsLoading && !stats}<Skeleton class="min-h-48 rounded-[var(--r-card)]" />{/if}
+  {#if statsError}
+    <Banner tone="danger">
+      {statsError}
+      {#snippet action()}
+        <Button variant="outline" onclick={() => void loadStats()}>{t.lists.retry}</Button>
+      {/snippet}
+    </Banner>
+  {/if}
   {#if stats}
-    <section class="bg-card border-border rounded-xl border p-6">
-      <StatisticsChart {stats} days={DAYS} /><AdsStatisticsPanel {tenant} {form} />
-    </section>
+    <StatisticsChart {stats} days={DAYS} /><AdsStatisticsPanel {tenant} {form} />
   {/if}
 </section>

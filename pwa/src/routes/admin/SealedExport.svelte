@@ -83,16 +83,20 @@
     if (!value) cancel();
   }}
 >
-  <DialogTrigger class="min-h-11 rounded-md border px-4 text-sm font-medium"
+  <DialogTrigger
+    class="border-border hover:bg-secondary inline-flex min-h-10 items-center justify-center rounded-md border px-4 text-sm font-medium"
     >{t.admin.entries.exportSealed}</DialogTrigger
   >
   <DialogContent title={t.admin.entries.exportSealed} description={ui.exportScope}>
     <div class="w-full min-w-0 space-y-3">
-      <p class="text-sm">{ui.exportContents}</p>
+      <p class="text-muted-foreground text-sm leading-6">{ui.exportContents}</p>
       {#if busy}<p role="status">{ui.exportProgress.replace('{n}', String(count))}</p>{/if}
       <Notice {message} />
     </div>
-    <DialogClose class="min-h-11 rounded-md border px-4" onclick={cancel}>{ui.cancel}</DialogClose>
+    <DialogClose
+      class="border-border hover:bg-secondary min-h-10 rounded-md border px-4 text-sm font-medium"
+      onclick={cancel}>{ui.cancel}</DialogClose
+    >
     <Button disabled={busy} onclick={() => void download()}>{ui.export}</Button>
   </DialogContent>
 </Dialog>

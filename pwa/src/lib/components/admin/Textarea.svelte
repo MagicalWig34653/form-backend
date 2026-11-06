@@ -8,7 +8,7 @@
 <textarea
   bind:value
   class={cn(
-    'border-border bg-background placeholder:text-muted-foreground flex min-h-24 w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50',
+    'border-input bg-background placeholder:text-muted-foreground flex min-h-24 w-full min-w-0 rounded-md border px-3 py-2 text-sm shadow-xs disabled:opacity-50',
     className,
   )}
   {...rest}></textarea>
