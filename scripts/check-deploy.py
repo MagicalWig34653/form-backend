@@ -4,6 +4,7 @@
 import json
 import os
 from pathlib import Path
+import pty
 import re
 import shutil
 import subprocess
@@ -67,6 +68,47 @@ def run(args, env=None, ok=True, input_text=None):
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert (result.returncode == 0) == ok, (args, result.stdout, result.stderr)
     return result
+
+
+def menu_double(folder, answers):
+    """whiptail-Double: liefert Antworten 'rc|text' der Reihe nach (leer = Abbrechen) und protokolliert die Argumente."""
+    folder.mkdir(exist_ok=True)
+    queue, log = folder / 'answers', folder / 'calls.jsonl'
+    queue.write_text('\n'.join(answers) + '\n')
+    log.write_text('')
+    stub = folder / 'whiptail'
+    stub.write_text('#!/usr/bin/env python3\nimport json, pathlib, sys\n'
+                    f'p = pathlib.Path({str(queue)!r})\nwith open({str(log)!r}, "a") as f: f.write(json.dumps(sys.argv[1:]) + "\\n")\n'
+                    'q = [l for l in p.read_text().splitlines() if l != ""]\n'
+                    'if not q:\n    sys.exit(1)\nrc, _, out = q[0].partition("|")\np.write_text("\\n".join(q[1:]) + "\\n")\n'
+                    'sys.stderr.write(out)\nsys.exit(int(rc))\n')
+    stub.chmod(0o755)
+    return log
+
+
+def run_tty(args, env):
+    """Skript mit Pseudo-Terminal als stdin/stdout starten (Dialog-Pfad), stderr getrennt."""
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(args, cwd=ROOT, env=env, stdin=slave, stdout=slave, stderr=subprocess.PIPE, text=True)
+    os.close(slave)
+    chunks = []
+    while True:
+        try:
+            data = os.read(master, 4096)
+        except OSError:
+            break
+        if not data:
+            break
+        chunks.append(data)
+    err = proc.stderr.read()
+    proc.wait()
+    os.close(master)
+    return proc.returncode, b''.join(chunks).decode(errors='replace'), err
+
+
+def menu_texts(log):
+    """Alle Textargumente der protokollierten Dialogaufrufe (msgbox/yesno/inputbox)."""
+    return '\n'.join('\n'.join(a) for a in (json.loads(l) for l in log.read_text().splitlines()))
 
 
 def commands(state):
@@ -210,6 +252,62 @@ read_config "$ENV_FILE"
     assert 'Gesamt: 4 Replikate' in result.stdout
     assert 'app=18080; app-pinned=18081' in result.stdout
     assert not (folder / 'stack.env').exists()
+    # Setup-Menü (Dialog-Pfad mit Pseudo-Terminal und whiptail-Double): Felder, Ablehnung, Passwort, Sperren, Abbruch, Trockenlauf.
+    PW = 'S3cret-Menue-Pass-4711'
+    menu_dir = base / 'menu-bin'
+    menu_env = dict(env, PATH=str(menu_dir) + os.pathsep + env['PATH'], MOCK_MODE='swarm')
+    menu_env.pop('FORM_PLAIN_PROMPT', None)
+    swarm_env_file = folder / 'stack.env'
+    secrets = folder / 'secrets'
+    (secrets / 'db_password').unlink()  # frische Installation: noch kein Passwort
+    # Abbrechen nach einer Änderung: nichts geschrieben, keine externen Kommandos.
+    log = menu_double(menu_dir, ['0|STACK', '0|changed', '1|'])
+    rc, out, err = run_tty([str(folder / 'setup.sh')], menu_env)
+    assert rc != 0 and 'abgebrochen' in err and not swarm_env_file.exists() and not commands(state), (rc, out, err, menu_texts(log))
+    # Installieren blockiert: Pflichtfeld fehlt, Platzhalter, kein Passwort; ungültige Eingabe wird abgelehnt (erneut gefragt).
+    log = menu_double(menu_dir, ['0|INSTALL', '0|', '0|FORM_DB_HOST', '0|db host', '0|db.kunde.test', '0|INSTALL', '0|', '1|'])
+    rc, out, err = run_tty([str(folder / 'setup.sh')], dict(menu_env, FORM_DB_HOST=''))
+    texts = menu_texts(log)
+    assert rc != 0 and not swarm_env_file.exists() and not commands(state)
+    assert 'FORM_DB_HOST: Host oder IP' in texts and 'Platzhalter' in texts and 'DB-Passwort nicht gesetzt' in texts, texts
+    assert 'Eingabe ungültig' in texts, texts  # "db host" abgelehnt
+    # Trockenlauf im Menü zeigt den Plan, schreibt nichts; Passwort bleibt unsichtbar.
+    log = menu_double(menu_dir, ['0|FORM_ADMIN_ORIGIN', '0|https://forms.kunde.test:8443', '0|FORM_DB_HOST', '0|db.kunde.test',
+                                 '0|FORM_DB_PASSWORD', '0|' + PW, '0|DRYRUN', '0|', '1|'])
+    rc, out, err = run_tty([str(folder / 'setup.sh')], menu_env)
+    texts = menu_texts(log)
+    assert rc != 0 and 'Trockenlauf (swarm/setup)' in texts and 'form@db.kunde.test:3306/form' in texts
+    assert 'gesetzt' in texts and PW not in texts + out + err and not swarm_env_file.exists() and not commands(state)
+    # Vollständiger Lauf: RP-ID folgt dem Origin, TLS disable fragt die Entwicklungsfreigabe, Passwort nur in der Secret-Datei.
+    for stale in state.glob('secret-*'):
+        stale.unlink()
+    log = menu_double(menu_dir, ['0|STACK', '0|probe', '0|FORM_ADMIN_ORIGIN', '0|ftp://bad', '0|https://forms.kunde.test:8443',
+                                 '0|FORM_DB_HOST', '0|db.kunde.test', '0|FORM_DB_PASSWORD', '0|' + PW,
+                                 '0|FORM_DB_TLS', '0|disable', '0|1', '0|FORM_REPLICAS', '0|2', '0|INSTALL', '0|'])
+    rc, out, err = run_tty([str(folder / 'setup.sh')], menu_env)
+    assert rc == 0, (out, err)
+    saved = swarm_env_file.read_text()
+    assert 'FORM_RP_ID="forms.kunde.test"' in saved and 'FORM_ADMIN_ORIGIN="https://forms.kunde.test:8443"' in saved
+    assert 'FORM_DB_TLS="disable"' in saved and 'FORM_ALLOW_INSECURE_DEV="1"' in saved and 'FORM_REPLICAS="2"' in saved
+    assert 'STACK="probe"' in saved and swarm_env_file.stat().st_mode & 0o777 == 0o600
+    assert PW not in saved and PW not in out + err + menu_texts(log) + (state / 'commands').read_text()
+    assert (secrets / 'db_password').read_text().strip() == PW
+    swarm_env_file.unlink()
+    (secrets / 'db_password').unlink()
+    (secrets / 'db_password').write_text('synthetic-db-password')
+    for stale in state.glob('secret-*'):
+        stale.unlink()
+    (state / 'commands').unlink()
+    # Compose: Menü bis zum Trockenlauf über die CLI-Option.
+    compose_env = dict(menu_env, MOCK_MODE='compose')
+    log = menu_double(menu_dir, ['0|FORM_ADMIN_ORIGIN', '0|https://forms.kunde.test', '0|FORM_DB_HOST', '0|db.kunde.test',
+                                 '0|FORM_DB_PASSWORD', '0|' + PW, '0|INSTALL', '0|'])
+    compose_file = base / 'compose-menu.env'
+    rc, out, err = run_tty([str(copy / 'deploy/compose/setup.sh'), '--dry-run', '--env-file', str(compose_file)], compose_env)
+    assert rc == 0 and 'Trockenlauf (compose/setup)' in out and 'form@db.kunde.test:3306/form' in out, (out, err)
+    assert PW not in out + err and not compose_file.exists() and 'FORM_REPLICAS' not in menu_texts(log)
+    (menu_dir / 'whiptail').unlink()
+    print('setup.sh: Menü (Pseudo-Terminal, whiptail-Double) für Swarm/Compose bestanden.')
     # Actual setup execution with command doubles, existing external password, no DB creation.
     run([str(folder / 'setup.sh'), '--non-interactive', '--db-password-file', str(folder / 'secrets/db_password')], env)
     assert not any('CREATE DATABASE' in ' '.join(c) for c in commands(state))
