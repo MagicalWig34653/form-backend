@@ -19,7 +19,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/fluent-mysql-driver.git", exact: "4.8.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
         // SSH transport for SFTP (ADR 0011); Apache-2.0.
-        .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.12.0"),
+        .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),
         // Argon2 reference implementation (PHC winner), CC0-1.0 OR Apache-2.0; pinned by commit.
         .package(url: "https://github.com/P-H-C/phc-winner-argon2.git", revision: "f57e61e19229e23c4445b85494dbf7c07de721cb"),  // master at 2024-08-06; the 20190702 tag has no Package.swift and is not semver
     ],
