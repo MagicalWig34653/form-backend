@@ -22,11 +22,47 @@ read_config() {
     printf -v "$key" '%s' "$value"; export "${key?}"
   done < "$1"
 }
+# Eingabe-Prüfung je Feld (gleiche Regeln wie validate); Rückgabe 0 = ok, sonst Hinweistext in FIELD_ERR.
+field_ok() {
+  local key=$1 v=$2; FIELD_ERR=''
+  case "$key" in
+    STACK) [[ "$v" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || FIELD_ERR='Kleinbuchstaben, Ziffern, - ; beginnt mit Buchstabe' ;;
+    FORM_ADMIN_ORIGIN) [[ "$v" =~ ^https://[a-z0-9][a-z0-9.-]*(:[0-9]{1,5})?$ ]] || FIELD_ERR='Form https://host[:port], ohne Pfad' ;;
+    FORM_RP_ID) [[ "$v" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || FIELD_ERR='Nur Hostname, z. B. admin.example.org' ;;
+    FORM_DB_HOST) [[ -n "$v" && "$v" != -* && "$v" != *[[:space:]]* ]] || FIELD_ERR='Host oder IP, ohne Leerzeichen' ;;
+    FORM_DB_PORT|FORM_REPLICAS|FORM_PINNED_REPLICAS) [[ "$v" =~ ^[0-9]{1,5}$ ]] || FIELD_ERR='Zahl erwartet' ;;
+    FORM_DB_USER) [[ "$v" =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ ]] || FIELD_ERR='Buchstabe am Anfang, dann Buchstaben, Ziffern, _ . -' ;;
+    FORM_DB_NAME) [[ "$v" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || FIELD_ERR='Buchstabe am Anfang, dann Buchstaben, Ziffern, _' ;;
+    FORM_DB_TLS) [[ "$v" == verify || "$v" == disable ]] || FIELD_ERR='verify oder disable' ;;
+    FORM_IMAGE_TAG) [[ "$v" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$ ]] || FIELD_ERR='Gültiger Image-Tag' ;;
+    PUBLISH_MODE) [[ "$v" == ingress || "$v" == host ]] || FIELD_ERR='ingress oder host' ;;
+  esac
+  [[ -z "$FIELD_ERR" ]]
+}
+# Dialog (whiptail/dialog) nur mit Terminal; sonst einfache Zeilenabfrage.
+dialog_tool() {
+  [[ -t 0 && -t 1 && -z "${FORM_PLAIN_PROMPT:-}" ]] || return 1
+  command -v whiptail 2>/dev/null || command -v dialog 2>/dev/null
+}
 ask() {
-  local key=$1 label=$2 default=${3-${!1}} answer
-  printf '%s [%s]: ' "$label" "$default"
-  IFS= read -r answer || fail 'Eingabe abgebrochen'
-  printf -v "$key" '%s' "${answer:-$default}"
+  local key=$1 label=$2 default=${3-${!1}} answer tool
+  tool=$(dialog_tool || true)
+  while :; do
+    if [[ -n "$tool" ]]; then
+      answer=$("$tool" --backtitle 'form-backend: Einrichtung' --title "$key" --inputbox "$label${FIELD_ERR:+
+
+Eingabe ungültig: $FIELD_ERR}" 13 72 "$default" 3>&1 1>&2 2>&3) || fail 'Eingabe abgebrochen'
+    else
+      printf '%s [%s]: ' "$label" "$default"
+      IFS= read -r answer || fail 'Eingabe abgebrochen'
+      answer=${answer:-$default}
+    fi
+    if [[ "$answer" == - ]] || field_ok "$key" "$answer" || { [[ -z "$answer" ]] && ! field_ok "$key" x; }; then break; fi
+    [[ -n "$tool" ]] || printf 'Ungültig: %s\n' "$FIELD_ERR" >&2
+    default=$answer
+  done
+  FIELD_ERR=''
+  printf -v "$key" '%s' "$answer"
 }
 ask_optional() {
   ask "$1" "$2 (- löscht den Wert)"
@@ -44,7 +80,7 @@ validate() {
   [[ "$FORM_RP_ID" =~ ^[a-z0-9][a-z0-9.-]*$ && ( "$host" == "$FORM_RP_ID" || "$host" == *."$FORM_RP_ID" ) ]] || fail 'RP-ID muss zum Origin-Host passen'
   [[ -n "$FORM_DB_HOST" && "$FORM_DB_HOST" != -* ]] || fail 'Externer DB-Host fehlt'
   for key in FORM_DB_NAME FORM_DB_USER; do
-    value=${!key}; [[ "$value" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || fail "Ungültiges $key"
+    value=${!key}; field_ok "$key" "$value" || fail "Ungültiges $key: $FIELD_ERR"
   done
   for key in FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT; do
     local file_key="${key}_FILE"
@@ -256,7 +292,7 @@ initialize() {
     ask FORM_DB_USER 'Vorhandener DB-Benutzer'
     ask FORM_DB_NAME 'Vorhandene Datenbank'
     ask FORM_DB_TLS 'DB-TLS (verify/disable)'
-    [[ "$FORM_DB_TLS" != disable ]] || ask FORM_ALLOW_INSECURE_DEV 'Entwicklungsfreigabe (1 erlaubt auch unsichere Mail-/Deploy-Ziele)'
+    [[ "$FORM_DB_TLS" != disable ]] || ask FORM_ALLOW_INSECURE_DEV 'Unverschlüsselte DB braucht Entwicklungsfreigabe (1 = ja; erlaubt auch unsichere Mail-/Deploy-Ziele)' 1
     ask FORM_IMAGE_TAG 'Image-Tag'
     if [[ "$MODE" == swarm ]]; then
       ask FORM_REPLICAS 'App-Replikate (zusätzlich zu app-pinned)'

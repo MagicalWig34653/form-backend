@@ -247,6 +247,7 @@ validate_text() { # KEY WERT REGEL (KEY ungenutzt, für Meldungen reserviert) (R
     free) ;;
     hostaddr) [[ $val =~ ^[A-Za-z0-9.:_-]+$ && $val != -* ]] || { V_ERR="Hostname oder IP-Adresse (Buchstaben, Ziffern, . : _ -)"; return 1; } ;;
     dbhost) [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9.:_-]*$ ]] || { V_ERR="Hostname oder IP-Adresse des DB-Servers"; return 1; } ;;
+    dbuser) [[ $val =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ ]] || { V_ERR="Buchstabe am Anfang, dann Buchstaben, Ziffern, _ . - (höchstens 64 Zeichen)"; return 1; } ;;
     dbident) [[ $val =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || { V_ERR="Buchstabe am Anfang, dann Buchstaben, Ziffern, _ (höchstens 64 Zeichen)"; return 1; } ;;
     mailbox) mailbox_ok "$val" || { V_ERR="gültige E-Mail-Adresse erwartet"; return 1; } ;;
     uuid) [[ $val =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || { V_ERR="UUID erwartet"; return 1; } ;;

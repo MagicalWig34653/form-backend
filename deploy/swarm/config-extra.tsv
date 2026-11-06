@@ -18,7 +18,7 @@ FORM_PUBLIC_DIR	Verwaltung	text:cpath?	/app/public			500		envOnly	0	PWA-Verzeich
 FORM_SCHEMA_FILE	Verwaltung	text:cpath	/app/db/schema-p3.sql			500		envOnly	0	Datenbankschema im Image.
 FORM_DB_HOST	Datenbank	text:dbhost	mariadb.example.org			253		envOnly	0	Externer MariaDB-Host; muss zum TLS-Zertifikat passen.
 FORM_DB_PORT	Datenbank	int	3306		1	65535		envOnly	0	Externer MariaDB-Port.
-FORM_DB_USER	Datenbank	text:dbident	form			64		envOnly	0	Vorhandener DB-Benutzer (Setup legt keine Benutzer an).
+FORM_DB_USER	Datenbank	text:dbuser	form			64		envOnly	0	Vorhandener DB-Benutzer (Setup legt keine Benutzer an).
 FORM_DB_NAME	Datenbank	text:dbident	form			64		envOnly	0	Vorhandene Datenbank (Setup legt keine Datenbanken an).
 FORM_DB_TLS	Datenbank	choice	verify				verify|disable	envOnly	0	verify = Zertifikat und Hostname prüfen; disable nur mit FORM_ALLOW_INSECURE_DEV=1.
 FORM_ALLOW_INSECURE_DEV	Datenbank	choice	0				0|1	envOnly	0	1 erlaubt DB-TLS disable UND unsichere Mail-/Deploy-Ziele (nur Entwicklung).

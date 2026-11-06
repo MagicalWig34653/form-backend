@@ -19,7 +19,7 @@ db_init() {
   [[ "$FORM_DB_HOST" != -* && "$FORM_DB_PORT" =~ ^[0-9]{1,5}$ ]] || db_fail 'Ungültige DB-Verbindung'
   (( 10#$FORM_DB_PORT >= 1 && 10#$FORM_DB_PORT <= 65535 )) || db_fail 'Ungültiger DB-Port'
   [[ "$FORM_DB_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || db_fail 'Ungültiger FORM_DB_NAME'
-  [[ "$FORM_DB_USER" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || db_fail 'Ungültiger FORM_DB_USER'
+  [[ "$FORM_DB_USER" =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ ]] || db_fail 'Ungültiger FORM_DB_USER'
   [[ "$DB_CONNECT_TIMEOUT" =~ ^[1-9][0-9]{0,3}$ ]] || db_fail 'Ungültiger DB_CONNECT_TIMEOUT'
   case "$FORM_DB_TLS" in
     verify) ;;
