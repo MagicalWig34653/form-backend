@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Multi-arch image (linux/amd64, linux/arm64) of the backend binary. Build context: repository root.
 #   docker buildx build --platform linux/amd64,linux/arm64 -f backend/Dockerfile .
-FROM swift:6.3-noble AS build
+FROM swift:6.4-noble AS build
 WORKDIR /src
 COPY backend/Package.swift backend/Package.resolved ./backend/
 WORKDIR /src/backend
@@ -12,7 +12,7 @@ COPY backend/Tests ./Tests
 RUN swift build -c release --product App --static-swift-stdlib -Xswiftc -gnone && strip .build/release/App
 
 # Runtime: Swift's slim image (glibc, ca-certificates, tzdata); no package installation needed in this stage.
-FROM swift:6.3-noble-slim
+FROM swift:6.4-noble-slim
 RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /src/backend/.build/release/App /app/App
