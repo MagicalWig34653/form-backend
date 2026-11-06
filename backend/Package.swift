@@ -17,7 +17,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/vapor.git", exact: "4.122.3"),
         .package(url: "https://github.com/vapor/fluent.git", exact: "4.13.0"),
         .package(url: "https://github.com/vapor/fluent-mysql-driver.git", exact: "4.8.0"),
-        .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", exact: "5.1.1"),
         // SSH transport for SFTP (ADR 0011); Apache-2.0.
         .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),
         // Argon2 reference implementation (PHC winner), CC0-1.0 OR Apache-2.0; pinned by commit.
