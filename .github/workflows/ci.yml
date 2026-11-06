@@ -100,7 +100,7 @@ jobs:
       - run: npx playwright test
       - name: Production dependency audit
         run: npm audit --omit=dev
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pwa-dist
           path: pwa/dist
@@ -160,7 +160,7 @@ jobs:
         run: P3B_PORT=33713 E2E_PORT=4312 bash backend/e2e-mcp.sh
       - name: Upload logs on failure
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-real-logs
           path: |
@@ -233,7 +233,7 @@ jobs:
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.ref == 'refs/heads/main'
         with:
           name: digest-${{ matrix.arch }}
