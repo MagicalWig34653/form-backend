@@ -12,9 +12,9 @@ public struct ConfigError: Error, CustomStringConvertible, Equatable {
 
 /// Startup configuration from the effective environment (system settings merged below explicit ENV).
 /// Bootstrap secrets and listener configuration remain ENV-only.
-/// Listener ports: FORM_PUBLIC_PORT (8080), FORM_INTERNAL_PORT (8081; FORM_HTTP_PORT fallback).
+/// Listener ports: FORM_PUBLIC_PORT (8080), FORM_INTERNAL_PORT (8081).
 /// FORM_PUBLIC_DASHBOARD=1 requires FORM_PUBLIC_DASHBOARD_HOSTS. Per-listener trusted proxies override FORM_TRUSTED_PROXIES.
-/// Variables: FORM_HTTP_HOST, FORM_HTTP_PORT, FORM_LOG_LEVEL, FORM_DB_HOST, FORM_DB_PORT, FORM_DB_USER,
+/// Variables: FORM_HTTP_HOST, FORM_PUBLIC_PORT, FORM_INTERNAL_PORT, FORM_LOG_LEVEL, FORM_DB_HOST, FORM_DB_PORT, FORM_DB_USER,
 /// FORM_DB_PASSWORD (required), FORM_DB_NAME, FORM_DB_TLS (verify|disable, default verify),
 /// FORM_TRUSTED_PROXIES (CIDR list), FORM_MAIL_ALLOWED_NETS (CIDR list of private networks mail targets may use).
 /// FORM_ALLOW_INSECURE_DEV (must be exactly "1" to permit FORM_DB_TLS=disable; development only),
@@ -73,7 +73,7 @@ public struct AppConfig: Sendable, CustomStringConvertible {
         oauthAuthorizeBaseURL = try oauthOrigin("FORM_OAUTH_AUTHORIZE_BASE_URL")
         httpHost = env["FORM_HTTP_HOST"] ?? "127.0.0.1"
         if httpHost.isEmpty { throw ConfigError(variable: "FORM_HTTP_HOST", reason: "must not be empty") }
-        httpPort = try port("FORM_INTERNAL_PORT", env["FORM_INTERNAL_PORT"] == nil ? port("FORM_HTTP_PORT", 8081) : 8081)
+        httpPort = try port("FORM_INTERNAL_PORT", 8081)
         publicPort = try port("FORM_PUBLIC_PORT", 8080)
         guard httpPort != publicPort else { throw ConfigError(variable: "FORM_INTERNAL_PORT", reason: "listeners require different ports") }
         guard [nil, "0", "1"].contains(env["FORM_PUBLIC_DASHBOARD"]) else { throw ConfigError(variable: "FORM_PUBLIC_DASHBOARD", reason: "expected 0 or 1") }

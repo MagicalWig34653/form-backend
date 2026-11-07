@@ -44,7 +44,7 @@ BACKTITLE="form-backend ($MODE): Einstellungen"
 # Geheimnisse, die update.sh aus dem Prozess-ENV akzeptiert, die aber nie in der Datei stehen dürfen.
 SECRET_ENV_KEYS=" FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD "
 # Ports haben bewusst keine _FILE-Variante (lib.sh lehnt sie ab).
-NO_FILE_KEYS=" FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT "
+NO_FILE_KEYS=" FORM_PUBLIC_PORT FORM_INTERNAL_PORT "
 
 die() { echo "Fehler: $*" >&2; exit 1; }
 
@@ -435,7 +435,7 @@ check_all() {
   if [ "$(eff_value FORM_PUBLIC_DASHBOARD)" = 1 ] && [ -z "$(eff_value FORM_PUBLIC_DASHBOARD_HOSTS)" ]; then
     chk_err "FORM_PUBLIC_DASHBOARD=1, aber FORM_PUBLIC_DASHBOARD_HOSTS fehlt."
   fi
-  internal="$(eff_value FORM_INTERNAL_PORT)"; [ -n "$internal" ] || internal="$(eff_value FORM_HTTP_PORT)"
+  internal="$(eff_value FORM_INTERNAL_PORT)"
   if [ -n "$internal" ] && [ "$internal" = "$(eff_value FORM_PUBLIC_PORT)" ]; then chk_err "Öffentlicher und interner Listener benötigen unterschiedliche Ports."; fi
   v="$(eff_value FORM_ADMIN_ORIGIN)"; k="$(eff_value FORM_RP_ID)"
   if [[ $v =~ ^https://([a-z0-9][a-z0-9.-]*)(:[0-9]{1,5})?$ ]] && [ -n "$k" ] && [ "${BASH_REMATCH[1]}" != "$k" ] && [[ ${BASH_REMATCH[1]} != *".$k" ]]; then
@@ -618,8 +618,11 @@ ui_textfile() { # Titel Datei
   else wt --title "$1 (Esc schließt)" --scrolltext --textbox "$2" @H @W || true; fi
 }
 
-MENU_TITLES=("Hosts und Listener" "Datenbank" "Mail, Missbrauch, Limits" "Webhooks, MCP, Ingest, OAuth" "Umstieg, Speicher, Verwaltung" "Image" "Rollout, Netz, Veröffentlichung" "Replikate und Ressourcen" "Update und Health" "Secrets (nur Namen und Pfade)" "Dateivarianten (_FILE)" "Sonstiges")
-MENU_TG=("Hosts|Listener" "Datenbank" "Missbrauchsschutz|Limits|Mail-Netze" "Webhook-Limits|MCP-Token-Ratelimit|Ingest-Ratelimit|MCP-OAuth" "Umstieg|Speicher|Verwaltung" "Image" "Rollout|Veröffentlichung" "Replikate und Platzierung|Ressourcen" "Update und Health" "Secrets" "Dateivarianten" "")
+MENU_TITLES=("Pflichtangaben" "Hosts und Listener" "Datenbank" "Mail, Missbrauch, Limits" "Webhooks, MCP, Ingest, OAuth" "Umstieg, Speicher, Verwaltung" "Image" "Rollout, Netz, Veröffentlichung" "Replikate und Ressourcen" "Update und Health" "Secrets (nur Namen und Pfade)" "Dateivarianten (_FILE)" "Sonstiges")
+MENU_TG=("" "Hosts|Listener" "Datenbank" "Missbrauchsschutz|Limits|Mail-Netze" "Webhook-Limits|MCP-Token-Ratelimit|Ingest-Ratelimit|MCP-OAuth" "Umstieg|Speicher|Verwaltung" "Image" "Rollout|Veröffentlichung" "Replikate und Platzierung|Ressourcen" "Update und Health" "Secrets" "Dateivarianten" "")
+# Pflichtangaben: Mindestsatz, damit die Installation das alte Backend vollständig ersetzen kann (Domain/Passkeys, externe
+# Datenbank, Veröffentlichung der beiden Listener, Reverse Proxy, Umstieg aus dem Altsystem). Geheimnisse fragt setup.sh ab.
+REQUIRED_KEYS="FORM_ADMIN_ORIGIN FORM_RP_ID FORM_DB_HOST FORM_DB_PORT FORM_DB_USER FORM_DB_NAME FORM_DB_TLS PUBLISHED_PORT FORM_PUBLISH_PORT FORM_PUBLIC_PUBLISH_PORT BIND_ADDR FORM_TRUSTED_PROXIES FORM_MIGRATION_ALLOWED_NETS FORM_IMAGE_TAG"
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) CRUMB_SEP=" › " ;; *) CRUMB_SEP=" > " ;; esac
 crumb() { local out="Einstellungen" p; for p in "$@"; do out+="$CRUMB_SEP$p"; done; printf '%s' "$out"; }
 
@@ -640,6 +643,8 @@ build_groups() {
     done
   done
   for k in "${KEYS[@]}"; do [ -n "${seen[$k]+x}" ] || GROUP_KEYS[n]+="${GROUP_KEYS[n]:+ }$k"; done
+  # Pflichtangaben (Index 0) sind eine zusätzliche Sicht auf Variablen, die auch in ihrer Fachgruppe stehen.
+  for k in $REQUIRED_KEYS; do is_known "$k" && GROUP_KEYS[0]+="${GROUP_KEYS[0]:+ }$k"; done
 }
 group_summary() { # Index -> "n Einträge, m gesetzt[, c geändert]"
   local n=0 m=0 c=0 k
@@ -760,6 +765,7 @@ group_menu() { # Index
     items=()
     for k in "${keys[@]}"; do items+=("$k" "$(item_desc "$k" "$dw")"); done
     intro="Enter: bearbeiten, Esc: zurück. Spalten: Wert | Zustand | Wirkung"
+    if [ "$idx" -eq 0 ]; then intro="Mindestangaben für den Ersatz des alten Backends (Passwörter und Server-Key fragt setup.sh ab). "$intro; fi
     fit_menu "${#keys[@]}" 1
     if wt --title "$(crumb "$title")" ${GSEL[$idx]:+--default-item "${GSEL[$idx]}"} --menu "$intro" "$FIT_H" @W "$FIT_LH" "${items[@]}"; then
       GSEL[$idx]="$WT_OUT"; edit_key "$WT_OUT"

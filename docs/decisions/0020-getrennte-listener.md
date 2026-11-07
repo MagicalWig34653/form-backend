@@ -14,8 +14,8 @@ Dienste und Scheduler existieren jeweils einmal. Die Porttrennung hängt nicht v
 MCP und vorhandene Protected-Resource-Metadaten, `/healthz`. Intern (`FORM_INTERNAL_PORT`, 8081):
 PWA, Admin-API, übrige Routen einschließlich Readiness und bisheriger `/health`-Route.
 **Ingest, Collector und MCP sind ausschließlich öffentlich**, intern 404. Beide Ports bieten
-`/healthz`. `FORM_HTTP_PORT` bleibt Fallback ausschließlich für den internen Port; ein expliziter
-interner Port gewinnt. Gleiche Ports sind ein Startfehler. Beide binden an `FORM_HTTP_HOST`.
+`/healthz`. `FORM_HTTP_PORT` war anfangs Fallback für den internen Port und ist seit 07.11.2026 entfernt
+(nur noch `FORM_INTERNAL_PORT`). Gleiche Ports sind ein Startfehler. Beide binden an `FORM_HTTP_HOST`.
 CLI-Bind-/Port-Overrides werden abgewiesen, damit sie diesen Vertrag nicht überschreiben.
 Beim Fehler des zweiten Bindings wird der bereits gestartete erste Server geschlossen;
 beim Shutdown werden beide vor der gemeinsamen Application heruntergefahren.
@@ -58,7 +58,7 @@ Laufzeitabnahme und unabhängiges Sicherheitsreview bleiben separat erforderlich
 
 ## Deploy-Härtung 03.11.2026 (Audit 8B72B9D6)
 
-Die Wrapper-Erweiterungen FORM_HTTP_PORT_FILE, FORM_PUBLIC_PORT_FILE und
+Die Wrapper-Erweiterungen FORM_PUBLIC_PORT_FILE und
 FORM_INTERNAL_PORT_FILE entfallen: Entrypoint und Deploy-Validierung lehnen
 nichtleere Angaben ab. Container-Portziele werden vor dem Appstart gerendert;
 eine erst danach eingelesene Datei könnte öffentlichen und internen Listener

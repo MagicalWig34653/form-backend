@@ -30,11 +30,11 @@ Hosts werden abgewiesen. Intern bleibt der genaue `FORM_ADMIN_ORIGIN`-Abgleich b
 WebAuthn verwendet weiterhin genau `FORM_ADMIN_ORIGIN`/`FORM_RP_ID`; die Hostliste erweitert
 keine Passkey-Origin. Für Login die konfigurierte Admin-Origin auch öffentlich verwenden.
 
-Beide Listener binden an `FORM_HTTP_HOST`. **Abwärtskompatibilität:** `FORM_HTTP_PORT` ist nur
-noch Fallback für den internen Port, wenn `FORM_INTERNAL_PORT` fehlt; ohne beide gilt 8081.
-Ein expliziter interner Port hat Vorrang. Gleiche öffentliche/interne Ports sind ungültig.
-Ein altes `FORM_HTTP_PORT=8080` kollidiert daher mit dem neuen öffentlichen Default: beim
-Umstieg internen Port oder öffentlichen Port ausdrücklich ändern und Proxy-Ziele anpassen.
+Beide Listener binden an `FORM_HTTP_HOST`. Container-Ports: `FORM_PUBLIC_PORT` (Standard 8080)
+und `FORM_INTERNAL_PORT` (Standard 8081); gleiche Ports sind ungültig. Der frühere Name
+`FORM_HTTP_PORT` wird nicht mehr gelesen. Nach außen veröffentlicht das Deployment standardmäßig
+beide Listener (Host-Ports 8081 Dashboard, 8080 API/SDK; `PUBLISHED_PORT`/`FORM_PUBLISH_PORT`
+und `FORM_PUBLIC_PUBLISH_PORT`).
 CLI-Overrides `serve --port/--hostname/--bind/--socket` werden abgewiesen; Listener per ENV konfigurieren.
 
 `FORM_PUBLIC_TRUSTED_PROXIES` und `FORM_INTERNAL_TRUSTED_PROXIES` gelten jeweils nur am
@@ -142,7 +142,7 @@ Secrets, Netze oder Container und führt keine Docker-/Registry-/Verbindungstest
 | --- | --- |
 | Image | `FORM_IMAGE_REPOSITORY`, `FORM_IMAGE_TAG`, optional vollständiges `FORM_IMAGE`; bei Erfolg gespeicherter Digest |
 | Externe DB | `FORM_DB_HOST`, `FORM_DB_PORT`, `FORM_DB_USER`, `FORM_DB_NAME`, `FORM_DB_TLS`, `FORM_DB_PASSWORD_FILE` |
-| HTTP/PWA | `FORM_HTTP_HOST`, `FORM_PUBLIC_PORT`, `FORM_INTERNAL_PORT`, `FORM_HTTP_PORT` (Fallback), `FORM_LOG_LEVEL`, `FORM_PUBLIC_DIR`, `FORM_SCHEMA_FILE`, `FORM_SDK_DIR`, `LOG_LEVEL` |
+| HTTP/PWA | `FORM_HTTP_HOST`, `FORM_PUBLIC_PORT`, `FORM_INTERNAL_PORT`, `FORM_LOG_LEVEL`, `FORM_PUBLIC_DIR`, `FORM_SCHEMA_FILE`, `FORM_SDK_DIR`, `LOG_LEVEL` |
 | Anmeldung | `FORM_ADMIN_ORIGIN`, `FORM_RP_ID`, `FORM_SERVER_KEY_FILE`, `FORM_BOOTSTRAP_PASSWORD_FILE` |
 | Rechte an Weiterleitungen | `FORM_TRUSTED_PROXIES`, `FORM_MAIL_ALLOWED_NETS`, `FORM_ALLOW_INSECURE_DEV` |
 | Secret-Quellen | `DB_PASSWORD_SOURCE_FILE`, `SERVER_KEY_SOURCE_FILE`, `BOOTSTRAP_PASSWORD_SOURCE_FILE`: Hostpfade |
@@ -630,7 +630,7 @@ Werte mit gleichzeitig einfachen und doppelten Quotes unterstützt der Deploy-Pa
 Die aufgelisteten skalaren Einstellungen unterstützen gemountete `*_FILE`-Overrides;
 Pfade sind Containerpfade, zusätzliche Mounts/Configs müssen Betreiber ergänzen.
 
-**Ausnahme Ports:** `FORM_HTTP_PORT_FILE`, `FORM_PUBLIC_PORT_FILE` und
+**Ausnahme Ports:** `FORM_PUBLIC_PORT_FILE` und
 `FORM_INTERNAL_PORT_FILE` werden von Deploy-Skripten und Entrypoint abgelehnt,
 bevor die App startet. Sie werden nicht in YAML weitergereicht. Ports ausschließlich
 direkt setzen, damit Portfreigabe, Healthcheck und Listener dieselben Werte verwenden.

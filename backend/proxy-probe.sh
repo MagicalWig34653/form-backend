@@ -40,7 +40,7 @@ done
 [ $up = 1 ] || { echo "ENV: db not ready"; exit 2; }
 ENVS=(-e FORM_DB_HOST="$DB" -e FORM_DB_USER=root -e FORM_DB_NAME=form -e FORM_DB_TLS=disable -e FORM_ALLOW_INSECURE_DEV=1
   -e FORM_DB_PASSWORD_FILE=/run/secrets/db.pw -e FORM_SERVER_KEY_FILE=/run/secrets/server.key
-  -e FORM_ADMIN_ORIGIN=http://admin.probe -e FORM_RP_ID=admin.probe -e FORM_PUBLIC_PORT=8080 -e FORM_HTTP_PORT=8081
+  -e FORM_ADMIN_ORIGIN=http://admin.probe -e FORM_RP_ID=admin.probe -e FORM_PUBLIC_PORT=8080 -e FORM_INTERNAL_PORT=8081
   -e FORM_PUBLIC_TRUSTED_PROXIES=0.0.0.0/0 -e FORM_INTERNAL_TRUSTED_PROXIES=0.0.0.0/0)
 MOUNTS=(-v "$WORK/server.key:/run/secrets/server.key:ro" -v "$WORK/db.pw:/run/secrets/db.pw:ro")
 "$DOCKER" run --rm --user 0:0 --network "$NET" "${ENVS[@]}" "${MOUNTS[@]}" "$IMAGE" migrate >"$WORK/migrate.log" 2>&1 || { echo "FAIL migrate"; tail -5 "$WORK/migrate.log"; exit 1; }

@@ -21,7 +21,7 @@ final class AppConfigTests: XCTestCase {
         }
     }
     func testInvalidValuesRejectedWithoutEchoingValue() {
-        for (k, v) in [("FORM_DB_PORT", "99999"), ("FORM_HTTP_PORT", "x"), ("FORM_DB_TLS", "maybe"), ("FORM_LOG_LEVEL", "loud")] {
+        for (k, v) in [("FORM_DB_PORT", "99999"), ("FORM_INTERNAL_PORT", "x"), ("FORM_DB_TLS", "maybe"), ("FORM_LOG_LEVEL", "loud")] {
             XCTAssertThrowsError(try AppConfig(env: ["FORM_DB_PASSWORD": "p", k: v])) {
                 let e = $0 as? ConfigError
                 XCTAssertEqual(e?.variable, k)
@@ -37,7 +37,7 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(try AppConfig(env: ["FORM_DB_PASSWORD": "p", "FORM_DB_TLS": "disable", "FORM_ALLOW_INSECURE_DEV": "1"]).dbTLS, .disable)
     }
     func testStrictPortAndHost() {
-        for (k, v) in [("FORM_HTTP_PORT", "+80"), ("FORM_DB_PORT", " 80"), ("FORM_DB_PORT", "0"), ("FORM_HTTP_HOST", "")] {
+        for (k, v) in [("FORM_INTERNAL_PORT", "+80"), ("FORM_DB_PORT", " 80"), ("FORM_DB_PORT", "0"), ("FORM_HTTP_HOST", "")] {
             XCTAssertThrowsError(try AppConfig(env: ["FORM_DB_PASSWORD": "p", k: v]), "\(k)=\(v)")
         }
     }

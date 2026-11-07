@@ -26,7 +26,7 @@ export CLANG_MODULE_CACHE_PATH="$PWD/backend/.build/ModuleCache" SWIFTPM_MODULEC
 swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App >>"$TMP/build.log" 2>&1 || { sleep 2; swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App >>"$TMP/build.log" 2>&1; } || { echo "ENV: build failed"; exit 2; }  # retry: the Swift frontend crashes sporadically
 BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=smoke FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
-export FORM_HTTP_PORT=$HPORT FORM_PUBLIC_PORT=$PPORT FORM_SCHEMA_FILE=backend/db/schema-p3.sql
+export FORM_INTERNAL_PORT=$HPORT FORM_PUBLIC_PORT=$PPORT FORM_SCHEMA_FILE=backend/db/schema-p3.sql
 export FORM_SERVER_KEY_FILE="$KEYFILE" FORM_ADMIN_ORIGIN=http://localhost:$HPORT FORM_RP_ID=localhost
 fail=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (got '$2', want '$3')"; fail=1; fi; }

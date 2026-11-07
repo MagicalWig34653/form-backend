@@ -26,13 +26,13 @@ export FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_SERVER_KEY_FILE="$TMP/serv
 fail=0; check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (got '$2', want '$3')"; fail=1; fi; }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 # Admin config requires the catalog check, which needs the schema: start only the plain service before migrating.
-( unset FORM_SERVER_KEY_FILE FORM_ADMIN_ORIGIN FORM_RP_ID; FORM_HTTP_PORT=$A FORM_PUBLIC_PORT=$((A+100)) "$BIN" serve >"$TMP/pre.log" 2>&1 & echo $! > "$TMP/pre.pid" )
+( unset FORM_SERVER_KEY_FILE FORM_ADMIN_ORIGIN FORM_RP_ID; FORM_INTERNAL_PORT=$A FORM_PUBLIC_PORT=$((A+100)) "$BIN" serve >"$TMP/pre.log" 2>&1 & echo $! > "$TMP/pre.pid" )
 for _ in $(seq 30); do curl -fs "http://127.0.0.1:$A/health" >/dev/null 2>&1 && break; sleep 1; done
 check "health ok but NOT ready before migrate (no traffic to unmigrated replicas)" "$(code http://127.0.0.1:$A/health)/$(code http://127.0.0.1:$A/ready)" "200/503"
 kill "$(cat "$TMP/pre.pid")" 2>/dev/null; sleep 1
 "$BIN" migrate >/dev/null 2>&1; check "migrate" "$?" "0"
-FORM_HTTP_PORT=$A FORM_PUBLIC_PORT=$((A+100)) "$BIN" serve >"$TMP/a.log" 2>&1 & PIDS="$PIDS $!"
-FORM_HTTP_PORT=$B FORM_PUBLIC_PORT=$((B+100)) "$BIN" serve >"$TMP/b.log" 2>&1 & PIDS="$PIDS $!"
+FORM_INTERNAL_PORT=$A FORM_PUBLIC_PORT=$((A+100)) "$BIN" serve >"$TMP/a.log" 2>&1 & PIDS="$PIDS $!"
+FORM_INTERNAL_PORT=$B FORM_PUBLIC_PORT=$((B+100)) "$BIN" serve >"$TMP/b.log" 2>&1 & PIDS="$PIDS $!"
 for _ in $(seq 40); do curl -fs "http://127.0.0.1:$A/health" >/dev/null 2>&1 && curl -fs "http://127.0.0.1:$B/health" >/dev/null 2>&1 && break; sleep 1; done
 check "ready A after migrate" "$(code http://127.0.0.1:$A/ready)" "200"
 check "ready B after migrate" "$(code http://127.0.0.1:$B/ready)" "200"

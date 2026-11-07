@@ -34,7 +34,7 @@ swift build --package-path backend --scratch-path backend/.build --cache-path ba
 (cd pwa && npm run build >/dev/null 2>&1) || { echo "ENV: pwa build"; exit 2; }
 BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=e2e FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
-export FORM_HTTP_PORT=$WPORT FORM_PUBLIC_PORT=$((WPORT+100)) E2E_PUBLIC_URL=http://127.0.0.1:$((WPORT+100)) FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
+export FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$((WPORT+100)) E2E_PUBLIC_URL=http://127.0.0.1:$((WPORT+100)) FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
 export FORM_MIGRATION_ALLOWED_NETS=127.0.0.0/8 E2E_LEGACY_PORT=$LPORT E2E_LEGACY_USER=migro E2E_LEGACY_PASSWORD=$LPW E2E_LEGACY_DB=legacy
 export FORM_SERVER_KEY_FILE="$TMP/server.key" FORM_ADMIN_ORIGIN=http://localhost:$WPORT FORM_RP_ID=localhost
 "$BIN" migrate >/dev/null 2>&1 || { echo "FAIL migrate"; exit 1; }

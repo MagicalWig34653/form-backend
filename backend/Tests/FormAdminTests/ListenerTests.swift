@@ -105,8 +105,9 @@ final class ListenerTests: XCTestCase {
         }
         XCTAssertEqual(try AppConfig(env: base).httpPort, 8081)
         XCTAssertEqual(try AppConfig(env: base).publicPort, 8080)
-        XCTAssertEqual(try AppConfig(env: base.merging(["FORM_HTTP_PORT": "9001"]) { _, b in b }).httpPort, 9001)
-        XCTAssertEqual(try AppConfig(env: base.merging(["FORM_HTTP_PORT": "invalid", "FORM_INTERNAL_PORT": "9002"]) { _, b in b }).httpPort, 9002)
+        XCTAssertEqual(try AppConfig(env: base.merging(["FORM_INTERNAL_PORT": "9001"]) { _, b in b }).httpPort, 9001)
+        // The removed legacy name is ignored.
+        XCTAssertEqual(try AppConfig(env: base.merging(["FORM_HTTP_PORT": "9003"]) { _, b in b }).httpPort, 8081)
         XCTAssertThrowsError(try AppConfig(env: base.merging(["FORM_INTERNAL_PORT": "8080"]) { _, b in b }))
         let proxies = try AppConfig(env: base.merging(["FORM_TRUSTED_PROXIES": "10.0.0.0/8", "FORM_PUBLIC_TRUSTED_PROXIES": ""]) { _, b in b })
         XCTAssertTrue(proxies.publicTrustedProxies.isEmpty)

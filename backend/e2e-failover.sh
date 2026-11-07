@@ -27,14 +27,14 @@ BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=e2e FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
 export FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
 export FORM_SERVER_KEY_FILE="$TMP/server.key" FORM_RP_ID=localhost
-export FORM_HTTP_PORT=$WPORT FORM_PUBLIC_PORT=$PA FORM_ADMIN_ORIGIN=http://localhost:$WPORT E2E_PUBLIC_URL=http://127.0.0.1:$PA
+export FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$PA FORM_ADMIN_ORIGIN=http://localhost:$WPORT E2E_PUBLIC_URL=http://127.0.0.1:$PA
 "$BIN" migrate >/dev/null 2>&1 || { echo "FAIL migrate"; exit 1; }
 PASSWORD=$(openssl rand -hex 12); printf '%s' "$PASSWORD" > "$TMP/bootpw"
 OUT=$(FORM_BOOTSTRAP_PASSWORD_FILE="$TMP/bootpw" "$BIN" bootstrap-admin admin 2>&1) || { echo "FAIL bootstrap-admin"; exit 1; }
 LINK=$(printf '%s\n' "$OUT" | sed -n 's/.*): \(http[^ ]*\)$/\1/p' | head -1)
 [ -n "$LINK" ] || { echo "FAIL no link"; exit 1; }
-start_a() { FORM_HTTP_PORT=$WPORT FORM_PUBLIC_PORT=$PA "$BIN" serve >>"$TMP/a.log" 2>&1 & A_PID=$!; for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
-start_b() { FORM_HTTP_PORT=$WB FORM_PUBLIC_PORT=$PB FORM_ADMIN_ORIGIN=http://localhost:$WB "$BIN" serve >>"$TMP/b.log" 2>&1 & B_PID=$!; for _ in $(seq 30); do curl -fs "http://localhost:$WB/health" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+start_a() { FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$PA "$BIN" serve >>"$TMP/a.log" 2>&1 & A_PID=$!; for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+start_b() { FORM_INTERNAL_PORT=$WB FORM_PUBLIC_PORT=$PB FORM_ADMIN_ORIGIN=http://localhost:$WB "$BIN" serve >>"$TMP/b.log" 2>&1 & B_PID=$!; for _ in $(seq 30); do curl -fs "http://localhost:$WB/health" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
 stop() { eval "p=\$$1_PID"; [ -n "$p" ] && kill "$p" 2>/dev/null && wait "$p" 2>/dev/null; eval "$1_PID=''"; }
 start_a || { echo "ENV: instance A not ready"; tail -5 "$TMP/a.log"; exit 2; }
 CRED="$TMP/credentials.json"

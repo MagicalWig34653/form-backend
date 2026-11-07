@@ -4,9 +4,8 @@
 # Typen: int, number, bool, choice, secret, text:<Regel> (Regel mit ? am Ende = leer erlaubt). Default einer in der Vorlage aktiven Variable: Wert der Vorlage.
 #key	group	type	default	unit	min	max	choices	apply	secret	summary
 FORM_HTTP_HOST	Listener	text:hostaddr	0.0.0.0			253		envOnly	0	Bind-Adresse im Container (0.0.0.0 = alle Schnittstellen).
-FORM_HTTP_PORT	Listener	int	8081		1	65535		envOnly	0	Alter interner Port (Fallback für FORM_INTERNAL_PORT); keine _FILE-Variante.
 FORM_PUBLIC_PORT	Listener	int	8080		1	65535		envOnly	0	Öffentlicher Listener (Formular-Einsendungen, SDK) im Container; keine _FILE-Variante.
-FORM_INTERNAL_PORT	Listener	int			1	65535		envOnly	0	Interner Listener (Verwaltung, API) im Container; leer = FORM_HTTP_PORT.
+FORM_INTERNAL_PORT	Listener	int	8081		1	65535		envOnly	0	Interner Listener (Dashboard, Verwaltungs-API) im Container; keine _FILE-Variante.
 FORM_INTERNAL_SECOND_FACTOR	Listener	choice	0				0|1	envOnly	0	1 = interner Listener verlangt einen zweiten Faktor.
 FORM_PUBLIC_DASHBOARD	Listener	choice	0				0|1	envOnly	0	1 = Dashboard auch auf dem öffentlichen Listener (braucht FORM_PUBLIC_DASHBOARD_HOSTS).
 FORM_PUBLIC_DASHBOARD_HOSTS	Listener	text:hostlist				500		envOnly	0	Hostnamen des öffentlichen Dashboards (kommagetrennt).
@@ -55,12 +54,12 @@ NETWORK_NAME	Rollout	text:dockername?				64		envOnly	0	Name des externen Netzes;
 NETWORK_DRIVER	Rollout	choice	overlay				overlay|bridge	envOnly	0	Netztreiber: Swarm braucht overlay, Compose bridge.
 BIND_ADDR	Veröffentlichung	text:hostaddr	0.0.0.0			253		envOnly	0	Bind-Adresse der veröffentlichten Ports (Swarm: nur 0.0.0.0; Compose: z. B. 127.0.0.1).
 PUBLISH_MODE	Veröffentlichung	choice	ingress				ingress|host	envOnly	0	Veröffentlichungsmodus der Ports: ingress (Routing Mesh) oder host.
-FORM_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Swarm: Hostport des internen Listeners; leer = nur Overlay-Alias.
-FORM_PUBLIC_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Hostport des öffentlichen Listeners; leer = nicht veröffentlicht.
+FORM_PUBLISH_PORT	Veröffentlichung	int	8081		1	65535		envOnly	0	Swarm: Hostport des internen Listeners; leer = nur Overlay-Alias.
+FORM_PUBLIC_PUBLISH_PORT	Veröffentlichung	int	8080		1	65535		envOnly	0	Hostport des öffentlichen Listeners; leer = nicht veröffentlicht.
 FORM_PINNED_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Swarm: Hostport des internen Listeners auf dem festen Knoten (anderer Port als FORM_PUBLISH_PORT).
 FORM_PINNED_PUBLIC_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Swarm: Hostport des öffentlichen Listeners auf dem festen Knoten.
 FORM_PUBLISH_BIND	Veröffentlichung	text:hostaddr?				253		envOnly	0	Swarm: leer oder 0.0.0.0 (keine einzelne Host-IP möglich; Zugriff per Firewall begrenzen).
-PUBLISHED_PORT	Veröffentlichung	int			1	65535		envOnly	0	Compose: Hostport des Dashboards (interner Listener, Container 8081); leer = nicht veröffentlicht.
+PUBLISHED_PORT	Veröffentlichung	int	8081		1	65535		envOnly	0	Compose: Hostport des Dashboards (interner Listener, Container 8081); leer = nicht veröffentlicht.
 FORM_REPLICAS	Replikate und Platzierung	int	3		1	999999		envOnly	0	Anzahl App-Replikate (Compose genau 1; zusätzlich zu FORM_PINNED_REPLICAS).
 FORM_PLACEMENT_CONSTRAINTS	Replikate und Platzierung	text:constraints				1000		envOnly	0	Swarm: harte Platzierungs-Constraints der App (kommagetrennt, z. B. node.labels.zone==a).
 FORM_PLACEMENT_PREFERENCES	Replikate und Platzierung	text:preferences				1000		envOnly	0	Swarm: weiche Verteilung (kommagetrennt, z. B. spread=node.labels.zone).
