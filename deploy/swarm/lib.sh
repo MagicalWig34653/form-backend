@@ -30,9 +30,10 @@ field_ok() {
     FORM_ADMIN_ORIGIN) [[ "$v" =~ ^https://[a-z0-9][a-z0-9.-]*(:[0-9]{1,5})?$ ]] || FIELD_ERR='Form https://host[:port], ohne Pfad' ;;
     FORM_RP_ID) [[ "$v" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || FIELD_ERR='Nur Hostname, z. B. admin.example.org' ;;
     FORM_DB_HOST) [[ -n "$v" && "$v" != -* && "$v" != *[[:space:]]* ]] || FIELD_ERR='Host oder IP, ohne Leerzeichen' ;;
-    FORM_DB_PORT|FORM_REPLICAS|FORM_PINNED_REPLICAS) [[ "$v" =~ ^[0-9]{1,5}$ ]] || FIELD_ERR='Zahl erwartet' ;;
+    FORM_DB_PORT|FORM_REPLICAS|FORM_PINNED_REPLICAS|PUBLISHED_PORT|FORM_PUBLISH_PORT|FORM_PUBLIC_PUBLISH_PORT|FORM_PINNED_PUBLISH_PORT) [[ -z "$v" && "$key" == *PUBLISH*PORT ]] || [[ "$v" =~ ^[0-9]{1,5}$ ]] || FIELD_ERR='Zahl erwartet' ;;
     FORM_DB_USER) [[ "$v" =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ ]] || FIELD_ERR='Buchstabe am Anfang, dann Buchstaben, Ziffern, _ . -' ;;
     FORM_DB_NAME) [[ "$v" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]] || FIELD_ERR='Buchstabe am Anfang, dann Buchstaben, Ziffern, _' ;;
+    BIND_ADDR) [[ "$v" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || FIELD_ERR='IPv4-Adresse, z. B. 127.0.0.1' ;;
     FORM_DB_TLS) [[ "$v" == verify || "$v" == disable ]] || FIELD_ERR='verify oder disable' ;;
     FORM_IMAGE_TAG) [[ "$v" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$ ]] || FIELD_ERR='Gültiger Image-Tag' ;;
     PUBLISH_MODE) [[ "$v" == ingress || "$v" == host ]] || FIELD_ERR='ingress oder host' ;;
@@ -65,8 +66,9 @@ field_label() {
     FORM_PINNED_NODE) printf 'Fester Knoten (Hostname/Node-ID; leer = aus)' ;;
     FORM_PINNED_REPLICAS) printf 'Zusätzliche Replikate auf festem Knoten' ;;
     FORM_EXCLUDE_LABEL) printf 'Ausgeschlossenes Node-Label (z.B. reserved; leer = aus)' ;;
-    FORM_PUBLIC_PUBLISH_PORT) printf 'Öffentlicher Listener: Veröffentlichungsport (leer = keiner)' ;;
-    FORM_PUBLISH_PORT) printf 'Veröffentlichungsport app (leer = keiner)' ;;
+    FORM_PUBLIC_PUBLISH_PORT) printf 'Host-Port API/SDK (öffentlicher Listener, Container-Port 8080; leer = nicht veröffentlichen)' ;;
+    FORM_PUBLISH_PORT|PUBLISHED_PORT) printf 'Host-Port Dashboard (interner Listener, Container-Port 8081; leer = nicht veröffentlichen)' ;;
+    BIND_ADDR) printf 'Bind-Adresse der Host-Ports (127.0.0.1 = nur lokaler Proxy, 0.0.0.0 = alle Schnittstellen)' ;;
     FORM_PINNED_PUBLISH_PORT) printf 'Veröffentlichungsport app-pinned (anderer Port; leer = keiner)' ;;
     PUBLISH_MODE) printf 'Veröffentlichungsmodus (ingress/host)' ;;
     FORM_PUBLISH_BIND) printf 'Swarm-Bind (nur leer/0.0.0.0; keine einzelne Host-IP)' ;;
@@ -99,7 +101,7 @@ ask_optional() {
 }
 # ---- Setup-Menü (whiptail/dialog): Übersicht aller Pflichtwerte, Auswahl bearbeitet ein Feld. ----
 # Nur im interaktiven Setup ohne Env-Datei; nichts wird geschrieben, bevor "Jetzt installieren" bestätigt ist.
-SM_OPTIONAL=' FORM_PLACEMENT_CONSTRAINTS FORM_PLACEMENT_PREFERENCES FORM_PINNED_NODE FORM_EXCLUDE_LABEL FORM_PUBLIC_PUBLISH_PORT FORM_PUBLISH_PORT FORM_PINNED_PUBLISH_PORT FORM_PUBLISH_BIND '
+SM_OPTIONAL=' FORM_PLACEMENT_CONSTRAINTS FORM_PLACEMENT_PREFERENCES FORM_PINNED_NODE FORM_EXCLUDE_LABEL FORM_PUBLIC_PUBLISH_PORT FORM_PUBLISH_PORT PUBLISHED_PORT FORM_PINNED_PUBLISH_PORT FORM_PUBLISH_BIND '
 # Dialog aufrufen; Auswahl/Eingabe landet in SM_OUT, Rückgabe = Exit-Code des Tools (Esc/Abbrechen != 0).
 sm_size() {
   local rows cols
@@ -120,7 +122,7 @@ sm_value_ok() {
   if [[ " $SM_OPTIONAL " == *" $key "* && -z "$v" ]]; then FIELD_ERR=''; return 0; fi
   field_ok "$key" "$v" || return 1
   case "$key" in
-    FORM_DB_PORT|FORM_PUBLIC_PUBLISH_PORT|FORM_PUBLISH_PORT|FORM_PINNED_PUBLISH_PORT)
+    FORM_DB_PORT|FORM_PUBLIC_PUBLISH_PORT|FORM_PUBLISH_PORT|PUBLISHED_PORT|FORM_PINNED_PUBLISH_PORT)
       if [[ ! "$v" =~ ^[0-9]{1,5}$ ]] || (( 10#$v < 1 || 10#$v > 65535 )); then FIELD_ERR='Port 1 bis 65535'; return 1; fi ;;
     FORM_REPLICAS|FORM_PINNED_REPLICAS)
       [[ "$v" =~ ^[1-9][0-9]{0,5}$ ]] || { FIELD_ERR='Positive Zahl erwartet'; return 1; } ;;
@@ -164,8 +166,8 @@ sm_name() {
     FORM_IMAGE_TAG) printf 'Image-Tag' ;; FORM_REPLICAS) printf 'Replikate' ;;
     FORM_PLACEMENT_CONSTRAINTS) printf 'Constraints' ;; FORM_PLACEMENT_PREFERENCES) printf 'Praeferenzen' ;;
     FORM_PINNED_NODE) printf 'Fester Knoten' ;; FORM_PINNED_REPLICAS) printf 'Replikate fest' ;;
-    FORM_EXCLUDE_LABEL) printf 'Ausschluss-Label' ;; FORM_PUBLIC_PUBLISH_PORT) printf 'Port oeffentlich' ;;
-    FORM_PUBLISH_PORT) printf 'Port app' ;; FORM_PINNED_PUBLISH_PORT) printf 'Port app-pinned' ;;
+    FORM_EXCLUDE_LABEL) printf 'Ausschluss-Label' ;; FORM_PUBLIC_PUBLISH_PORT) printf 'Host-Port API/SDK' ;;
+    FORM_PUBLISH_PORT|PUBLISHED_PORT) printf 'Host-Port Dashboard' ;; BIND_ADDR) printf 'Bind-Adresse' ;; FORM_PINNED_PUBLISH_PORT) printf 'Port app-pinned' ;;
     PUBLISH_MODE) printf 'Portmodus' ;; FORM_PUBLISH_BIND) printf 'Swarm-Bind' ;;
     *) printf '%s' "$1" ;;
   esac
@@ -207,6 +209,7 @@ setup_menu() {
     SM_KEYS=(STACK FORM_ADMIN_ORIGIN FORM_RP_ID FORM_DB_HOST FORM_DB_PORT FORM_DB_USER FORM_DB_NAME FORM_DB_TLS)
     [[ "$FORM_DB_TLS" != disable ]] || SM_KEYS+=(FORM_ALLOW_INSECURE_DEV)
     SM_KEYS+=(FORM_IMAGE_TAG)
+    [[ "$MODE" != compose ]] || SM_KEYS+=(PUBLISHED_PORT FORM_PUBLIC_PUBLISH_PORT BIND_ADDR)
     [[ "$MODE" != swarm ]] || SM_KEYS+=(FORM_REPLICAS FORM_PLACEMENT_CONSTRAINTS FORM_PLACEMENT_PREFERENCES FORM_PINNED_NODE FORM_PINNED_REPLICAS FORM_EXCLUDE_LABEL FORM_PUBLIC_PUBLISH_PORT FORM_PUBLISH_PORT FORM_PINNED_PUBLISH_PORT PUBLISH_MODE FORM_PUBLISH_BIND)
     local -a items=()
     for tag in "${SM_KEYS[@]}"; do
@@ -471,6 +474,10 @@ initialize() {
       ask FORM_IMAGE_TAG "$(field_label FORM_IMAGE_TAG)"
       if [[ "$MODE" == swarm ]]; then
         ask FORM_REPLICAS "$(field_label FORM_REPLICAS)"
+      else
+        ask PUBLISHED_PORT "$(field_label PUBLISHED_PORT)" "${PUBLISHED_PORT:-8081}"
+        ask FORM_PUBLIC_PUBLISH_PORT "$(field_label FORM_PUBLIC_PUBLISH_PORT)" "${FORM_PUBLIC_PUBLISH_PORT:-8080}"
+        ask BIND_ADDR "$(field_label BIND_ADDR)"
       fi
     fi
   fi
@@ -480,8 +487,8 @@ initialize() {
     ask_optional FORM_PINNED_NODE "$(field_label FORM_PINNED_NODE)"
     ask FORM_PINNED_REPLICAS "$(field_label FORM_PINNED_REPLICAS)"
     ask_optional FORM_EXCLUDE_LABEL "$(field_label FORM_EXCLUDE_LABEL)"
-    ask_optional FORM_PUBLIC_PUBLISH_PORT "$(field_label FORM_PUBLIC_PUBLISH_PORT)"
     ask_optional FORM_PUBLISH_PORT "$(field_label FORM_PUBLISH_PORT)"
+    ask_optional FORM_PUBLIC_PUBLISH_PORT "$(field_label FORM_PUBLIC_PUBLISH_PORT)"
     ask_optional FORM_PINNED_PUBLISH_PORT "$(field_label FORM_PINNED_PUBLISH_PORT)"
     ask PUBLISH_MODE "$(field_label PUBLISH_MODE)"
     ask_optional FORM_PUBLISH_BIND "$(field_label FORM_PUBLISH_BIND)"
@@ -566,7 +573,7 @@ plan() {
     say "Netz: $NETWORK_NAME ($NETWORK_DRIVER); HTTP: $BIND_ADDR:${PUBLISHED_PORT:-aus} -> $FORM_INTERNAL_PORT; öffentlich ${FORM_PUBLIC_PUBLISH_PORT:-aus} -> $FORM_PUBLIC_PORT; externer TLS-Proxy."
   fi
   say "Secret-Namen: $DB_PASSWORD_SECRET, $SERVER_KEY_SECRET, $BOOTSTRAP_PASSWORD_SECRET (optional). Keine Werte werden ausgegeben."
-  say "Plan: Sperre; neue Secrets; Netz prüfen; Image-Digest fixieren; DB-Client SELECT 1; Migration einmal mit neuem Image; dann App-Rollout und /ready."
+  say "Plan: Sperre; neue Secrets; Netz prüfen; Image-Digest fixieren; Migration (prüft den DB-Zugang) einmal mit neuem Image; dann App-Rollout und /ready."
   say "Swarm-Update: parallelism=$UPDATE_PARALLELISM monitor=$UPDATE_MONITOR delay=$UPDATE_DELAY order=$UPDATE_ORDER."
   say "Env-Datei $ENV_FILE: 0600, keine Secret-Werte. Rollback setzt kein Schema zurück."
 }
@@ -656,6 +663,9 @@ wait_job() {
 }
 # The same external-client helper is used by setup, backup and restore.
 check_db() {
+  # Standard: keine Vorprüfung mit dem MariaDB-Client-Image (kein zusätzlicher Pull). Der Migrationslauf mit dem App-Image
+  # verbindet sich mit denselben Zugangsdaten und bricht bei falschem Host, Benutzer, Passwort oder TLS vor dem Rollout ab.
+  if [[ "${DB_PRECHECK:-0}" != 1 ]]; then say 'DB-Zugang wird beim Migrationslauf mit dem App-Image geprüft (Vorprüfung mit MariaDB-Client: DB_PRECHECK=1).'; return; fi
   if [[ "$MODE" == swarm ]]; then
     local ca_config ca_rev
     ca_args=()

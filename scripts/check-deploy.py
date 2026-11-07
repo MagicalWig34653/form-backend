@@ -64,8 +64,12 @@ elif args and args[0]=='compose':
 
 
 def run(args, env=None, ok=True, input_text=None):
-    result = subprocess.run(args, cwd=ROOT, env=env, input=input_text, text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        result = subprocess.run(args, cwd=ROOT, env=env, input=input_text, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
+                                stdin=None if input_text is not None else subprocess.DEVNULL)
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(('HANG nach 120s', args, (exc.stderr or b'')[-1500:]))
     assert (result.returncode == 0) == ok, (args, result.stdout, result.stderr)
     return result
 
@@ -157,7 +161,7 @@ with tempfile.TemporaryDirectory(prefix='form-deploy-check-') as tmp:
         path = bindir / name
         path.write_text(MOCK)
         path.chmod(0o755)
-    env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'], MOCK_STATE=str(state))
+    env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'], MOCK_STATE=str(state), DB_PRECHECK='1')
     for mode in ('swarm', 'compose'):
         env['MOCK_MODE'] = mode
         folder = copy / 'deploy' / mode
@@ -224,6 +228,11 @@ read_config "$ENV_FILE"
         rollout = next(i for i, c in enumerate(log) if is_rollout(c))
         dbcheck = next(i for i, c in enumerate(log) if ('--name' in c and c[c.index('--name') + 1].endswith('_dbcheck')) or ('run' in c and 'SELECT 1' in c))
         assert dbcheck < migrate < rollout
+        (state / 'commands').unlink()
+        run([update, '--non-interactive', '--tag', 'new-release-2'], dict(env, DB_PRECHECK='0'))
+        log2 = commands(state)
+        assert not any(('--name' in c and c[c.index('--name') + 1].endswith('_dbcheck')) or ('run' in c and 'SELECT 1' in c) for c in log2), 'Default must not use the MariaDB client image'
+        assert any(is_migration(c) for c in log2) and any(is_rollout(c) for c in log2)
         assert not any('CREATE DATABASE' in ' '.join(c) for c in log), 'Setup/update created DB'
         assert '@sha256:' in config.read_text()
         assert config.stat().st_mode & 0o777 == 0o600
@@ -247,7 +256,7 @@ read_config "$ENV_FILE"
     folder = copy / 'deploy/swarm'
     (folder / 'stack.env').unlink()
     result = run([str(folder / 'setup.sh'), '--dry-run'], env,
-                 input_text='probe\nhttps://admin.example.org:8443\n\nexternal-db.example.org\n3307\noperator\nexisting\nverify\nfixed\n2\nnode.role==worker\nspread=node.labels.zone\nworker-a\n2\nreserved\n\n18080\n18081\ningress\n\n')
+                 input_text='probe\nhttps://admin.example.org:8443\n\nexternal-db.example.org\n3307\noperator\nexisting\nverify\nfixed\n2\nnode.role==worker\nspread=node.labels.zone\nworker-a\n2\nreserved\n18080\n\n18081\ningress\n\n')
     assert 'operator@external-db.example.org:3307/existing' in result.stdout
     assert 'Gesamt: 4 Replikate' in result.stdout
     assert 'app=18080; app-pinned=18081' in result.stdout
