@@ -23,7 +23,8 @@ FORM_DB_NAME	Datenbank	text:dbident	form			64		envOnly	0	Vorhandene Datenbank (S
 FORM_DB_TLS	Datenbank	choice	verify				verify|disable	envOnly	0	verify = Zertifikat und Hostname prüfen; disable nur mit FORM_ALLOW_INSECURE_DEV=1.
 FORM_ALLOW_INSECURE_DEV	Datenbank	choice	0				0|1	envOnly	0	1 erlaubt DB-TLS disable UND unsichere Mail-/Deploy-Ziele (nur Entwicklung).
 DB_TLS_CA_FILE	Datenbank	text:hostpath?				500		envOnly	0	Optionales CA-Bundle auf dem Host (nur für Backup/Restore-Clients).
-DB_CLIENT_IMAGE	Datenbank	text:imageref	mariadb:12.3			200		envOnly	0	Image des einmaligen MariaDB-Clients (Prüfung, Backup, Migration).
+DB_CLIENT_IMAGE	Datenbank	text:imageref	mariadb:12.3			200		envOnly	0	Image des einmaligen MariaDB-Clients (Backup/Restore und optionale Vorprüfung mit DB_PRECHECK=1).
+DB_PRECHECK	Datenbank	choice	0				0|1	envOnly	0	Vorprüfung des DB-Zugangs mit dem MariaDB-Client-Image (1) statt nur mit dem Migrationslauf (0).
 DB_CLIENT_MODE	Datenbank	choice	docker				docker|local	envOnly	0	Backup/Restore-Client: docker oder local (installierte mariadb-Programme).
 DB_CLIENT_NETWORK	Datenbank	text:dockername?				64		envOnly	0	Netz der einmaligen Clients; leer = NETWORK_NAME.
 DB_CLIENT_CA_PATH	Datenbank	text:cpath	/run/form-db-ca			500		envOnly	0	CA-Mountpfad in den Clients (ändert nicht das Vertrauen der Anwendung).
@@ -59,7 +60,7 @@ FORM_PUBLIC_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Hostport des
 FORM_PINNED_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Swarm: Hostport des internen Listeners auf dem festen Knoten (anderer Port als FORM_PUBLISH_PORT).
 FORM_PINNED_PUBLIC_PUBLISH_PORT	Veröffentlichung	int			1	65535		envOnly	0	Swarm: Hostport des öffentlichen Listeners auf dem festen Knoten.
 FORM_PUBLISH_BIND	Veröffentlichung	text:hostaddr?				253		envOnly	0	Swarm: leer oder 0.0.0.0 (keine einzelne Host-IP möglich; Zugriff per Firewall begrenzen).
-PUBLISHED_PORT	Veröffentlichung	int			1	65535		envOnly	0	Compose: Hostport des internen Listeners; leer = nicht veröffentlicht.
+PUBLISHED_PORT	Veröffentlichung	int			1	65535		envOnly	0	Compose: Hostport des Dashboards (interner Listener, Container 8081); leer = nicht veröffentlicht.
 FORM_REPLICAS	Replikate und Platzierung	int	3		1	999999		envOnly	0	Anzahl App-Replikate (Compose genau 1; zusätzlich zu FORM_PINNED_REPLICAS).
 FORM_PLACEMENT_CONSTRAINTS	Replikate und Platzierung	text:constraints				1000		envOnly	0	Swarm: harte Platzierungs-Constraints der App (kommagetrennt, z. B. node.labels.zone==a).
 FORM_PLACEMENT_PREFERENCES	Replikate und Platzierung	text:preferences				1000		envOnly	0	Swarm: weiche Verteilung (kommagetrennt, z. B. spread=node.labels.zone).
