@@ -5,7 +5,7 @@ set -euo pipefail
 umask 077
 fail() { printf 'entrypoint: %s\n' "$*" >&2; exit 64; }
 # Port files cannot agree reliably with ports rendered by the orchestrator.
-for name in FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT; do
+for name in FORM_PUBLIC_PORT FORM_INTERNAL_PORT; do
   file_var="${name}_FILE"
   [[ -z "${!file_var:-}" ]] || fail "$file_var wird nicht unterstützt; Port direkt setzen"
 done

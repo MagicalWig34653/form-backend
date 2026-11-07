@@ -256,17 +256,17 @@ validate() {
   for key in FORM_DB_NAME FORM_DB_USER; do
     value=${!key}; field_ok "$key" "$value" || fail "Ungültiges $key: $FIELD_ERR"
   done
-  for key in FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT; do
+  for key in FORM_PUBLIC_PORT FORM_INTERNAL_PORT; do
     local file_key="${key}_FILE"
     [[ -z "${!file_key:-}" ]] || fail "$file_key wird nicht unterstützt; Port direkt setzen"
   done
-  FORM_INTERNAL_PORT=${FORM_INTERNAL_PORT:-$FORM_HTTP_PORT}
+  FORM_INTERNAL_PORT=${FORM_INTERNAL_PORT:-8081}
   export FORM_INTERNAL_PORT
   [[ "$FORM_PUBLIC_DASHBOARD" == 0 || "$FORM_PUBLIC_DASHBOARD" == 1 ]] || fail 'FORM_PUBLIC_DASHBOARD muss 0 oder 1 sein'
   [[ "$FORM_PUBLIC_DASHBOARD" != 1 || -n "$FORM_PUBLIC_DASHBOARD_HOSTS" ]] || fail 'FORM_PUBLIC_DASHBOARD_HOSTS fehlt'
   # shellcheck disable=SC2153 # Assigned by the parsed ENV template.
   [[ "$FORM_PUBLIC_PORT" != "$FORM_INTERNAL_PORT" ]] || fail 'Listener benötigen unterschiedliche Ports'
-  port_keys='FORM_DB_PORT FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT FORM_PUBLIC_PUBLISH_PORT'
+  port_keys='FORM_DB_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT FORM_PUBLIC_PUBLISH_PORT'
   if [[ "$MODE" == swarm ]]; then
     port_keys+=' FORM_PUBLISH_PORT FORM_PINNED_PUBLISH_PORT FORM_PINNED_PUBLIC_PUBLISH_PORT'
   else port_keys+=' PUBLISHED_PORT'; fi

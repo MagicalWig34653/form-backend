@@ -13,7 +13,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 REAL_DOCKER = shutil.which('docker')
 IMAGE = 'ghcr.io/magicalwig34653/form-backend:test'
-SOURCE_KEYS = set('''FORM_HTTP_HOST FORM_HTTP_PORT FORM_PUBLIC_PORT FORM_INTERNAL_PORT FORM_PUBLIC_DASHBOARD FORM_PUBLIC_DASHBOARD_HOSTS FORM_PUBLIC_TRUSTED_PROXIES FORM_INTERNAL_TRUSTED_PROXIES FORM_LOG_LEVEL FORM_DB_HOST FORM_DB_PORT
+SOURCE_KEYS = set('''FORM_HTTP_HOST FORM_PUBLIC_PORT FORM_INTERNAL_PORT FORM_PUBLIC_DASHBOARD FORM_PUBLIC_DASHBOARD_HOSTS FORM_PUBLIC_TRUSTED_PROXIES FORM_INTERNAL_TRUSTED_PROXIES FORM_LOG_LEVEL FORM_DB_HOST FORM_DB_PORT
 FORM_DB_USER FORM_DB_PASSWORD FORM_DB_PASSWORD_FILE FORM_DB_NAME FORM_DB_TLS FORM_ALLOW_INSECURE_DEV
 FORM_SCHEMA_FILE FORM_PUBLIC_DIR FORM_TRUSTED_PROXIES FORM_MAIL_ALLOWED_NETS FORM_SERVER_KEY_FILE
 FORM_ADMIN_ORIGIN FORM_RP_ID FORM_BOOTSTRAP_PASSWORD_FILE FORM_SDK_DIR LOG_LEVEL'''.split())
@@ -202,7 +202,7 @@ read_config "$ENV_FILE"
                  FORM_INTERNAL_TRUSTED_PROXIES='', FORM_MCP_TOKEN_RATE_LIMIT='77',
                  FORM_ABUSE_UA_PATTERNS='["synthetic-bot"]'))
         # Port files must fail before Docker/migration, even when files could swap listeners.
-        for port_key in ('FORM_HTTP_PORT', 'FORM_PUBLIC_PORT', 'FORM_INTERNAL_PORT'):
+        for port_key in ('FORM_PUBLIC_PORT', 'FORM_INTERNAL_PORT'):
             port_file = base / 'port-override'
             port_file.write_text('8080\n')
             run([update, '--non-interactive', '--dry-run'],
@@ -239,7 +239,7 @@ read_config "$ENV_FILE"
         assert 'synthetic-db-password' not in config.read_text()
         assert 'synthetic-db-password' not in (state / 'commands').read_text()
         (state / 'commands').unlink()
-        run([update, '--non-interactive', '--dry-run'], dict(env, FORM_DB_HOST='override.example.org', FORM_HTTP_PORT='9090',
+        run([update, '--non-interactive', '--dry-run'], dict(env, FORM_DB_HOST='override.example.org', FORM_INTERNAL_PORT='9090',
                                        **({'FORM_PUBLISH_PORT': '19090'} if mode == 'swarm' else {'PUBLISHED_PORT': '19090'}), FORM_IMAGE_TAG='env-tag'))
         result = run([update, '--non-interactive', '--dry-run'], dict(env, FORM_DB_HOST='override.example.org', FORM_IMAGE_TAG='env-tag'))
         assert 'override.example.org' in result.stdout and ':env-tag' in result.stdout
@@ -369,7 +369,7 @@ read_config "$ENV_FILE"
     assert 'published: 18080' in (state / 'render-deploy').read_text()
     assert 'published: 18081' in (state / 'render-deploy').read_text()
     (state / 'commands').unlink()
-    run([update, '--non-interactive'], dict(env, FORM_PUBLISH_PORT='', FORM_PINNED_NODE=''))
+    run([update, '--non-interactive'], dict(env, FORM_PUBLISH_PORT='', FORM_PUBLIC_PUBLISH_PORT='', FORM_PINNED_NODE=''))
     assert 'published:' not in (state / 'render-deploy').read_text()
     (state / 'commands').unlink()
 
@@ -529,7 +529,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
         FORM_TRUSTED_PROXIES_FILE=str(proxy_file), FORM_MCP_TOKEN_RATE_LIMIT_FILE=str(mcp_file))).stdout)
     assert data['legacy_proxy'] == '192.0.2.10/32' and data['public_proxy'] is None
     assert data['mcp_limit'] == '77'
-    for key in ('FORM_HTTP_PORT', 'FORM_PUBLIC_PORT', 'FORM_INTERNAL_PORT'):
+    for key in ('FORM_PUBLIC_PORT', 'FORM_INTERNAL_PORT'):
         # Both swap directions and unreadable files are rejected, without executing the app.
         for value in ('8080', '8081', '9080'):
             scalar.write_text(value)
@@ -629,7 +629,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             leaked_env = {'FORM_DB_PASSWORD': 'sekret-db-4711'}
             # Ausführliche Erklärungen: Ports sind gegeneinander abgegrenzt, Secrets bleiben ohne Wert
             for key, needles in (('FORM_PUBLIC_PORT', ('INNERHALB des Containers', 'FORM_PUBLIC_PUBLISH_PORT')),
-                                 ('FORM_INTERNAL_PORT', ('Dashboard', 'PUBLISHED_PORT')), ('FORM_HTTP_PORT', ('FORM_INTERNAL_PORT',))):
+                                 ('FORM_INTERNAL_PORT', ('Dashboard', 'PUBLISHED_PORT'))):
                 info = settings(mode, envfile, '--info', key, ok=True).stdout
                 assert all(n in info for n in needles) and 'Default:' in info, (key, info)
             assert settings(mode, envfile, '--info', 'NICHT_DA', ok=False).stdout == ''
@@ -652,7 +652,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                          'FORM_OPS_RECIPIENT=kein-mail', 'FORM_OPS_CONNECTION=nicht-uuid', 'FORM_TRUSTED_PROXIES=300.1.1.1/8',
                          'FORM_LOG_LEVEL=laut', 'FORM_MAIL_RESTRICTED=TRUE', 'FORM_SDK_DIR=relativ', 'FORM_RP_ID=Gross.example.org',
                          'FORM_ABUSE_BLOCKED_NETS=10.0.0.0/33', 'FORM_MCP_TOKEN_RATE_LIMIT=1$2', 'FORM_IMAGE_TAG=a b',
-                         'FORM_HTTP_PORT_FILE=/x', 'FORM_UNBEKANNT=1', 'LOG_LEVEL=laut'):
+                         'FORM_INTERNAL_PORT_FILE=/x', 'FORM_UNBEKANNT=1', 'LOG_LEVEL=laut'):
                 result = settings(mode, envfile, '--set', pair, ok=False)
                 assert result.returncode in (2, 3), (pair, result.returncode, result.stderr)
                 assert envfile.read_bytes() == before and not backups(envfile), pair
@@ -742,6 +742,14 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             settings(mode, envfile, ok=True, extra_env=menu_env, input_text='\n' * 40)
             assert re.search(r'^FORM_INTERNAL_SECOND_FACTOR="1"$', envfile.read_text(), re.M)
             assert len(backups(envfile)) == count + 1 and envfile.stat().st_mode & 0o777 == 0o600
+            # Menüpunkt "Pflichtangaben": Mindestangaben für den Ersatz des alten Backends
+            plog = menu_double(work / 'pflicht', ['0|Pflichtangaben', '1|', '1|'])
+            settings(mode, envfile, ok=True, extra_env=dict(menu_env, PATH=str(work / 'pflicht') + os.pathsep + os.environ['PATH']), input_text='\n' * 40)
+            ptext = menu_texts(plog)
+            host_key = 'PUBLISHED_PORT' if mode == 'compose' else 'FORM_PUBLISH_PORT'
+            for needle in ('Pflichtangaben', 'FORM_ADMIN_ORIGIN', 'FORM_RP_ID', 'FORM_DB_HOST', 'FORM_PUBLIC_PUBLISH_PORT', host_key,
+                           'FORM_TRUSTED_PROXIES', 'FORM_MIGRATION_ALLOWED_NETS'):
+                assert needle in ptext, (mode, needle)
             answers.write_text('\n'.join(['0|Anwenden', '0|D', '1|']) + '\n')
             before = envfile.read_bytes()
             result = settings(mode, envfile, ok=True, extra_env=menu_env, input_text='\n' * 40)
