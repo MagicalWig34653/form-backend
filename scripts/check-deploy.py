@@ -588,6 +588,9 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             assert key in tpl_keys, (mode, key)
     for key in extra_rows:
         assert key in table_used, f'{key} in config-extra.tsv, aber in keiner Vorlage'
+    help_keys = [l.split('\t')[0] for l in (ROOT / 'deploy' / 'swarm' / 'config-help.tsv').read_text().splitlines() if l and not l.startswith('#')]
+    assert len(help_keys) == len(set(help_keys)), 'config-help.tsv: doppelte Schlüssel'
+    assert all(k in tables and tables[k][9] != '1' for k in help_keys), [k for k in help_keys if k not in tables]
 
     bash44 = bash_44()
     if bash44 is None:
@@ -623,6 +626,14 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             listing = settings(mode, envfile, '--list', ok=True).stdout
             assert 'FORM_MCP_TOKEN_RATE_LIMIT' in listing and 'FORM_DB_PASSWORD' in listing and '(Secret)' in listing, listing
             assert settings(mode, envfile, '--get', 'FORM_DB_PORT', ok=True).stdout == '3306\n'
+            leaked_env = {'FORM_DB_PASSWORD': 'sekret-db-4711'}
+            # Ausführliche Erklärungen: Ports sind gegeneinander abgegrenzt, Secrets bleiben ohne Wert
+            for key, needles in (('FORM_PUBLIC_PORT', ('INNERHALB des Containers', 'FORM_PUBLIC_PUBLISH_PORT')),
+                                 ('FORM_INTERNAL_PORT', ('Dashboard', 'PUBLISHED_PORT')), ('FORM_HTTP_PORT', ('FORM_INTERNAL_PORT',))):
+                info = settings(mode, envfile, '--info', key, ok=True).stdout
+                assert all(n in info for n in needles) and 'Default:' in info, (key, info)
+            assert settings(mode, envfile, '--info', 'NICHT_DA', ok=False).stdout == ''
+            assert 'sekret' not in settings(mode, envfile, '--info', 'FORM_DB_PASSWORD', ok=True, extra_env=leaked_env).stdout
             # Geheimnisse: nie ausgeben, nie schreiben (auch nicht aus dem Prozess-ENV)
             leaked = {'FORM_DB_PASSWORD': 'sekret-db-4711', 'FORM_SERVER_KEY': 'sekret-key-4711'}
             for secret_key, secret_value in leaked.items():
@@ -726,7 +737,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                             'sys.stderr.write(out)\nsys.exit(int(rc))\n')
             stub.chmod(0o755)
             menu_env = {'PATH': str(stubdir) + os.pathsep + os.environ['PATH'], 'SETTINGS_ROWS': '40', 'SETTINGS_COLS': '120'}
-            answers.write_text('\n'.join(['0|Hosts und Listener', '0|FORM_INTERNAL_SECOND_FACTOR', '0|1', '1|', '1|', '0|S', '0|', '0|', '0|']) + '\n')
+            answers.write_text('\n'.join(['0|Hosts und Listener', '0|FORM_INTERNAL_SECOND_FACTOR', '0|', '0|1', '1|', '1|', '0|S', '0|', '0|', '0|']) + '\n')
             before = envfile.read_bytes(); count = len(backups(envfile))
             settings(mode, envfile, ok=True, extra_env=menu_env, input_text='\n' * 40)
             assert re.search(r'^FORM_INTERNAL_SECOND_FACTOR="1"$', envfile.read_text(), re.M)

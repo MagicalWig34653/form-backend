@@ -9,10 +9,12 @@
 #   --get KEY         Wert einer Variablen ausgeben (Geheimnisse nie)
 #   --set KEY=VALUE   Wert prüfen und speichern (mit Sicherung); mehrfach möglich
 #   --unset KEY       Variable aus der Datei nehmen (zurück auf den Default); mehrfach möglich
+#   --info KEY        ausführliche Erklärung einer Variablen (Zweck, Beispiele, Abgrenzung zu ähnlichen Variablen)
 #   --check           gesamte Datei prüfen (Typ, Grenzen, Konflikte, unbekannte Variablen, Secrets)
 #   -h, --help        diese Hilfe
 #
-# Quelle der Metadaten: config-registry.tsv (aus SettingsRegistry erzeugt) und config-extra.tsv (Deploy-Variablen), dazu die
+# Quelle der Metadaten: config-registry.tsv (aus SettingsRegistry erzeugt), config-extra.tsv (Deploy-Variablen), config-help.tsv
+# (ausführliche Erklärungen, optional), dazu die
 # Vorlage stack.env.example bzw. .env.example (welche Variablen es im Modus gibt, Vorlagenwerte als Default).
 # Geheimnisse (DB-Passwort, Server-Key, Bootstrap-Passwort) werden nie angezeigt oder in die Datei geschrieben.
 # Gespeichert wird atomar mit Modus 0600; vorher entsteht eine Sicherung <Datei>.bak.JJJJMMTT-HHMMSS.
@@ -36,6 +38,7 @@ else
 fi
 TSV_REGISTRY="${SETTINGS_REGISTRY:-$SCRIPT_DIR/config-registry.tsv}"
 TSV_EXTRA="${SETTINGS_EXTRA:-$SCRIPT_DIR/config-extra.tsv}"
+TSV_HELP="${SETTINGS_HELP:-$SCRIPT_DIR/config-help.tsv}"
 ENV_FILE=""
 BACKTITLE="form-backend ($MODE): Einstellungen"
 # Geheimnisse, die update.sh aus dem Prozess-ENV akzeptiert, die aber nie in der Datei stehen dürfen.
@@ -48,7 +51,16 @@ die() { echo "Fehler: $*" >&2; exit 1; }
 # ---------------------------------------------------------------- Tabellen und Vorlage
 declare -a KEYS=()
 declare -A T_GROUP=() T_TYPE=() T_DEF=() T_UNIT=() T_MIN=() T_MAX=() T_CHOICES=() T_APPLY=() T_SECRET=() T_SUM=()
-declare -A TPL_KEY=() TPL_VAL=()
+declare -A TPL_KEY=() TPL_VAL=() T_HELP=()
+
+load_help() { # optionale Datei key<TAB>Text; "\n" im Text = Zeilenumbruch
+  local k t
+  [ -r "$TSV_HELP" ] || return 0
+  while IFS=$'\x1f' read -r k t; do
+    [ -n "$k" ] || continue
+    T_HELP[$k]="${t//\\n/$'\n'}"
+  done < <(awk -F'\t' -v OFS='\037' '!/^#/ && NF >= 2 { print $1, $2 }' "$TSV_HELP")
+}
 
 load_table() { # Datei
   local f="$1" k g ty d u mn mx ch ap se sm
@@ -82,7 +94,7 @@ load_template() { # welche Variablen es im Modus gibt; aktive Zeilen liefern den
 load_tables() {
   local k base
   declare -A seen=()
-  load_table "$TSV_REGISTRY"; load_table "$TSV_EXTRA"
+  load_table "$TSV_REGISTRY"; load_table "$TSV_EXTRA"; load_help
   load_template
   # Reihenfolge: Tabellenzeilen in Dateireihenfolge, soweit die Vorlage des Modus die Variable kennt.
   while IFS= read -r k; do
@@ -662,6 +674,12 @@ detail_text() { # KEY
     "${T_SUM[$k]}" "$(describe_type "$k")" "$(show_val "$k" "$(default_of "$k")")" "$(show_val "$k" "$(eff_value "$k")")" "$(state_label "$k")" "$(effect_text "$k")"
 }
 
+info_text() { # KEY -> Erklärung (lang, falls vorhanden) plus Typ, Default, aktueller Wert
+  local k="$1" h="${T_HELP[$1]:-}"
+  [ -n "$h" ] || h="${T_SUM[$k]}"
+  printf '%s\n\nTyp:      %s\nDefault:  %s\nAktuell:  %s (%s)\nWirkung:  %s' \
+    "$h" "$(describe_type "$k")" "$(show_val "$k" "$(default_of "$k")")" "$(show_val "$k" "$(eff_value "$k")")" "$(state_label "$k")" "$(effect_text "$k")"
+}
 PARENT_CRUMB=""
 reset_key() {
   local k="$1"
@@ -677,6 +695,7 @@ edit_key() { # KEY
   local -a opts=() ch
   ct="$(crumb ${PARENT_CRUMB:+"$PARENT_CRUMB"} "$k")"
   if [ "${T_SECRET[$k]}" = 1 ]; then ui_msg "$ct" "$(secret_hint "$k")"; return 0; fi
+  [ -z "${T_HELP[$k]:-}" ] || ui_msg "$ct: Erklärung" "$(info_text "$k")"
   init="$(eff_value "$k")"; lo="${T_MIN[$k]}"; hi="${T_MAX[$k]}"; def="$(default_of "$k")"
   case "$base" in
     bool) opts=(true "an" false "aus") ;;
@@ -928,7 +947,7 @@ main_menu() {
 }
 
 # ---------------------------------------------------------------- Kommandozeile
-usage() { sed -n '4,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n "4,15p" "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 cli_list() {
   local k v src extra
@@ -950,6 +969,11 @@ cli_list() {
     if is_secretlike "$k" || [[ $SECRET_ENV_KEYS == *" $k "* ]]; then extra="***"; else extra="${ENV_VAL[$k]:-(leer)}"; fi
     printf '%-38s %-26s %-18s %s\n' "$k" "$extra" "-" "Datei (unbekannt)"
   done
+}
+cli_info() {
+  local k="$1"
+  if ! is_known "$k"; then echo "Unbekannte Variable: $k" >&2; return 2; fi
+  printf '%s\n' "$k"; info_text "$k"; echo
 }
 cli_get() {
   local k="$1"
@@ -998,6 +1022,7 @@ main() {
       --get) actions+=("get:${2:?--get braucht einen Namen}"); want_menu=0; shift 2 ;;
       --set) actions+=("set:${2:?--set braucht KEY=VALUE}"); want_menu=0; shift 2 ;;
       --unset) actions+=("unset:${2:?--unset braucht einen Namen}"); want_menu=0; shift 2 ;;
+      --info) actions+=("info:${2:?--info braucht einen Namen}"); want_menu=0; shift 2 ;;
       --check) actions+=("check"); want_menu=0; shift ;;
       -h|--help) usage; exit 0 ;;
       *) echo "Unbekannte Option: $1 (siehe --help)" >&2; exit 64 ;;
@@ -1024,6 +1049,7 @@ main() {
     case "$act" in
       list) cli_list ;;
       get:*) cli_get "${act#get:}" || rc=$? ;;
+      info:*) cli_info "${act#info:}" || rc=$? ;;
       set:*) cli_set "${act#set:}" || { rc=$?; break; } ;;
       unset:*) cli_unset "${act#unset:}" || { rc=$?; break; } ;;
       check) check_all; print_check || rc=1 ;;
