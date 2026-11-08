@@ -23,12 +23,12 @@
   <section
     role="group"
     aria-label={t.access.title}
-    class="surface-card border-warn/40 space-y-3 p-5"
+    class="bg-amber-500/10 ring-1 ring-amber-500/50 rounded-xl space-y-3 p-5"
   >
-    <h2 class="text-[length:var(--fs-h2)] font-semibold">{t.access.title}</h2>
+    <h2 class="text-[17px] font-semibold">{t.access.title}</h2>
     <p>{t.access.warning}</p>
     <p
-      class="bg-surface-sunken rounded-md px-3 py-2 font-mono break-all select-all"
+      class="bg-muted/60 rounded-md px-3 py-2 font-mono break-all select-all"
       data-testid="recovery-code"
     >
       {keyring.pendingCode}
@@ -42,7 +42,9 @@
       />
     </Row>
     <Button type="button" onclick={confirm}>{t.access.confirm}</Button>
-    {#if wrong}<p role="alert" class="text-danger text-sm">{t.access.wrong}</p>{/if}
+    {#if wrong}<p role="alert" class="text-red-700 dark:text-destructive text-sm">
+        {t.access.wrong}
+      </p>{/if}
   </section>
 {:else if !keyring.unlocked}
   <Banner tone="warn">{t.access.locked}</Banner>

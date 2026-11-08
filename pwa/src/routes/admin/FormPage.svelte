@@ -61,7 +61,7 @@
   const tabActive = (target: Tab): boolean =>
     tab === target || (target === 'fields' && configuration);
   const tabClass = (current: boolean): string =>
-    `relative inline-flex min-h-11 items-center px-3.5 text-[length:var(--fs-body)] font-medium whitespace-nowrap transition-colors after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full ${current ? 'text-foreground after:bg-ui-accent' : 'text-muted-foreground hover:text-foreground after:bg-transparent'}`;
+    `relative inline-flex min-h-11 items-center px-3.5 font-medium whitespace-nowrap transition-colors after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full ${current ? 'text-foreground after:bg-brand' : 'text-muted-foreground hover:text-foreground after:bg-transparent'}`;
   const linkButton =
     'inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-medium';
   // The shell breadcrumb can show the real form name from this shared context.
@@ -167,7 +167,7 @@
   <li class="flex min-h-11 items-center gap-3">
     <span
       aria-hidden="true"
-      class={`flex size-6 shrink-0 items-center justify-center rounded-full ${done ? 'bg-ok-soft text-ok' : done === false ? 'bg-idle-soft text-idle' : 'bg-info-soft text-info'}`}
+      class={`flex size-6 shrink-0 items-center justify-center rounded-full ${done ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : done === false ? 'bg-muted text-muted-foreground' : 'bg-blue-500/10 text-blue-700 dark:text-blue-400'}`}
       ><NavIcon name={done ? 'check' : done === false ? 'x' : 'info'} size={13} /></span
     >
     {#if target && !done}
@@ -179,7 +179,7 @@
     {:else}
       <span class="min-w-0 flex-1">{label}</span>
     {/if}
-    <span class="text-muted-foreground shrink-0 text-[length:var(--fs-small)]"
+    <span class="text-muted-foreground shrink-0 text-sm"
       >{done ? t.formUi.stateDone : done === false ? t.formUi.stateOpen : t.formUi.stateCheck}</span
     >
   </li>
@@ -187,7 +187,7 @@
 
 <section class="flex min-w-0 flex-col gap-5">
   <AccessStatus />
-  <PageHeader hero title={editor.detail?.name ?? t.formWork.title} description={customer}>
+  <PageHeader title={editor.detail?.name ?? t.formWork.title} description={customer}>
     {#snippet badges()}
       {#if editor.detail}
         {#if !published}
@@ -228,7 +228,7 @@
   </PageHeader>
   <nav
     aria-label={t.admin.form.tabsLabel}
-    class="border-border-subtle -mx-4 overflow-x-auto border-b px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
+    class="border-border -mx-4 overflow-x-auto border-b px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
   >
     <div class="flex w-max min-w-full gap-0.5">
       {#each navigation as item (item.target)}
@@ -248,13 +248,13 @@
   </nav>
   {#if editor.loading}
     <div aria-busy="true" class="flex min-h-64 flex-col gap-4">
-      <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+      <p role="status" class="text-muted-foreground text-sm">
         {slow ? t.formWork.slow : t.admin.loading}
       </p>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {#each [0, 1, 2, 3] as n (n)}<Skeleton class="h-24 rounded-[var(--r-card)]" />{/each}
+        {#each [0, 1, 2, 3] as n (n)}<Skeleton class="h-24 rounded-xl" />{/each}
       </div>
-      <Skeleton class="h-48 rounded-[var(--r-card)]" />
+      <Skeleton class="h-48 rounded-xl" />
     </div>
   {:else if !editor.detail}
     <Banner tone="danger">
@@ -277,10 +277,10 @@
       </Banner>
     {:else if configuration}
       <nav aria-label={t.formWork.configuration} class="flex flex-wrap items-center gap-2">
-        <div class="bg-surface-sunken flex gap-1 rounded-lg p-1">
+        <div class="bg-muted/60 flex gap-1 rounded-lg p-1">
           {#each ['fields', 'mail'] as target (target)}
             <a
-              class={`inline-flex min-h-9 items-center rounded-md px-3 text-sm font-medium ${!extra && tab === target ? 'bg-surface-card text-foreground shadow-[var(--shadow-card)]' : 'text-muted-foreground hover:text-foreground'}`}
+              class={`inline-flex min-h-9 items-center px-3 text-sm font-medium ${!extra && tab === target ? 'bg-card ring-1 ring-foreground/10 rounded-xl text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               aria-current={!extra && tab === target ? 'page' : undefined}
               href={formPath(tenant, form, target as Tab)}
               onclick={(e) => navigate(e, target as Tab)}
@@ -323,13 +323,13 @@
           aria-busy={statsLoading}
         >
           {#if statsLoading}
-            <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+            <p role="status" class="text-muted-foreground text-sm">
               {statsSlow ? t.formWork.slow : t.admin.loading}
             </p>
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {#each [0, 1, 2] as n (n)}<Skeleton class="h-24 rounded-[var(--r-card)]" />{/each}
+              {#each [0, 1, 2] as n (n)}<Skeleton class="h-24 rounded-xl" />{/each}
             </div>
-            <Skeleton class="h-48 rounded-[var(--r-card)]" />
+            <Skeleton class="h-48 rounded-xl" />
           {:else if statsError}
             <Banner tone="danger">
               {statsError}
@@ -344,7 +344,7 @@
         </div>
         <div class="flex min-w-0 flex-col gap-5">
           <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
-            <ul class="divide-border-subtle -my-1 divide-y">
+            <ul class="divide-border -my-1 divide-y">
               {@render checkItem(
                 published,
                 t.formUi.setupPublished,
@@ -375,6 +375,7 @@
                     <div>
                       <Button
                         variant="outline"
+                        class="h-auto min-h-10 py-2 text-left whitespace-normal"
                         disabled={editor.saving}
                         onclick={async () => {
                           if (await editor.createDraft())
@@ -382,7 +383,7 @@
                         }}>{t.admin.form.newDraft}</Button
                       >
                     </div>
-                    <p class="text-muted-foreground text-[length:var(--fs-small)]">
+                    <p class="text-muted-foreground text-sm">
                       {t.admin.form.newDraftHint}
                     </p>
                   </div>

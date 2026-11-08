@@ -141,7 +141,7 @@
   });
 </script>
 
-<h2 class="text-lg font-medium">{t.formWork.mail}</h2>
+<h2 class="text-[17px] font-semibold">{t.formWork.mail}</h2>
 <p class="text-muted-foreground max-w-prose text-sm">{t.admin.mail.intro}</p>
 
 <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.routeHint}</p>
@@ -216,7 +216,7 @@
         <Input id="mail-from-name" bind:value={f.fromName} maxlength={100} autocomplete="off" />
       </Row>
 
-      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border flex flex-col gap-3 rounded-lg border p-4">
         <legend class="px-1 font-medium"
           ><label class="flex items-center gap-2"
             ><Checkbox bind:checked={f.organisation.enabled} />{t.admin.mail.orgEnabled}</label
@@ -277,7 +277,7 @@
         {/if}
       </fieldset>
 
-      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border flex flex-col gap-3 rounded-lg border p-4">
         <legend class="px-1 font-medium">{t.admin.mail.derived.title}</legend>
         <p class="text-muted-foreground max-w-prose text-sm">{t.admin.mail.derived.hint}</p>
         {#if problem('derived')}<p role="alert" class="text-destructive text-sm">
@@ -349,7 +349,7 @@
         </div>
       </fieldset>
 
-      <fieldset class="border-border-subtle flex flex-col gap-3 rounded-md border p-4">
+      <fieldset class="border-border flex flex-col gap-3 rounded-lg border p-4">
         <legend class="px-1 font-medium"
           ><label class="flex items-center gap-2"
             ><Checkbox bind:checked={f.confirmation.enabled} />{t.admin.mail.confEnabled}</label
@@ -423,7 +423,7 @@
   </form>
 </DraftGate>
 
-<h2 class="text-lg font-medium">{t.admin.mail.deliveries}</h2>
+<h2 class="mt-8 text-[17px] font-semibold">{t.admin.mail.deliveries}</h2>
 <p class="text-muted-foreground text-sm">{t.formWork.acceptedHint}</p>
 {#if deliveryError}<Notice message={deliveryError} />
   <div>

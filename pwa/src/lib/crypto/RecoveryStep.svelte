@@ -68,15 +68,17 @@
 </script>
 
 <section
-  class="bg-surface-sunken border-border flex flex-col gap-4 rounded-xl border p-5"
+  class="bg-muted/60 border-border flex flex-col gap-4 rounded-xl border p-5"
   aria-label={c.title}
 >
   <h2 class="text-base font-semibold">{c.title}</h2>
   {#if keyring.recoveryCode}
     <p class="text-sm">{c.save}</p>
-    <p class="bg-warn-soft border-warn/40 rounded-md border px-3 py-2 text-sm">{c.warning}</p>
+    <p class="bg-amber-500/10 border-amber-500/50 rounded-md border px-3 py-2 text-sm">
+      {c.warning}
+    </p>
     <p
-      class="bg-surface-sunken rounded-md px-3 py-3 font-mono text-sm break-all select-all"
+      class="bg-muted/60 rounded-md px-3 py-3 font-mono text-sm break-all select-all"
       data-testid="account-recovery-code"
     >
       {keyring.recoveryCode}
@@ -165,8 +167,12 @@
       >
     {/if}
   {:else}
-    <p role="status" class="text-ok text-sm font-medium">{c.saved}</p>
+    <p role="status" class="text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+      {c.saved}
+    </p>
     <Button type="button" onclick={oncomplete}>{c.continue}</Button>
   {/if}
-  {#if message}<p role="status" class="text-danger text-sm">{message}</p>{/if}
+  {#if message}<p role="status" class="text-red-700 dark:text-destructive text-sm">
+      {message}
+    </p>{/if}
 </section>

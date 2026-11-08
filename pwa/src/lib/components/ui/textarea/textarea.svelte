@@ -5,9 +5,10 @@
 </script>
 
 <textarea
+  data-slot="textarea"
   bind:value
   class={cn(
-    'border-input bg-background min-h-24 w-full min-w-0 rounded-md border px-3 py-2 text-sm shadow-xs disabled:opacity-50',
+    'border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive placeholder:text-muted-foreground flex min-h-24 w-full min-w-0 rounded-lg border bg-transparent px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50',
     className,
   )}
   {...rest}></textarea>

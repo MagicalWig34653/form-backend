@@ -57,15 +57,19 @@
 </script>
 
 <div
-  class={cn('surface-card ov-rise flex min-w-0 flex-col gap-2 p-4', className)}
+  data-slot="card"
+  class={cn(
+    'bg-card ring-1 ring-foreground/10 rounded-xl h-full min-w-0 flex-col gap-2 p-5 flex',
+    className,
+  )}
   style={`--i:${Math.min(index, 7)}`}
   aria-busy={status === 'loading'}
   data-status={status}
   role="group"
   aria-label={label}
 >
-  <div class="text-muted-foreground flex items-center gap-1.5 text-[length:var(--fs-small)]">
-    <span class="font-medium">{label}</span>
+  <div class="text-muted-foreground flex items-center gap-1.5 text-sm">
+    <span class="text-foreground text-base font-medium">{label}</span>
     {#if hint}<button
         type="button"
         aria-label={hint}
@@ -80,53 +84,28 @@
     <Skeleton class="h-4 w-32" />
     <span class="sr-only">{t.overview.loadingMetric}</span>
   {:else if status === 'unavailable' || value === null}
-    <p
-      class="text-[length:var(--fs-display)] leading-9 font-semibold"
-      aria-label={t.overview.noData}
-    >
-      <span aria-hidden="true">–</span>
+    <p class="text-[32px] leading-9 font-semibold">
+      <span aria-hidden="true">–</span><span class="sr-only">{t.overview.noData}</span>
     </p>
-    <p class="text-muted-foreground text-[length:var(--fs-small)]">
+    <p class="text-muted-foreground text-sm">
       {reason ?? (status === 'unavailable' ? t.overview.unavailableReason : t.overview.noData)}
     </p>
   {:else}
-    <p class="text-[length:var(--fs-display)] leading-9 font-semibold tracking-tight tabular-nums">
+    <p class="text-[32px] leading-9 font-semibold tracking-tight tabular-nums">
       <CountUp {value} {...format ? { format } : {}} />
     </p>
     {#if series === undefined}
       <!-- no trend for this metric -->
     {:else if hasSeries && series}<Sparkline values={series} label={seriesLabel || label} />
-    {:else}<p class="text-muted-foreground text-[length:var(--fs-small)]">
+    {:else}<p class="text-muted-foreground text-sm">
         {t.overview.sparkNone}
       </p>{/if}
-    {#if delta}<p
-        class="text-[length:var(--fs-small)] font-medium"
-        data-direction={delta.direction}
-      >
+    {#if delta}<p class="text-sm font-medium" data-direction={delta.direction}>
         <span aria-hidden="true" class="mr-1 text-[0.7em]">{arrows[delta.direction]}</span
         >{delta.text}
       </p>{/if}
   {/if}
-  {#if note && status !== 'loading'}<p class="text-muted-foreground text-[length:var(--fs-small)]">
+  {#if note && status !== 'loading'}<p class="text-muted-foreground text-sm">
       {note}
     </p>{/if}
 </div>
-
-<style>
-  /* Rise without fading: opacity changes would lower the measured text contrast mid-animation. */
-  @keyframes ov-rise {
-    from {
-      transform: translateY(8px);
-    }
-    to {
-      transform: none;
-    }
-  }
-  :global(.ov-rise) {
-    animation: ov-rise var(--dur-slow) var(--ease-out) both;
-    animation-delay: calc(var(--i, 0) * 40ms);
-  }
-  :global(html[data-effects='off'] .ov-rise) {
-    animation: none;
-  }
-</style>

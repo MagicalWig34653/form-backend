@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { t } from '$lib/i18n';
   import { router } from '$lib/router.svelte';
   import { matchRoute } from '$lib/routes';
@@ -23,6 +23,7 @@
   import Banner from '$lib/components/admin/Banner.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import NotFound from '../NotFound.svelte';
+  import { shellState } from '$lib/components/shell/shell-state.svelte';
 
   const route = $derived(matchRoute(router.path));
   onMount(() => {
@@ -40,6 +41,35 @@
     });
   });
 
+  // Below 1024 px the sidebar is a drawer: closed by default, closed again on every page change and on Escape.
+  let mobile = $state(false);
+  $effect(() => {
+    const media = window.matchMedia('(max-width: 1023px)');
+    const update = () => {
+      mobile = media.matches;
+      if (!mobile) shellState.drawerOpen = false;
+    };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  });
+  $effect(() => {
+    void router.path;
+    shellState.drawerOpen = false;
+  });
+  // Opening moves focus into the drawer; closing with Escape gives it back to the menu button.
+  $effect(() => {
+    const open = shellState.drawerOpen;
+    if (open && mobile)
+      void tick().then(() =>
+        document.querySelector<HTMLElement>('#app-sidebar [data-nav-item]')?.focus(),
+      );
+  });
+  function closeDrawer(restoreFocus: boolean): void {
+    shellState.drawerOpen = false;
+    if (restoreFocus) void tick().then(() => document.getElementById('drawer-trigger')?.focus());
+  }
+
   // Not signed in: to the login page, remembering where the user wanted to go.
   $effect(() => {
     if (session.status === 'anonymous')
@@ -47,17 +77,23 @@
   });
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && shellState.drawerOpen) closeDrawer(true);
+  }}
+/>
+
 {#if session.status === 'loading'}
-  <div class="mx-auto flex max-w-5xl flex-col gap-4 p-4 md:p-8" aria-busy="true">
-    <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+  <div class="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-7" aria-busy="true">
+    <p role="status" class="text-muted-foreground text-sm">
       {t.admin.loading}
     </p>
     <Skeleton class="h-8 w-48" />
-    <Skeleton class="h-24 w-full rounded-[var(--r-card)]" />
-    <Skeleton class="h-48 w-full rounded-[var(--r-card)]" />
+    <Skeleton class="h-24 w-full rounded-xl" />
+    <Skeleton class="h-48 w-full rounded-xl" />
   </div>
 {:else if session.status === 'error'}
-  <div class="mx-auto flex max-w-5xl flex-col items-start gap-3 p-4 md:p-8">
+  <div class="mx-auto flex max-w-5xl flex-col items-start gap-3 p-4 sm:p-7">
     <Banner tone="danger" class="w-full">
       {session.error?.message}
       {#snippet action()}
@@ -66,15 +102,26 @@
     </Banner>
   </div>
 {:else if session.status === 'ready'}
-  <div class="min-h-dvh md:pl-[var(--sidebar-w)]">
-    <aside
-      class="bg-sidebar border-border-subtle fixed inset-y-0 left-0 hidden w-[var(--sidebar-w)] overflow-y-auto border-r md:block"
-    >
-      <SidebarNav />
-    </aside>
+  <aside
+    id="app-sidebar"
+    class="app-sidebar bg-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r px-3 py-4"
+    data-open={shellState.drawerOpen}
+    inert={mobile && !shellState.drawerOpen}
+  >
+    <SidebarNav onnavigate={() => (shellState.drawerOpen = false)} />
+  </aside>
+  {#if shellState.drawerOpen}
+    <button
+      type="button"
+      class="fixed inset-x-0 top-[60px] bottom-0 z-30 bg-black/30 lg:hidden"
+      aria-label={t.shell.close}
+      onclick={() => closeDrawer(false)}
+    ></button>
+  {/if}
+  <div class="min-h-dvh lg:pl-64" inert={mobile && shellState.drawerOpen}>
     <TopBar />
     <CommandPalette />
-    <div class="mx-auto flex max-w-[77.5rem] min-w-0 flex-col gap-6 px-4 py-8 md:px-8">
+    <div class="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8">
       {#if route.name === 'tenants'}
         <Tenants />
       {:else if route.name === 'forms'}

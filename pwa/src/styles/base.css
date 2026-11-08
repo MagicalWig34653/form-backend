@@ -1,0 +1,147 @@
+/* Grundstile: Schrift, Fokus, Überschriften. Alles Übrige entsteht mit Tailwind-Klassen. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    scroll-padding-top: calc(var(--topbar-h, 3.75rem) + 1rem);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+  button,
+  select,
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Programmatischer Fokus auf Überschrift oder Inhalt (Seitenwechsel) bekommt keinen Rahmen. */
+  h1[tabindex='-1']:focus,
+  h1[tabindex='-1']:focus-visible,
+  main[tabindex='-1']:focus-visible {
+    outline: none;
+  }
+  h1 {
+    font-size: 32px;
+    line-height: 1.2;
+    letter-spacing: -0.8px;
+    font-weight: 650;
+    margin: 0 0 8px;
+  }
+  h2 {
+    font-size: 21px;
+    line-height: 1.35;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+  }
+  p {
+    margin: 0 0 12px;
+  }
+  /* Betriebsseiten: Abschnittstitel, Erklärung und Inhalt mit gleichem, sichtbarem Abstand. */
+  .ops-h2 {
+    margin: 0 0 8px;
+  }
+  .ops-h2-bare {
+    margin: 0 0 16px;
+  }
+  .ops-lead {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--muted-foreground);
+  }
+  @media (max-width: 760px) {
+    h1 {
+      font-size: 28px;
+    }
+  }
+}
+
+/* Natives Select mit gezeichnetem Pfeil; behält Popup und Tastaturverhalten des Browsers. */
+.select-ctl {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+/* Platzhalter beim Laden: ruhiges Pulsieren (bei reduzierter Bewegung ohne Animation). */
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+.skeleton {
+  background: var(--muted);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+/* Kachelraster (12 Spalten) mit Container Queries statt Viewport-Breakpoints. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+  container-type: inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tile-grid > * {
+  grid-column: span 12;
+  min-width: 0;
+}
+@container (min-width: 560px) {
+  .tile-grid > [data-w='3'],
+  .tile-grid > [data-w='4'],
+  .tile-grid > [data-w='6'] {
+    grid-column: span 6;
+  }
+}
+@container (min-width: 900px) {
+  .tile-grid > [data-w='3'] {
+    grid-column: span 3;
+  }
+  .tile-grid > [data-w='4'] {
+    grid-column: span 4;
+  }
+  .tile-grid > [data-w='6'] {
+    grid-column: span 6;
+  }
+  .tile-grid > [data-w='8'] {
+    grid-column: span 8;
+  }
+}

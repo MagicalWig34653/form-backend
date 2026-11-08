@@ -11,9 +11,12 @@
 <input
   type="checkbox"
   role="switch"
+  data-slot="switch"
+  data-state={checked ? 'checked' : 'unchecked'}
   bind:checked
   class={cn(
-    'h-6 w-11 shrink-0 appearance-none rounded-full border border-input bg-secondary transition-colors before:mt-0.5 before:ml-0.5 before:block before:size-4 before:rounded-full before:bg-foreground before:transition-transform checked:bg-ui-accent checked:before:translate-x-5 checked:before:bg-white disabled:opacity-50',
+    'bg-input checked:bg-primary focus-visible:ring-ring/50 h-[22px] w-10 shrink-0 appearance-none rounded-full border border-transparent transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50',
+    'before:bg-background before:mt-px before:ml-px before:block before:size-[18px] before:rounded-full before:transition-transform before:content-[""] checked:before:translate-x-[18px] checked:before:bg-primary-foreground dark:before:bg-foreground',
     className,
   )}
   {...rest}

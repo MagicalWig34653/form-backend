@@ -34,7 +34,6 @@
   description={ui.setupCount
     .replace('{done}', String(doneCount))
     .replace('{total}', String(steps.length))}
-  class="ov-rise"
   id="setup"
 >
   <div aria-busy={loading}>
@@ -52,7 +51,7 @@
         aria-valuemax="100"
         aria-valuenow={percent}
         aria-valuetext={`${percent} %`}
-        class="bg-surface-sunken mb-4 h-2.5 overflow-hidden rounded-full"
+        class="bg-muted/60 mb-4 h-2.5 overflow-hidden rounded-full"
       >
         <div
           class="bg-primary h-full rounded-full transition-[width] duration-[var(--dur-slow)] ease-[var(--ease-out)]"
@@ -61,11 +60,11 @@
       </div>
       <ul class="grid gap-x-4 gap-y-2 sm:grid-cols-2">
         {#each steps as step (step.id)}
-          <li class="flex items-center gap-2 text-[length:var(--fs-body)]">
+          <li class="flex items-center gap-2">
             <span
               aria-hidden="true"
               class={step.done
-                ? 'bg-ok-soft text-ok flex size-5 shrink-0 items-center justify-center rounded-full [&>svg]:size-3'
+                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 flex size-5 shrink-0 items-center justify-center rounded-full [&>svg]:size-3'
                 : 'border-border text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full border'}
               >{#if step.done}<NavIcon name="check" size={12} />{/if}</span
             >
@@ -89,7 +88,7 @@
           >
         </div>
       {:else if !unknown && steps.length > 0}
-        <p class="text-muted-foreground mt-3 text-[length:var(--fs-small)]">{ui.setupComplete}</p>
+        <p class="text-muted-foreground mt-3 text-sm">{ui.setupComplete}</p>
       {/if}
     {/if}
   </div>

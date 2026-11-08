@@ -131,7 +131,7 @@
   onMount(() => void load());
 </script>
 
-<div class="mx-auto flex w-full max-w-[1040px] flex-col gap-6">
+<div class="flex w-full max-w-[1040px] flex-col gap-6">
   <PageHeader title={text.title} description={text.precedence}>
     {#snippet badges()}
       <StatusChip tone="info" label={ui.precedenceChain} />
@@ -148,13 +148,16 @@
     {#if error}
       <ErrorState title={ui.loadFailed} message={error} onretry={() => void load()} {busy} />
     {:else}
-      <div aria-busy="true" class="surface-card flex flex-col gap-4 p-5">
+      <div
+        aria-busy="true"
+        class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-4 p-5"
+      >
         <span class="sr-only" role="status">{t.states.loading}</span>
         <Skeleton class="h-5 w-40" /><Skeleton class="h-10" /><Skeleton class="h-10" />
       </div>
     {/if}
   {:else}
-    <div class="surface-card flex flex-wrap items-end gap-3 p-4">
+    <div class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-wrap items-end gap-3 p-4">
       <div class="min-w-0 flex-1 basis-56">
         <label for="settings-search" class="mb-1.5 block text-sm font-medium">{ui.search}</label>
         <div class="relative">
@@ -189,7 +192,7 @@
         {#each groupCounts as { g, n } (g)}
           <a
             href={`#${slug(g)}`}
-            class="border-border bg-card hover:bg-surface-sunken inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
+            class="border-border bg-card hover:bg-muted inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
             >{g}<span class="text-muted-foreground">{n}</span></a
           >
         {/each}
@@ -206,7 +209,7 @@
                 {@const source = sourceOf(item)}
                 <div
                   data-setting={item.definition.key}
-                  class="border-border-subtle bg-surface-sunken/50 flex flex-col gap-2 rounded-lg border p-3"
+                  class="border-border bg-muted/50 flex flex-col gap-2 rounded-lg border p-3"
                 >
                   <Row
                     id={item.definition.key}
@@ -246,7 +249,7 @@
         </p>
       {/if}
       <div
-        class="glass-bar border-border-subtle sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 md:-mx-8 md:px-8"
+        class="app-topbar border-border sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:-mx-7 sm:px-7"
       >
         <span class="text-muted-foreground text-sm" aria-live="polite"
           >{dirty ? `${ui.dirty}: ${dirty}` : ''}</span

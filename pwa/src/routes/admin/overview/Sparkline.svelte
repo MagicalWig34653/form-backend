@@ -66,7 +66,7 @@
   role="img"
   aria-label={label}
   viewBox={`0 0 ${width} ${height}`}
-  class={cn('text-primary block h-auto max-h-14 w-full overflow-visible', className)}
+  class={cn('text-brand-ink block h-auto max-h-14 w-full overflow-visible', className)}
   data-testid="sparkline"
 >
   {#each g.areas as d, i (i)}<path
@@ -89,7 +89,7 @@
       cy={g.end.y}
       r="3"
       fill="currentColor"
-      stroke="var(--surface-card)"
+      stroke="var(--background)"
       stroke-width="1.5"
       data-testid="sparkline-end"
     />{/if}

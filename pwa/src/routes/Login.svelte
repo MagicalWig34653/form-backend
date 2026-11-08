@@ -190,9 +190,9 @@
     {#if message}
       <p
         role="alert"
-        class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+        class="bg-destructive/10 border-destructive/40 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
       >
-        <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+        <span aria-hidden="true" class="text-red-700 dark:text-destructive mt-0.5 shrink-0"
           ><NavIcon name="danger" size={16} /></span
         >{message}
       </p>
@@ -242,14 +242,14 @@
       <Button type="submit" class="w-full" disabled={busy}>{t.login.submit}</Button>
     </form>
   {:else}
-    <p class="text-ok flex items-center gap-2 font-medium">
+    <p class="text-emerald-700 dark:text-emerald-400 flex items-center gap-2 font-medium">
       <NavIcon name="check" size={18} />{t.login.done}
     </p>
     <Button type="button" variant="outline" onclick={() => void logout()}>{t.login.logout}</Button>
   {/if}
 
   {#if totpAllowed && (step === 'passkey' || step === 'password')}
-    <details class="bg-surface-sunken rounded-md px-4 py-3">
+    <details class="bg-muted/60 rounded-md px-4 py-3">
       <summary class="min-h-6 cursor-pointer text-sm font-medium">{c.login}</summary>
       <form onsubmit={(e) => void submitTotp(e)} class="mt-3 flex flex-col gap-3">
         {#if step === 'passkey'}

@@ -157,15 +157,15 @@
   });
 </script>
 
-<section class="surface-card min-w-0 space-y-4 px-5 py-4" aria-labelledby="local-search-title">
+<section
+  class="bg-card ring-1 ring-foreground/10 rounded-xl min-w-0 space-y-4 px-5 py-4"
+  aria-labelledby="local-search-title"
+>
   <div>
-    <h2
-      id="local-search-title"
-      class="text-[length:var(--fs-h2)] leading-[26px] font-semibold tracking-tight"
-    >
+    <h2 id="local-search-title" class="text-[17px] leading-[26px] font-semibold tracking-tight">
       {ui.title}
     </h2>
-    <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-[18px]">
+    <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
       {ui.intro}
     </p>
   </div>
@@ -216,11 +216,11 @@
         onclick={() => (selected = visible.map((row) => row.id))}>{ui.selectAll}</Button
       >
     </div>
-    <p class="text-muted-foreground text-[length:var(--fs-small)] leading-5">{ui.unknownHint}</p>
+    <p class="text-muted-foreground text-sm leading-5">{ui.unknownHint}</p>
     {#if visible.length === 0}
       <EmptyState icon="search" title={t.admin.entriesPage.filteredEmpty} />
     {:else}
-      <ul class="divide-border-subtle border-border-subtle divide-y border-y">
+      <ul class="divide-border border-border divide-y border-y">
         {#each visible as row (row.id)}
           <li class="min-w-0 py-1.5">
             <label class="flex min-h-11 items-center gap-3 break-all"
@@ -231,13 +231,12 @@
                 value={row.id}
                 disabled={busy}
               /><span class="tabular-nums">{row.receivedAt ?? ui.noDate}</span>
-              <span class="text-muted-foreground text-[length:var(--fs-small)]">· {row.id}</span
-              ></label
+              <span class="text-muted-foreground text-sm">· {row.id}</span></label
             >
             {#if row.unreadable}<p class="text-muted-foreground pl-9 text-sm">
                 {ui.unknown}
               </p>{:else}<pre
-                class="bg-surface-sunken ml-9 max-h-48 overflow-auto rounded-md p-3 text-sm break-all whitespace-pre-wrap">{JSON.stringify(
+                class="bg-muted/60 ml-9 max-h-48 overflow-auto rounded-md p-3 text-sm break-all whitespace-pre-wrap">{JSON.stringify(
                   row.fields,
                   null,
                   2,
@@ -246,7 +245,7 @@
         {/each}
       </ul>
     {/if}
-    <div class="border-border-subtle flex flex-col gap-4 rounded-[var(--r-card)] border p-4">
+    <div class="border-border flex flex-col gap-4 rounded-xl border p-4">
       <Export
         {tenant}
         {form}
@@ -255,7 +254,7 @@
         disabled={busy}
         onFailure={failure}
       />
-      <div class="border-border-subtle flex flex-col gap-2 border-t pt-4">
+      <div class="border-border flex flex-col gap-2 border-t pt-4">
         <div>
           <Button
             variant="outline"
@@ -265,10 +264,7 @@
             onclick={() => (confirmation = true)}>{ui.delete}</Button
           >
         </div>
-        {#if deleteReason}<p
-            id="delete-reason"
-            class="text-muted-foreground text-[length:var(--fs-small)]"
-          >
+        {#if deleteReason}<p id="delete-reason" class="text-muted-foreground text-sm">
             {deleteReason}
           </p>{/if}
       </div>

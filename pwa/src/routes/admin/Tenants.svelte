@@ -10,6 +10,8 @@
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import AccessStatus from './AccessStatus.svelte';
+  import NeedHint from '$lib/components/admin/NeedHint.svelte';
+  import { Card, CardContent } from '$lib/components/ui/card';
   import { accessAutomation } from '$lib/crypto/automation.svelte';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
@@ -22,7 +24,9 @@
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
+  let listEl = $state<HTMLElement | undefined>();
   let name = $state('');
   let busy = $state(false);
   let message = $state('');
@@ -117,15 +121,43 @@
 
 <section class="flex min-w-0 flex-col gap-5">
   <AccessStatus />
-  <PageHeader hero title={t.admin.tenants.title} description={t.lists.intro}>
+  <PageHeader title={t.admin.tenants.title} description={t.lists.intro}>
     {#snippet actions()}
-      {#if session.me?.systemAdministrator}<Button
+      {#if session.me?.systemAdministrator && !(items !== null && items.length === 0 && !showCreate)}<Button
           onclick={() => {
             showCreate = true;
           }}>{t.lists.createCustomer}</Button
         >{/if}
     {/snippet}
   </PageHeader>
+  <NeedHint accepts={['customer']} onshown={() => setTimeout(() => listEl?.focus(), 80)} />
+  {#if items !== null && items.length === 0 && session.me?.systemAdministrator && !showCreate}
+    <Card data-testid="first-customer" class="[--card-spacing:--spacing(6)]">
+      <CardContent class="flex flex-wrap items-center gap-x-6 gap-y-4">
+        <span
+          aria-hidden="true"
+          class="bg-brand-soft text-brand-ink flex size-12 shrink-0 items-center justify-center rounded-xl"
+          ><NavIcon name="customers" size={24} /></span
+        >
+        <div class="min-w-0 flex-1 basis-72">
+          <h2 class="mb-1 text-[21px]">{t.shell.firstCustomerTitle}</h2>
+          <p class="ops-lead mb-0">{t.shell.firstCustomerBody}</p>
+          <p class="ops-lead mt-1 mb-0">
+            {t.shell.firstCustomerSetup}
+            <a
+              href="/installation"
+              class="text-brand-ink underline underline-offset-4"
+              onclick={(e) => {
+                e.preventDefault();
+                router.navigate('/installation');
+              }}>{t.shell.setup}</a
+            >.
+          </p>
+        </div>
+        <Button size="lg" onclick={() => (showCreate = true)}>{t.lists.createCustomer}</Button>
+      </CardContent>
+    </Card>
+  {/if}
   <FilterBar collapsible={false} activeCount={query.trim() ? 1 : 0} onreset={() => (query = '')}>
     <div class="min-w-48 flex-1">
       <Row id="customer-search" label={t.lists.searchCustomers}
@@ -134,14 +166,14 @@
     </div>
     {#snippet trailing()}
       {#if items !== null}<span
-          class="text-muted-foreground flex min-h-10 items-center text-[length:var(--fs-small)] tabular-nums"
+          class="text-muted-foreground flex min-h-10 items-center text-sm tabular-nums"
           >{items.length === 1
             ? t.listUi.customerCountOne
             : t.listUi.customerCount.replace('{n}', String(items.length))}</span
         >{/if}
     {/snippet}
   </FilterBar>
-  <div role="status" class="text-muted-foreground text-[length:var(--fs-small)] empty:hidden">
+  <div role="status" class="text-muted-foreground text-sm empty:hidden">
     {loading ? (slow ? t.lists.slow : t.admin.loading) : ''}
   </div>
   {#if loadError}
@@ -153,7 +185,7 @@
     </Banner>
   {/if}
   <Panel flush>
-    <div aria-busy={loading} class="min-h-48">
+    <div bind:this={listEl} tabindex="-1" aria-busy={loading} class="min-h-48 outline-none">
       {#if loading && items === null}
         <div class="flex flex-col gap-3 p-4" aria-hidden="true">
           {#each [1, 2, 3] as n (n)}<Skeleton class="h-11 rounded-md" />{/each}
@@ -181,7 +213,7 @@
               <span class="flex min-w-0 items-center gap-3">
                 <span
                   aria-hidden="true"
-                  class="bg-ui-accent-soft text-ui-accent-ink flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                  class="bg-brand-soft text-brand-ink flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
                   >{c.name.trim().slice(0, 1).toLocaleUpperCase('de')}</span
                 >
                 <span class="min-w-0 break-words">{c.name}</span>

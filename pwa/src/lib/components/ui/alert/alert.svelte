@@ -4,6 +4,14 @@
   let { class: className, children, ...rest }: HTMLAttributes<HTMLDivElement> = $props();
 </script>
 
-<div class={cn('rounded-xl border border-border bg-card p-4 text-sm', className)} {...rest}>
+<div
+  data-slot="alert"
+  role="alert"
+  class={cn(
+    'bg-card text-card-foreground relative w-full rounded-lg border px-3 py-2.5 text-sm',
+    className,
+  )}
+  {...rest}
+>
   {@render children?.()}
 </div>

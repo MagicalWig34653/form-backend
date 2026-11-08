@@ -13,9 +13,9 @@
   {#if message}
     <p
       role={kind === 'error' ? 'alert' : 'status'}
-      class="flex items-start gap-2 text-sm leading-5 {kind === 'error'
-        ? 'text-danger'
-        : 'text-ok'}"
+      class="m-0 flex items-start gap-2 text-sm leading-5 {kind === 'error'
+        ? 'text-red-700 dark:text-destructive'
+        : 'text-emerald-700 dark:text-emerald-400'}"
     >
       <span aria-hidden="true" class="mt-0.5 shrink-0 [&>svg]:size-4"
         ><NavIcon name={kind === 'error' ? 'danger' : 'check'} /></span

@@ -16,14 +16,16 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
 <div
-  class={cn('w-full overflow-x-auto', containerClass)}
+  data-slot="table-container"
+  class={cn('relative w-full overflow-x-auto', containerClass)}
   role={label ? 'region' : undefined}
   aria-label={label}
   tabindex={label ? 0 : undefined}
 >
   <table
+    data-slot="table"
     class={cn(
-      'w-full text-left text-[length:var(--fs-body)] [&_td]:px-4 [&_td]:py-2.5 [&_th]:px-4 [&_th]:py-2.5 [&_th]:font-medium [&_tr]:border-b [&_tr]:border-[var(--border-subtle)] [&_tbody_tr:last-child]:border-b-0',
+      'w-full caption-bottom text-sm [&_td]:px-4 [&_td]:py-2.5 [&_th]:px-4 [&_th]:py-2.5 [&_th]:font-medium [&_tr]:border-b [&_tbody_tr:last-child]:border-b-0',
       className,
     )}
     {...rest}

@@ -38,10 +38,10 @@
   const go = (row: RecentRow): void => router.navigate(formPath(tenant, row.formId, 'entries'));
 </script>
 
-<Panel title={ui.recent} description={ui.recentIntro} class="ov-rise" id="recent-entries">
+<Panel title={ui.recent} description={ui.recentIntro} id="recent-entries">
   {#snippet actions()}
     {#if allFormId}<a
-        class="text-primary rounded-md px-1 text-[length:var(--fs-small)] font-medium underline underline-offset-4"
+        class="text-brand-ink rounded-md px-1 text-sm font-medium underline underline-offset-4"
         href={formPath(tenant, allFormId, 'entries')}
         onclick={(e) => {
           e.preventDefault();
@@ -59,20 +59,20 @@
     {:else if rows.length === 0}
       <p class="text-muted-foreground">{ui.recentNone}</p>
     {:else}
-      <ul class="divide-border-subtle flex flex-col divide-y">
+      <ul class="divide-border flex flex-col divide-y">
         {#each rows as row (`${row.formId}:${row.id}`)}
           {@const when = relativeTime(row.receivedAt, now)}
           <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 first:pt-0 last:pb-0">
             <span class="min-w-24 font-medium">{row.formName}</span>
             <time
-              class="text-muted-foreground min-w-28 text-[length:var(--fs-small)]"
+              class="text-muted-foreground min-w-28 text-sm"
               datetime={row.receivedAt ?? undefined}
               title={absolute(row.receivedAt)}>{when ?? '–'}</time
             >
             <StatusChip tone="ok" label={row.state === 'accepted' ? ui.stateAccepted : row.state} />
             {#if row.held}<StatusChip tone="info" label={ui.protectedEntry} />{/if}
             <a
-              class="text-primary ml-auto rounded-md px-1 text-[length:var(--fs-small)] font-medium underline underline-offset-4"
+              class="text-brand-ink ml-auto rounded-md px-1 text-sm font-medium underline underline-offset-4"
               href={formPath(tenant, row.formId, 'entries')}
               aria-label={ui.openEntry
                 .replace('{form}', row.formName)

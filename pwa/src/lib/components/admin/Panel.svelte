@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from '$lib/utils';
+  import { Card } from '$lib/components/ui/card';
 
   interface Props {
     title?: string;
@@ -27,25 +28,29 @@
   const heading = $derived(`h${level}`);
 </script>
 
-<section {id} class={cn('surface-card min-w-0', className)}>
+<Card
+  {id}
+  class={cn(
+    'min-w-0 [--card-spacing:--spacing(5)] max-sm:[--card-spacing:--spacing(4)]',
+    className,
+  )}
+>
   {#if title || actions}
-    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 pt-4 pb-1">
+    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-(--card-spacing)">
       <div class="min-w-0">
         {#if title}<svelte:element
             this={heading}
-            class="text-[length:var(--fs-h2)] leading-[26px] font-semibold tracking-tight"
+            class="m-0 text-[17px] leading-snug font-semibold tracking-tight"
             >{title}</svelte:element
           >{/if}
-        {#if description}<p
-            class="text-muted-foreground text-[length:var(--fs-small)] leading-[18px]"
-          >
+        {#if description}<p class="text-muted-foreground m-0 mt-0.5 text-sm leading-5">
             {description}
           </p>{/if}
       </div>
       {#if actions}<div class="flex flex-wrap items-center gap-2">{@render actions()}</div>{/if}
     </header>
   {/if}
-  <div class={cn(flush ? '' : 'px-5 py-4', !title && !actions && !flush && 'pt-5')}>
+  <div class={cn(!flush && 'px-(--card-spacing)')}>
     {@render children?.()}
   </div>
-</section>
+</Card>

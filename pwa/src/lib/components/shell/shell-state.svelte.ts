@@ -1,8 +1,9 @@
 import { http } from '$lib/api';
 
-const state = $state<{ opsVisible: boolean; paletteOpen: boolean }>({
+const state = $state<{ opsVisible: boolean; paletteOpen: boolean; drawerOpen: boolean }>({
   opsVisible: false,
   paletteOpen: false,
+  drawerOpen: false,
 });
 let requestedFor: string | null = null;
 
@@ -16,6 +17,13 @@ export const shellState = {
   },
   set paletteOpen(open: boolean) {
     state.paletteOpen = open;
+  },
+  /** Mobile navigation drawer. */
+  get drawerOpen() {
+    return state.drawerOpen;
+  },
+  set drawerOpen(open: boolean) {
+    state.drawerOpen = open;
   },
   togglePalette(): void {
     state.paletteOpen = !state.paletteOpen;

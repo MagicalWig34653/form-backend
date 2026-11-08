@@ -14,11 +14,10 @@ const text = (value: string) => createRawSnippet(() => ({ render: () => `<span>$
 const button = (label: string) =>
   createRawSnippet(() => ({ render: () => `<button type="button">${label}</button>` }));
 
-it('PageHeader: h1 with focus target id, description, breadcrumb and actions', () => {
+it('PageHeader: h1 with focus target id, description and actions', () => {
   render(PageHeader, {
     title: 'Kontakt',
     description: 'Ein Satz.',
-    breadcrumbs: [{ label: 'Kunde A', href: '/t/x' }, { label: 'Formulare' }],
     actions: button('Anlegen'),
     badges: text('Aktiv'),
   });
@@ -27,7 +26,6 @@ it('PageHeader: h1 with focus target id, description, breadcrumb and actions', (
   expect(h1.getAttribute('tabindex')).toBe('-1');
   expect(screen.getByText('Ein Satz.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Anlegen' })).toBeTruthy();
-  expect(screen.getByRole('navigation', { name: 'Brotkrumen' })).toBeTruthy();
   expect(screen.getByText('Aktiv')).toBeTruthy();
 });
 
@@ -53,9 +51,9 @@ it('Panel without title renders no heading', () => {
 it('StatusChip: always carries the text, pulse only for non-error tones', () => {
   const { container, rerender } = render(StatusChip, { tone: 'ok', label: 'Aktiv', pulse: true });
   expect(screen.getByText('Aktiv')).toBeTruthy();
-  expect(container.querySelector('.pulse-ring')).not.toBeNull();
+  expect(container.querySelector('.animate-pulse')).not.toBeNull();
   void rerender({ tone: 'danger', label: 'Fehler', pulse: true });
-  expect(container.querySelector('.pulse-ring')).toBeNull();
+  expect(container.querySelector('.animate-pulse')).toBeNull();
   expect(container.querySelector('[data-tone="danger"]')).not.toBeNull();
 });
 

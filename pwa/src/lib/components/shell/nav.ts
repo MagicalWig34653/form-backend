@@ -8,10 +8,8 @@ export interface NavItem {
   href: string;
   icon: string;
   active: boolean;
-  /** Tooltip explaining why the target is only a fallback (e.g. no form chosen yet). */
+  /** Tooltip explaining where the entry leads when there is nothing to open yet. */
   hint?: string;
-  /** Nothing to open yet (no customer or form): shown as inactive text instead of a link that would stay on the same page. */
-  disabled?: boolean;
 }
 export interface NavGroup {
   id: 'work' | 'admin';
@@ -20,7 +18,7 @@ export interface NavGroup {
 }
 export interface NavContext {
   route: Route;
-  /** Tenant of the route, or the first tenant of the session. */
+  /** Tenant of the route, the last used one, or the only one of the session. */
   tenant: string | undefined;
   manageTenant: string | undefined;
   systemAdministrator: boolean;
@@ -29,10 +27,15 @@ export interface NavContext {
   lastForm?: { tenant: string; form: string } | undefined;
 }
 
+/** What the user has to choose first; the target page shows a matching hint (see NeedHint). */
+export type Need = 'customer' | 'entries' | 'statistics';
+export const needPath = (path: string, need: Need): string => `${path}?need=${need}`;
+
 /** Navigation model shared by the sidebar and the command palette. */
 export function buildNav(c: NavContext): NavGroup[] {
   const { route } = c;
-  const forms = c.tenant ? tenantPath(c.tenant) : '/t';
+  // An entry never dead-ends: without a customer or form it leads to the list that explains what to choose.
+  const forms = c.tenant ? tenantPath(c.tenant) : needPath('/t', 'customer');
   const onForm = route.name === 'form';
   const target = onForm
     ? { tenant: route.tenant, form: route.form }
@@ -53,23 +56,27 @@ export function buildNav(c: NavContext): NavGroup[] {
       href: forms,
       icon: 'forms',
       active: route.name === 'forms' || (onForm && route.tab !== 'entries'),
-      ...(c.tenant ? {} : { disabled: true, hint: t.shell.noCustomer }),
+      ...(c.tenant ? {} : { hint: t.shell.noCustomer }),
     },
     {
       id: 'entries',
       label: t.shell.entries,
-      href: target ? formPath(target.tenant, target.form, 'entries') : forms,
+      href: target
+        ? formPath(target.tenant, target.form, 'entries')
+        : needPath(c.tenant ? tenantPath(c.tenant) : '/t', c.tenant ? 'entries' : 'customer'),
       icon: 'entries',
       active: onForm && route.tab === 'entries',
-      ...(target ? {} : { hint: t.shell.chooseForm, disabled: true }),
+      ...(target ? {} : { hint: c.tenant ? t.shell.chooseForm : t.shell.noCustomer }),
     },
     {
       id: 'statistics',
       label: t.shell.statistics,
-      href: target ? formPath(target.tenant, target.form) + '#statistics' : forms,
+      href: target
+        ? formPath(target.tenant, target.form) + '#statistics'
+        : needPath(c.tenant ? tenantPath(c.tenant) : '/t', c.tenant ? 'statistics' : 'customer'),
       icon: 'statistics',
       active: false,
-      ...(target ? {} : { hint: t.shell.chooseForm, disabled: true }),
+      ...(target ? {} : { hint: c.tenant ? t.shell.chooseForm : t.shell.noCustomer }),
     },
   ];
   const admin: NavItem[] = [];

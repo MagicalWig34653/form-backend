@@ -20,8 +20,8 @@
   const style: Record<Metric, { color: string; dash: string | undefined }> = {
     visits: { color: 'var(--ui-accent)', dash: undefined },
     begins: { color: 'var(--muted-foreground)', dash: '6 4' },
-    submits: { color: 'var(--ok)', dash: undefined },
-    abandons: { color: 'var(--warn)', dash: '2 3' },
+    submits: { color: 'var(--chart-3)', dash: undefined },
+    abandons: { color: 'var(--chart-4)', dash: '2 3' },
   };
 
   // SVG text must stay readable: on narrow screens the drawing is as wide as the card.
@@ -81,16 +81,16 @@
 
 <header class="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
   <div>
-    <h2 class="text-[length:var(--fs-h2)] leading-[26px] font-semibold tracking-tight">
+    <h2 class="text-[17px] leading-[26px] font-semibold tracking-tight">
       {ui.title}
     </h2>
-    <p class="text-muted-foreground text-[length:var(--fs-small)] leading-[18px]">
+    <p class="text-muted-foreground text-sm leading-[18px]">
       {t.admin.stats.range.replace('{n}', String(days))} ·
       {ui.period.replace('{from}', stats.from).replace('{to}', stats.to)}
     </p>
   </div>
   <span
-    class="bg-idle-soft text-idle rounded-full px-2.5 py-0.5 text-[length:var(--fs-small)] leading-[18px] font-medium"
+    class="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-sm leading-[18px] font-medium"
     >{ui.scope}</span
   >
 </header>
@@ -113,13 +113,13 @@
   />
 </dl>
 {#if !hasEvents}
-  <p class="bg-surface-sunken text-muted-foreground rounded-[var(--r-card)] p-5 text-center">
+  <p class="bg-muted/60 text-muted-foreground rounded-xl p-5 text-center">
     {ui.empty}
   </p>
 {:else}
-  <section class="surface-card mb-4 min-w-0 px-5 py-4">
+  <section class="bg-card ring-1 ring-foreground/10 rounded-xl mb-4 min-w-0 px-5 py-4">
     <figure class="mb-3 min-w-0">
-      <figcaption class="mb-2 text-[length:var(--fs-body)] font-medium">{ui.chart}</figcaption>
+      <figcaption class="mb-2 font-medium">{ui.chart}</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} class="block h-auto w-full" aria-hidden="true">
         {#each ticks as tick (tick)}
           <line
@@ -127,7 +127,7 @@
             x2={W - padR}
             y1={y(tick)}
             y2={y(tick)}
-            stroke="var(--border-subtle)"
+            stroke="var(--border-border)"
             stroke-width="1"
           />
           <text
@@ -222,7 +222,7 @@
         {/if}
       </svg>
       {#if !direct || few}
-        <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[length:var(--fs-small)]">
+        <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {#each metrics as metric (metric)}<li class="flex items-center gap-2">
               <svg width="22" height="8" aria-hidden="true"
                 ><line
@@ -245,14 +245,14 @@
       >
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
       <div
-        class="border-border-subtle max-w-full overflow-x-auto rounded-[var(--r-ctl)] border"
+        class="border-border max-w-full overflow-x-auto rounded-lg border"
         role="region"
         aria-label={ui.table}
         tabindex="0"
       >
-        <table class="w-full text-[length:var(--fs-small)]">
+        <table class="w-full text-sm">
           <caption class="sr-only">{t.admin.stats.title}</caption>
-          <thead class="bg-surface-sunken text-muted-foreground">
+          <thead class="bg-muted/60 text-muted-foreground">
             <tr>
               <th scope="col" class="px-3 py-2 text-left font-medium whitespace-nowrap"
                 >{t.admin.stats.date}</th
@@ -266,9 +266,9 @@
               >
             </tr>
           </thead>
-          <tbody class="divide-border-subtle divide-y">
+          <tbody class="divide-border divide-y">
             {#each stats.days as d (d.date)}
-              <tr class="hover:bg-surface-sunken/60">
+              <tr class="hover:bg-muted/50">
                 <th scope="row" class="px-3 py-1.5 text-left font-normal whitespace-nowrap"
                   >{d.date}</th
                 >
@@ -286,9 +286,9 @@
     </details>
   </section>
 {/if}
-<p class="text-muted-foreground mt-3 text-[length:var(--fs-small)]">{t.admin.stats.hint}</p>
+<p class="text-muted-foreground mt-3 text-sm">{t.admin.stats.hint}</p>
 
-<p class="text-muted-foreground mt-2 text-[length:var(--fs-small)]">{ui.explanation}</p>
-{#if stats.visits === 0}<p class="text-muted-foreground mt-2 text-[length:var(--fs-small)]">
+<p class="text-muted-foreground mt-2 text-sm">{ui.explanation}</p>
+{#if stats.visits === 0}<p class="text-muted-foreground mt-2 text-sm">
     {ui.instrumentation}
   </p>{/if}

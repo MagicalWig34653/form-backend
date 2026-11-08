@@ -13,19 +13,20 @@
     class?: string;
   }
   let { tone = 'idle', label, pulse = false, class: className }: Props = $props();
+  // Getönt, nie voll: Zustand steht immer als Text neben dem Punkt.
   const tones: Record<Tone, string> = {
-    ok: 'bg-ok-soft text-ok',
-    warn: 'bg-warn-soft text-warn',
-    danger: 'bg-danger-soft text-danger',
-    info: 'bg-info-soft text-info',
-    idle: 'bg-idle-soft text-idle',
+    ok: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    warn: 'bg-amber-500/10 text-amber-800 dark:text-amber-400',
+    danger: 'bg-destructive/10 text-red-700 dark:text-destructive',
+    info: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
+    idle: 'bg-muted text-muted-foreground',
   };
 </script>
 
 <span
   data-tone={tone}
   class={cn(
-    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[length:var(--fs-small)] leading-[18px] font-medium whitespace-nowrap',
+    'inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs leading-none font-medium whitespace-nowrap',
     tones[tone],
     className,
   )}
@@ -33,8 +34,8 @@
   <span
     aria-hidden="true"
     class={cn(
-      'relative size-2 shrink-0 rounded-full bg-current',
-      pulse && tone !== 'danger' && 'pulse-ring',
+      'size-1.5 shrink-0 rounded-full bg-current',
+      pulse && tone !== 'danger' && 'animate-pulse',
     )}
   ></span>{label}
 </span>

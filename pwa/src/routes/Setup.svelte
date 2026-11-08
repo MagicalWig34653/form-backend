@@ -71,16 +71,16 @@
     {#if message}
       <p
         role="alert"
-        class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+        class="bg-destructive/10 border-destructive/40 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
       >
-        <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+        <span aria-hidden="true" class="text-red-700 dark:text-destructive mt-0.5 shrink-0"
           ><NavIcon name="danger" size={16} /></span
         >{message}
       </p>
     {/if}
   </div>
   {#if done}
-    <p class="text-ok flex items-center gap-2 font-medium">
+    <p class="text-emerald-700 dark:text-emerald-400 flex items-center gap-2 font-medium">
       <NavIcon name="check" size={18} />{t.setup.done}
     </p>
     {#if secondFactorRequired}<p class="text-sm">{t.setup.passwordRequired}</p>{/if}
@@ -90,9 +90,9 @@
   {:else if !token}
     <p
       role="alert"
-      class="bg-danger-soft border-danger/35 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+      class="bg-destructive/10 border-destructive/40 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
     >
-      <span aria-hidden="true" class="text-danger mt-0.5 shrink-0"
+      <span aria-hidden="true" class="text-red-700 dark:text-destructive mt-0.5 shrink-0"
         ><NavIcon name="danger" size={16} /></span
       >{t.setup.missingToken}
     </p>

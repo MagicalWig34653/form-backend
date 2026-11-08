@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { effects } from '$lib/effects.svelte';
+  import { motion } from '$lib/motion';
 
   interface Props {
     value: number;
@@ -15,13 +15,13 @@
   let { value, format = defaultFormat, duration = 600, class: className }: Props = $props();
 
   // Start at 0 only when the animation will actually run, so the end value never flashes first.
-  let shown = $state(untrack(() => (effects.effective === 'off' ? value : 0)));
+  let shown = $state(untrack(() => (motion.reduced ? value : 0)));
   let frame = 0;
 
   $effect(() => {
     const target = value;
     cancelAnimationFrame(frame);
-    if (effects.effective === 'off' || typeof requestAnimationFrame !== 'function') {
+    if (motion.reduced || typeof requestAnimationFrame !== 'function') {
       shown = target;
       return;
     }

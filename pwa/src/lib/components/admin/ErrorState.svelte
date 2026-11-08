@@ -29,17 +29,17 @@
 <div
   role="alert"
   class={cn(
-    'bg-danger-soft border-danger/35 flex flex-col items-center gap-2 rounded-[var(--r-card)] border px-6 py-8 text-center',
+    'bg-destructive/10 border-destructive/40 flex flex-col items-center gap-2 rounded-xl border px-6 py-8 text-center',
     className,
   )}
 >
   <span
     aria-hidden="true"
-    class="bg-surface-card text-danger mb-1 flex size-11 items-center justify-center rounded-full shadow-sm"
+    class="bg-background text-destructive mb-1 flex size-11 items-center justify-center rounded-full"
     ><NavIcon name="danger" size={22} /></span
   >
-  <p class="text-[length:var(--fs-h2)] leading-[26px] font-semibold">{title}</p>
-  <p class="text-muted-foreground max-w-md text-[length:var(--fs-small)] leading-5">{message}</p>
+  <p class="m-0 text-[17px] leading-snug font-semibold">{title}</p>
+  <p class="text-muted-foreground m-0 max-w-md text-sm leading-5">{message}</p>
   {#if onretry || extra}
     <div class="mt-2 flex flex-wrap justify-center gap-2">
       {#if onretry}<Button type="button" variant="outline" disabled={busy} onclick={onretry}

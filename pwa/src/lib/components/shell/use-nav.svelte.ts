@@ -10,7 +10,14 @@ import { shellState } from './shell-state.svelte';
 export function useNav() {
   onMount(() => void shellState.loadOpsAccess(session.me?.id ?? 'anonymous'));
   const route = $derived(matchRoute(router.path));
-  const tenant = $derived('tenant' in route ? route.tenant : session.tenants[0]?.id);
+  // Customer in focus: the route's, else the last one used, else the only one. With several customers and
+  // none chosen the form entries lead to the customer list (see nav.ts needPath).
+  const tenant = $derived.by(() => {
+    if ('tenant' in route) return route.tenant;
+    const last = formContext.last?.tenant;
+    if (last && session.tenants.some((x) => x.id === last)) return last;
+    return session.tenants.length === 1 ? session.tenants[0]?.id : undefined;
+  });
   const manageTenant = $derived(
     session.tenants.find(
       (x) => (tenant ? x.id === tenant : true) && x.permissions.includes('identity.manage'),

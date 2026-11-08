@@ -38,12 +38,12 @@
 <div
   role="group"
   aria-label={label}
-  class={cn('bg-surface-sunken flex flex-col gap-3 rounded-[var(--r-card)] p-3', className)}
+  class={cn('bg-muted/60 flex flex-col gap-3 rounded-xl p-3', className)}
 >
   {#if collapsible}
     <button
       type="button"
-      class="border-border bg-surface-card flex min-h-10 items-center justify-between gap-2 rounded-md border px-3 text-sm font-medium sm:hidden"
+      class=" bg-card ring-1 ring-foreground/10 rounded-xl flex min-h-10 items-center justify-between gap-2 px-3 text-sm font-medium sm:hidden"
       aria-expanded={open}
       aria-controls={`${id}-fields`}
       onclick={() => (open = !open)}
@@ -52,7 +52,7 @@
         ><NavIcon name="settings" size={16} /><span>{t.listUi.filter}</span></span
       >
       {#if activeCount > 0}<span
-          class="bg-primary text-primary-foreground rounded-full px-2 text-[length:var(--fs-small)] leading-5"
+          class="bg-primary text-primary-foreground rounded-full px-2 text-sm leading-5"
           ><span class="sr-only">{t.listUi.filterActiveLabel} </span>{activeCount}</span
         >{/if}
     </button>
@@ -74,7 +74,7 @@
       </div>
     {/if}
   </div>
-  {#if hint}<p class="text-muted-foreground text-[length:var(--fs-small)] leading-[18px]">
+  {#if hint}<p class="text-muted-foreground text-sm leading-[18px]">
       {hint}
     </p>{/if}
 </div>

@@ -35,9 +35,9 @@
         <span
           class={cn(
             'flex size-8 items-center justify-center rounded-full border text-sm font-semibold transition-colors',
-            done && 'border-ok bg-ok-soft text-ok',
-            active && 'border-ui-accent bg-ui-accent text-ui-accent-foreground',
-            !done && !active && 'border-input bg-surface-sunken text-muted-foreground',
+            done && 'border-emerald-600 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+            active && 'border-brand bg-brand text-primary-foreground',
+            !done && !active && 'border-input bg-muted/60 text-muted-foreground',
           )}
         >
           {#if done}<NavIcon name="check" size={16} />{:else}{index + 1}{/if}
@@ -59,9 +59,9 @@
       </li>
     {/each}
   </ol>
-  <div aria-hidden="true" class="bg-surface-sunken mt-3 h-1 overflow-hidden rounded-full">
+  <div aria-hidden="true" class="bg-muted/60 mt-3 h-1 overflow-hidden rounded-full">
     <div
-      class="bg-ui-accent h-full rounded-full transition-[width] duration-500"
+      class="bg-brand h-full rounded-full transition-[width] duration-500"
       style:width="{percent}%"
     ></div>
   </div>

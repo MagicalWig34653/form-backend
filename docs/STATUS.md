@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## PWA-Darstellung nach thermoctl-Design (08.11.2026, Worktree-Branch `worktree-agent-a5d896957ca92f3cf`, ungemergt)
+
+- Darstellungsschicht (Tokens, Stile, UI-Bausteine, Shell, Seitenköpfe, Karten, Dashboard) von Grund auf nach thermoctl neu gebaut; Logik, API, Router, Stores, Krypto, Berechtigungen, i18n und `data-testid` unverändert. Akzent: 20 Farben mit berechnetem Kontrast, Glow in 6 Stufen (Standard aus), Darstellung-Dialog. Menüeinträge sind nie tot (Hinweis `?need=` + Fokus auf die Liste), Leerzustand „Ersten Kunden anlegen“, Systemadministrator sichtbar.
+- Geprüft: lint, svelte-check, vitest (214), Playwright inkl. axe (136 bestanden), `scripts/contrast.mjs` (alle 20 Akzente), `npm audit --omit=dev` sauber. Stack und `package.json` unverändert.
+- Übergabe, Seiten vorher/nachher, offene Punkte, Screenshots: `docs/handoffs/UI-thermoctl-Angleichung.md`, `docs/ux/bilder-neu/`. Nächster Schritt: visuelle Abnahme durch den Nutzer; Dateibesitz frei, keine laufenden Jobs.
+
 ## Setup-Menü (07.11.2026)
 
 - `deploy/{swarm,compose}/setup.sh` (interaktiv, Terminal, whiptail/dialog, noch keine Env-Datei): Hauptmenü statt Einzelfenster, Logik gemeinsam in `deploy/swarm/lib.sh` (`setup_menu`, `field_label`, `finalize_config`). Felder mit `field_ok`-Prüfung, RP-ID folgt dem Origin bis zur manuellen Änderung, DB-Passwort per passwordbox nur als Variable/Secret-Datei (nie Env-Datei, nie angezeigt). „Trockenlauf anzeigen“, „Jetzt installieren“ (blockiert bei ungültigem Feld, Platzhalter example.org/.com oder fehlendem Passwort, dann Bestätigung), Abbrechen ohne Änderung. „Verbindung prüfen“ bewusst weggelassen (Swarm-Check legt Dienste an, Seiteneffekte). Zeilenabfrage unverändert (kein Terminal, kein Dialogprogramm, `FORM_PLAIN_PROMPT=1`, `--non-interactive`, `--dry-run`).

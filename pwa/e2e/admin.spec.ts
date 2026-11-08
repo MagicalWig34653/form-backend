@@ -594,8 +594,9 @@ test('mobile drawer traps focus, closes with Escape and navigates', async ({ pag
   await page.goto(`/t/${T}`);
   const trigger = page.getByRole('button', { name: 'Navigation öffnen' });
   await trigger.click();
-  const drawer = page.getByRole('dialog');
+  const drawer = page.locator('#app-sidebar');
   await expect(drawer).toBeVisible();
+  await expect(drawer.locator(':focus')).toHaveCount(1);
   await page.keyboard.press('Shift+Tab');
   await expect(drawer.locator(':focus')).toHaveCount(1);
   const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
@@ -745,6 +746,8 @@ for (const administrator of [true, false]) {
 }
 
 test('entries filters, detail and export are accessible on a narrow screen', async ({ page }) => {
+  // Hover transitions would make the measured contrast depend on timing.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 740 });
   await mock(page, true);
   await page.goto(`/login?next=${encodeURIComponent(`/t/${T}/f/${F}/entries`)}`);
@@ -1216,17 +1219,23 @@ test('Befehlspalette: Strg+K, Filter, Pfeiltasten, Enter navigiert, Esc gibt den
   await expect(dialog).toBeHidden();
 });
 
-test('Effektstufe wird pro Gerät gespeichert und folgt reduzierter Bewegung', async ({ page }) => {
+test('Leuchten wird pro Gerät gespeichert, die Akzentfarbe bleibt lesbar', async ({ page }) => {
   await mock(page);
   await page.goto(`/t/${T}`);
   const root = page.locator('html');
-  await expect(root).toHaveAttribute('data-effects', 'subtle');
+  await expect(root).not.toHaveAttribute('data-glow', 'on');
   await page.getByRole('button', { name: 'Darstellung', exact: true }).click();
-  await page.getByRole('button', { name: 'Voll', exact: true }).click();
-  await expect(root).toHaveAttribute('data-effects', 'full');
-  expect(await page.evaluate(() => localStorage.getItem('effects'))).toBe('full');
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Leuchten').fill('4');
+  await expect(root).toHaveAttribute('data-glow', 'on');
+  await expect(root).toHaveAttribute('data-glow-step', '4');
+  await dialog.getByRole('button', { name: 'Gelb', exact: true }).click();
+  expect(await page.evaluate(() => localStorage.getItem('glow'))).toBe('4');
   await page.reload();
-  await expect(root).toHaveAttribute('data-effects', 'full');
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(root).toHaveAttribute('data-effects', 'off');
+  await expect(root).toHaveAttribute('data-glow-step', '4');
+  await expect(root).toHaveAttribute('data-accent', 'gelb');
+  // yellow needs black text on primary buttons
+  expect(await root.evaluate((el) => el.style.getPropertyValue('--primary-foreground'))).toBe(
+    '#000000',
+  );
 });

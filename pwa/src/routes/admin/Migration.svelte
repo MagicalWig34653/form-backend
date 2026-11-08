@@ -303,7 +303,7 @@
   }
 </script>
 
-<div class="mx-auto flex w-full max-w-[960px] flex-col gap-6">
+<div class="flex w-full max-w-[960px] flex-col gap-6">
   <PageHeader title="Umstieg" description={ui.description}>
     {#snippet badges()}
       <StatusChip tone={overall.tone} label={overall.label} pulse={jobs[0]?.state === 'running'} />
@@ -354,12 +354,15 @@
         </fieldset>
       </FormSection>
     </form>
-    <aside class="surface-card flex min-w-0 flex-col gap-3 p-5" aria-label={ui.hintsTitle}>
-      <h2 class="text-[length:var(--fs-h2)] leading-[26px] font-semibold">{ui.hintsTitle}</h2>
+    <aside
+      class="bg-card ring-1 ring-foreground/10 rounded-xl flex min-w-0 flex-col gap-3 p-5"
+      aria-label={ui.hintsTitle}
+    >
+      <h2 class="text-[17px] leading-[26px] font-semibold">{ui.hintsTitle}</h2>
       <p class="text-muted-foreground text-sm">{ui.hintNets}</p>
       <a
         href="/settings"
-        class="text-ui-accent-ink inline-flex min-h-6 items-center text-sm underline underline-offset-4"
+        class="text-brand-ink inline-flex min-h-6 items-center text-sm underline underline-offset-4"
         >Private Netze ausdrücklich unter migration.allowedNets freigeben</a
       >
     </aside>
@@ -368,11 +371,11 @@
       >Nur lesender Zugang geprüft. Schema-HMAC: <code class="break-all">{checkedSchema}</code
       ></Banner
     >{/if}
-  {#if inventory}<details class="surface-card px-5 py-3">
+  {#if inventory}<details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-3">
       <summary class="min-h-6 cursor-pointer text-sm font-medium"
         >Quellinventar und Formularzuordnung</summary
       >
-      <pre class="bg-surface-sunken mt-3 overflow-x-auto rounded-md p-3 text-xs">{JSON.stringify(
+      <pre class="bg-muted/60 mt-3 overflow-x-auto rounded-md p-3 text-xs">{JSON.stringify(
           inventory,
           null,
           2,
@@ -452,7 +455,7 @@
             />
           </Row>
         </div>
-        <details class="bg-surface-sunken rounded-md px-4 py-3 sm:col-span-2">
+        <details class="bg-muted/60 rounded-md px-4 py-3 sm:col-span-2">
           <summary class="min-h-6 cursor-pointer text-sm font-medium">{ui.advanced}</summary>
           <div class="mt-3">
             <Row
@@ -483,8 +486,8 @@
       </fieldset>
     </FormSection>
   </form>
-  <details class="surface-card px-5 py-3">
-    <summary class="min-h-6 cursor-pointer text-[length:var(--fs-h2)] font-semibold"
+  <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-3">
+    <summary class="min-h-6 cursor-pointer text-[17px] font-semibold"
       ><h2 class="inline">Abbruch und Rückkehrplan</h2></summary
     >
     <div class="mt-3 flex flex-col gap-3 text-sm">
@@ -497,7 +500,7 @@
       </p>
       <a
         href="/settings"
-        class="text-ui-accent-ink inline-flex min-h-6 items-center underline underline-offset-4"
+        class="text-brand-ink inline-flex min-h-6 items-center underline underline-offset-4"
         >Nach Prüfung und Quellentfernung migration.enabled deaktivieren</a
       >
     </div>
@@ -552,17 +555,22 @@
     </div>
   </Panel>
   <section class="flex flex-col gap-3">
-    <h2 class="text-[length:var(--fs-h2)] leading-[26px] font-semibold">Fortschritt</h2>
+    <h2 class="text-[17px] leading-[26px] font-semibold">Fortschritt</h2>
     <p class="text-muted-foreground text-sm">
       Letzte Aktualisierung: {updated || 'Wird geladen …'}
     </p>
     {#if !jobs.length}
-      <div class="surface-card text-muted-foreground px-5 py-6 text-center text-sm">
+      <div
+        class="bg-card ring-1 ring-foreground/10 rounded-xl text-muted-foreground px-5 py-6 text-center text-sm"
+      >
         Kein Umstieg gestartet.
       </div>
     {/if}
     {#each jobs as job (job.id)}
-      <section aria-label={`Lauf ${job.id}`} class="surface-card flex flex-col gap-3 p-5">
+      <section
+        aria-label={`Lauf ${job.id}`}
+        class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-3 p-5"
+      >
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h3 class="text-base font-semibold">
             {job.dryRun ? 'Prüflauf' : 'Import'}: {migrationStates[job.state] ?? job.state}
@@ -581,10 +589,10 @@
         </p>
         {#if job.state === 'running'}<progress aria-label="Import läuft" class="h-2 w-full"
           ></progress>{/if}
-        {#if job.error}<p role="alert" class="text-danger text-sm">
+        {#if job.error}<p role="alert" class="text-red-700 dark:text-destructive text-sm">
             Phase {job.phase}: {job.error}. Zugang und Schema prüfen; denselben Lauf fortsetzen.
           </p>{/if}
-        <details class="bg-surface-sunken rounded-md px-4 py-2">
+        <details class="bg-muted/60 rounded-md px-4 py-2">
           <summary class="min-h-6 cursor-pointer text-sm font-medium"
             >Probleme ansehen und bestätigte Zähler</summary
           >

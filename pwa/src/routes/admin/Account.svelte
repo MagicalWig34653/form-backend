@@ -16,6 +16,7 @@
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
@@ -142,12 +143,24 @@
 </script>
 
 <div class="flex w-full max-w-[820px] min-w-0 flex-col gap-6">
-  <PageHeader title={a.title} />
+  <PageHeader title={a.title} description={a.intro}>
+    {#snippet badges()}
+      {#if session.me?.systemAdministrator}<StatusChip
+          tone="info"
+          label={t.admin.systemAdministrator}
+        />{/if}
+    {/snippet}
+  </PageHeader>
+  {#if session.me?.systemAdministrator}
+    <Banner tone="info" title={t.admin.systemAdministrator}>
+      <span data-testid="system-admin-hint">{t.admin.systemAdministratorHint}</span>
+    </Banner>
+  {/if}
   <Panel title={t.access.security}>
     <div class="flex flex-col gap-4">
       <AccessStatus />
       <RecoveryStep security />
-      <details class="bg-surface-sunken rounded-md px-4 py-3">
+      <details class="bg-muted/60 rounded-md px-4 py-3">
         <summary class="min-h-6 cursor-pointer text-sm font-medium">{t.access.advanced}</summary>
         <div class="mt-3 flex flex-col gap-4">
           {#each session.tenants as tenant (tenant.id)}
@@ -183,7 +196,7 @@
         </div>
         {#if totpSecret}
           <p class="max-w-prose text-sm">{c.setupHint}</p>
-          <p class="bg-surface-sunken rounded-md px-3 py-2 font-mono break-all select-all">
+          <p class="bg-muted/60 rounded-md px-3 py-2 font-mono break-all select-all">
             {totpSecret}
           </p>
           <form
@@ -241,7 +254,7 @@
       <ul class="flex flex-col gap-2">
         {#each keys as k (k.credentialId)}
           <li
-            class="border-border-subtle bg-surface-sunken flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
+            class="border-border bg-muted/60 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
           >
             <span class="min-w-0 break-words"
               >{k.label}{k.unlocksKeys ? ` · ${a.unlocksKeys}` : ''}</span
@@ -288,7 +301,7 @@
     </div>
   </Panel>
   {#if session.me?.systemAdministrator}
-    <Panel title={a.create}>
+    <Panel title={a.create} description={a.createIntro}>
       <form onsubmit={(e) => void create(e)} class="flex max-w-xl flex-col gap-3">
         <Row id="new-username" label={a.username}>
           <Input
@@ -314,7 +327,7 @@
         <div><Button type="submit" disabled={busy}>{a.createBtn}</Button></div>
       </form>
       {#if link}
-        <div role="group" class="bg-surface-sunken mt-4 max-w-prose rounded-md p-3">
+        <div role="group" class="bg-muted/60 mt-4 max-w-prose rounded-md p-3">
           <p class="text-sm font-medium">{a.link}</p>
           <p class="my-2 font-mono text-sm break-all select-all" data-testid="setup-link">{link}</p>
         </div>

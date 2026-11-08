@@ -9,14 +9,14 @@
       : new Intl.NumberFormat('de', { style: 'percent', maximumFractionDigits: 1 }).format(value);
 </script>
 
-<p class="text-muted-foreground text-[length:var(--fs-small)]">
+<p class="text-muted-foreground text-sm">
   {stats.from} – {stats.to} · {t.adsStatistics.period}
 </p>
 {#if stats.groups.length}
-  <div class="border-border-subtle overflow-hidden rounded-[var(--r-ctl)] border">
-    <Table label={t.adsStatistics.title} class="text-[length:var(--fs-small)]">
+  <div class="border-border overflow-hidden rounded-lg border">
+    <Table label={t.adsStatistics.title} class="text-sm">
       <caption class="sr-only">{t.adsStatistics.title}</caption>
-      <thead class="bg-surface-sunken text-muted-foreground">
+      <thead class="bg-muted/60 text-muted-foreground">
         <tr>
           <th scope="col" class="text-left">{t.adsStatistics.segment}</th>
           <th scope="col" class="text-right">{t.admin.stats.visits}</th>
@@ -37,8 +37,8 @@
     </Table>
   </div>
 {:else}<p>{t.adsStatistics.empty}</p>{/if}
-{#if stats.suppressed}<p class="text-[length:var(--fs-small)]">{t.adsStatistics.suppressed}</p>{/if}
-<p class="text-muted-foreground text-[length:var(--fs-small)]">
+{#if stats.suppressed}<p class="text-sm">{t.adsStatistics.suppressed}</p>{/if}
+<p class="text-muted-foreground text-sm">
   {t.adsStatistics.privacy}
   {t.adsStatistics.campaigns}
 </p>

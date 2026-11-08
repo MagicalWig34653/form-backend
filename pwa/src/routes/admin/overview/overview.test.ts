@@ -2,12 +2,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { FormListItem, Statistics } from '$lib/api/admin';
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn(), level: 'off' as 'off' | 'subtle' }));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), reduced: true }));
 vi.mock('$lib/router.svelte', () => ({ router: { navigate: mocks.navigate } }));
-vi.mock('$lib/effects.svelte', () => ({
-  effects: {
-    get effective() {
-      return mocks.level;
+vi.mock('$lib/motion', () => ({
+  motion: {
+    get reduced() {
+      return mocks.reduced;
     },
   },
 }));
@@ -23,17 +23,17 @@ import { OverviewLoader } from '$lib/stats/loader.svelte';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.level = 'off';
+  mocks.reduced = true;
 });
 
-it('CountUp shows the end value directly when effects are off', () => {
+it('CountUp shows the end value directly when motion is reduced', () => {
   render(CountUp, { value: 1042 });
   expect(screen.getByTestId('countup-visual').textContent).toBe('1.042');
   expect(screen.getByTestId('countup-value').textContent).toBe('1.042');
   expect(screen.getByTestId('countup-visual').getAttribute('aria-hidden')).toBe('true');
 });
 it('CountUp starts at 0 and reaches the end value when animating', async () => {
-  mocks.level = 'subtle';
+  mocks.reduced = false;
   render(CountUp, { value: 50, duration: 100 });
   expect(screen.getByTestId('countup-visual').textContent).toBe('0');
   await waitFor(() => expect(screen.getByTestId('countup-visual').textContent).toBe('50'), {

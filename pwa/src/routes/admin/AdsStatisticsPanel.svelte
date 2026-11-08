@@ -47,21 +47,18 @@
       <Skeleton class="h-4 w-1/2" />
     {/if}
     {#if unavailable}
-      <p
-        role="status"
-        class="text-muted-foreground flex items-start gap-2 text-[length:var(--fs-small)] leading-5"
-      >
+      <p role="status" class="text-muted-foreground flex items-start gap-2 text-sm leading-5">
         <span class="mt-0.5 shrink-0" aria-hidden="true"><NavIcon name="info" size={16} /></span>
         {t.formUi.adsUnavailable}
       </p>
     {/if}
     {#if error}
-      <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">{error}</p>
+      <p role="status" class="text-muted-foreground text-sm">{error}</p>
     {/if}
     {#if unavailable || error}
       <button
         type="button"
-        class="text-ui-accent-ink -ml-1 inline-flex min-h-10 w-fit items-center rounded-md px-1 text-[length:var(--fs-small)] font-medium underline underline-offset-4"
+        class="text-brand-ink -ml-1 inline-flex min-h-10 w-fit items-center rounded-md px-1 text-sm font-medium underline underline-offset-4"
         onclick={() => retry++}>{t.formUi.adsRetry}</button
       >
     {/if}

@@ -32,7 +32,7 @@
   }
 </script>
 
-<Panel title={ui.attention} class="ov-rise" id="attention">
+<Panel title={ui.attention} id="attention">
   <div aria-busy={loading}>
     {#if loading}
       <div class="flex flex-col gap-3" aria-hidden="true">
@@ -40,7 +40,7 @@
       </div>
     {:else}
       {#if items.length > 0}
-        <ul class="divide-border-subtle flex flex-col divide-y">
+        <ul class="divide-border flex flex-col divide-y">
           {#each items as item (item.id)}
             <li
               class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2.5 first:pt-0"
@@ -48,10 +48,12 @@
               <span class="flex min-w-0 flex-1 basis-56 items-start gap-2.5">
                 <span
                   aria-hidden="true"
-                  class={item.tone === 'warn' ? 'text-warn mt-0.5' : 'text-info mt-0.5'}
+                  class={item.tone === 'warn'
+                    ? 'text-amber-800 dark:text-amber-400 mt-0.5'
+                    : 'text-blue-700 dark:text-blue-400 mt-0.5'}
                   ><NavIcon name={item.tone === 'warn' ? 'warn' : 'info'} size={18} /></span
                 >
-                <span class="text-[length:var(--fs-body)] leading-6">{textOf(item)}</span>
+                <span class=" leading-6">{textOf(item)}</span>
               </span>
               {#if copy[item.kind].action && item.formId}
                 <Button variant="outline" onclick={() => open(item)}
@@ -62,9 +64,9 @@
           {/each}
         </ul>
       {:else}
-        <p class="text-muted-foreground text-[length:var(--fs-body)]">{ui.attentionNone}</p>
+        <p class="text-muted-foreground">{ui.attentionNone}</p>
       {/if}
-      {#if partial}<p class="text-muted-foreground mt-2 text-[length:var(--fs-small)]">
+      {#if partial}<p class="text-muted-foreground mt-2 text-sm">
           {ui.attentionPartial}
         </p>{/if}
     {/if}

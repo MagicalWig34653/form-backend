@@ -1,10 +1,13 @@
-// Checks WCAG contrast of the design tokens in src/app.css (text >= 4.5:1, UI >= 3:1).
+// Checks WCAG contrast of the design tokens in src/app.css (text >= 4.5:1, UI >= 3:1) and of the
+// computed accent tokens for all 20 accent colours in both schemes (src/lib/accent.ts).
 // Run: node scripts/contrast.mjs   (exit code 1 on failure)
 import { readFileSync } from 'node:fs';
+import { accentTokens } from '../src/lib/accent.ts';
+import { ACCENTS } from '../src/lib/accents.ts';
 
 const css = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
 const block = (selector) => {
-  const start = css.indexOf(`${selector} {`);
+  const start = css.indexOf(`\n${selector} {`);
   return css.slice(start, css.indexOf('\n}', start));
 };
 const parse = (body) => {
@@ -35,6 +38,8 @@ function color(value, tokens, over) {
   if (m) return oklchToRgb(+m[1], +m[2], +m[3], m[4] ? +m[4] / 100 : 1, over);
   m = v.match(/^#([0-9a-f]{6})$/i);
   if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+  m = v.match(/^rgb\((\d+) (\d+) (\d+)\)$/);
+  if (m) return [m[1], m[2], m[3]].map((x) => +x / 255);
   m = v.match(/^var\(--([\w-]+)\)$/);
   if (m) return color(tokens[m[1]], tokens, over);
   throw new Error(`unsupported colour: ${value}`);
@@ -47,69 +52,81 @@ const ratio = (x, y) => {
   const [hi, lo] = [luminance(x), luminance(y)].sort((p, q) => q - p);
   return (hi + 0.05) / (lo + 0.05);
 };
+const mix = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
 
-const accentInk = { light: '#1d4ed8', dark: '#93c5fd' };
-// Active navigation: ink of every accent on its 10 % tint over the page surface (see theme.svelte.ts).
-const accents = {
-  light: {
-    blue: ['#2563eb', '#1d4ed8'],
-    violet: ['#7c3aed', '#7c3aed'],
-    green: ['#047857', '#047857'],
-    orange: ['#c2410c', '#9a3412'],
-  },
-  dark: {
-    blue: ['#2563eb', '#93c5fd'],
-    violet: ['#7c3aed', '#c4b5fd'],
-    green: ['#047857', '#6ee7b7'],
-    orange: ['#c2410c', '#fdba74'],
-  },
-};
 let failed = 0;
+function report(ok, mode, label, value, min) {
+  if (!ok) failed++;
+  console.log(
+    `${ok ? 'ok  ' : 'FAIL'} ${mode.padEnd(5)} ${label.padEnd(44)} ${value.toFixed(2)} (>= ${min})`,
+  );
+}
 function check(mode, tokens, fg, bg, min, label) {
   const surface = color(tokens[bg], tokens);
   const fgRgb = fg.startsWith('#') ? color(fg, tokens) : color(tokens[fg], tokens, surface);
-  const value = ratio(fgRgb, surface);
-  const ok = value >= min;
-  if (!ok) failed++;
-  console.log(
-    `${ok ? 'ok  ' : 'FAIL'} ${mode.padEnd(5)} ${label.padEnd(34)} ${value.toFixed(2)} (>= ${min})`,
-  );
+  report(ratio(fgRgb, surface) >= min, mode, label, ratio(fgRgb, surface), min);
 }
+
+// Tailwind palette values used for status text on a 10 % tint of the same hue (see Banner, StatusChip).
+const status = {
+  light: { ok: '#047857', warn: '#92400e', danger: '#b91c1c', info: '#1d4ed8' },
+  dark: { ok: '#34d399', warn: '#fbbf24', danger: null, info: '#60a5fa' },
+};
+const tint = { ok: '#10b981', warn: '#f59e0b', danger: '#ef4444', info: '#3b82f6' };
+
 for (const [mode, tokens] of [
   ['light', light],
   ['dark', dark],
 ]) {
-  for (const surface of ['surface-page', 'surface-card', 'surface-raised', 'surface-sunken']) {
+  const bgRgb = color(tokens.background, tokens);
+  for (const surface of ['background', 'sidebar', 'muted', 'secondary']) {
     check(mode, tokens, 'foreground', surface, 4.5, `foreground on ${surface}`);
     check(mode, tokens, 'muted-foreground', surface, 4.5, `muted-foreground on ${surface}`);
-    check(mode, tokens, accentInk[mode], surface, 4.5, `accent-ink on ${surface}`);
   }
-  for (const tone of ['ok', 'warn', 'danger', 'info', 'idle']) {
-    check(mode, tokens, tone, `${tone}-soft`, 4.5, `${tone} on ${tone}-soft`);
-    check(mode, tokens, 'foreground', `${tone}-soft`, 4.5, `foreground on ${tone}-soft`);
-    check(mode, tokens, tone, 'surface-card', 3, `${tone} (dot/icon) on surface-card`);
-  }
-  for (const surface of ['background', 'surface-card', 'surface-page', 'surface-raised']) {
-    check(mode, tokens, 'input', surface, 3, `input border on ${surface}`);
-    check(mode, tokens, 'ring', surface, 3, `focus ring on ${surface}`);
-  }
-  check(mode, tokens, 'sidebar-ring', 'sidebar', 3, 'sidebar ring on sidebar');
-  check(mode, tokens, 'sidebar-foreground', 'sidebar', 4.5, 'sidebar text on sidebar');
-  check(mode, tokens, 'muted-foreground', 'sidebar', 4.5, 'muted text on sidebar');
-}
-for (const mode of ['light', 'dark']) {
-  const tokens = mode === 'light' ? light : dark;
-  for (const surfaceName of ['surface-page', 'surface-card', 'sidebar'])
-    for (const [name, [base, ink]] of Object.entries(accents[mode])) {
-      const surface = color(tokens[surfaceName], tokens);
-      const tint = color(base, tokens).map((v, i) => v * 0.1 + surface[i] * 0.9);
-      const value = ratio(color(ink, tokens), tint);
-      const ok = value >= 4.5;
-      if (!ok) failed++;
-      console.log(
-        `${ok ? 'ok  ' : 'FAIL'} ${mode.padEnd(5)} ${`accent-ink ${name} on tint/${surfaceName}`.padEnd(34)} ${value.toFixed(2)} (>= 4.5)`,
+  check(mode, tokens, 'muted-foreground', 'background', 4.5, 'muted-foreground on background');
+  check(mode, tokens, 'destructive', 'background', 4.5, 'destructive on background');
+  for (const [tone, hex] of Object.entries(status[mode])) {
+    const fg = hex ? color(hex, tokens) : color(tokens.destructive, tokens);
+    for (const alpha of [0.1, 0.18]) {
+      const bg = mix(color(tint[tone], tokens), bgRgb, alpha);
+      report(
+        ratio(fg, bg) >= 4.5,
+        mode,
+        `${tone} text on ${alpha * 100}% tint`,
+        ratio(fg, bg),
+        4.5,
       );
     }
+  }
+  // Accents: button text on the accent, ink (text, focus ring) on page and soft surface.
+  for (const accent of ACCENTS) {
+    const t = accentTokens(accent.hex, mode === 'dark');
+    const primary = color(t.primary, tokens);
+    const fg = color(t.foreground, tokens);
+    const ink = color(t.ink, tokens);
+    const soft = mix(primary, bgRgb, mode === 'dark' ? 0.18 : 0.09);
+    report(
+      ratio(fg, primary) >= 4.5,
+      mode,
+      `${accent.id}: button text on accent`,
+      ratio(fg, primary),
+      4.5,
+    );
+    report(
+      ratio(ink, bgRgb) >= 4.5,
+      mode,
+      `${accent.id}: ink on background`,
+      ratio(ink, bgRgb),
+      4.5,
+    );
+    report(
+      ratio(ink, soft) >= 4.5,
+      mode,
+      `${accent.id}: ink on soft surface`,
+      ratio(ink, soft),
+      4.5,
+    );
+  }
 }
 if (failed) {
   console.error(`${failed} contrast check(s) failed`);

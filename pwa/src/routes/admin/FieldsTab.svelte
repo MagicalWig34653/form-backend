@@ -233,7 +233,7 @@
       {#if slow}<p role="status">{t.formWork.slow}</p>{/if}
       <form
         onsubmit={(event) => void saveTitle(event)}
-        class="border-border-subtle flex max-w-xl flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end"
+        class="border-border flex max-w-xl flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end"
       >
         <div class="min-w-0 flex-1">
           <Row id="form-title" label={t.admin.form.title}
@@ -253,20 +253,20 @@
           >
         </div>
       </form>
-      <p class="text-muted-foreground text-[length:var(--fs-small)]">
+      <p class="text-muted-foreground text-sm">
         {t.admin.fields.sensitiveHint}
       </p>
       {#if fields.length === 0}
-        <p class="bg-surface-sunken text-muted-foreground rounded-[var(--r-ctl)] p-4 text-center">
+        <p class="bg-muted/60 text-muted-foreground rounded-lg p-4 text-center">
           {t.formWork.firstField}
         </p>
       {:else}
-        <ul class="divide-border-subtle border-border-subtle flex flex-col divide-y border-y">
+        <ul class="divide-border border-border flex flex-col divide-y border-y">
           {#each fields as f (f.id)}
             <li class="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
               <span class="min-w-0 break-words">
                 <span class="font-medium">{f.label}</span>
-                <span class="text-muted-foreground ml-2 text-[length:var(--fs-small)]"
+                <span class="text-muted-foreground ml-2 text-sm"
                   >{t.admin.fields.kinds[f.kind as FieldKind] ?? f.kind}{f.required
                     ? ' · ' + t.admin.fields.required
                     : ''}</span
@@ -310,7 +310,7 @@
           {/each}
         </ul>
       {/if}
-      <p class="text-muted-foreground text-[length:var(--fs-small)]">{t.formWork.orderHint}</p>
+      <p class="text-muted-foreground text-sm">{t.formWork.orderHint}</p>
       <Notice
         message={notice ||
           (editor.error
@@ -332,10 +332,7 @@
           >
         </div>{/if}
       {#if preview}
-        <section
-          class="bg-surface-sunken space-y-4 rounded-[var(--r-card)] p-4"
-          aria-label={t.formWork.preview}
-        >
+        <section class="bg-muted/60 space-y-4 rounded-xl p-4" aria-label={t.formWork.preview}>
           <h3 class="font-medium">{t.formWork.preview}</h3>
           <p class="text-muted-foreground text-sm">{t.formWork.previewHint}</p>
           {#each fields.filter((f) => obj(obj(formOf(editor.draft!.document).fields)[f.id]).hidden !== true) as f (f.id)}
@@ -353,7 +350,7 @@
           onsubmit={(e) => void submit(e)}
           oninput={() => (changed = true)}
           onchange={() => (changed = true)}
-          class="border-border-subtle flex max-w-xl flex-col gap-3 rounded-[var(--r-card)] border p-4"
+          class="border-border flex max-w-xl flex-col gap-3 rounded-xl border p-4"
         >
           <fieldset disabled={editor.saving} class="contents">
             <h3 class="font-medium">{editing === '' ? t.admin.fields.add : t.admin.edit}</h3>

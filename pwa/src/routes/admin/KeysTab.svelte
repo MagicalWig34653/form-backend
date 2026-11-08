@@ -83,7 +83,7 @@
         id="creds-file"
         readonly
         rows="12"
-        class="border-border bg-surface-sunken max-w-2xl rounded-[var(--r-ctl)] border p-3 font-mono text-xs"
+        class="border-border bg-muted/60 max-w-2xl rounded-lg border p-3 font-mono text-xs"
         value={file}></textarea>
       <div class="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onclick={() => void copy()}>{t.admin.copy}</Button>
@@ -110,7 +110,7 @@
           >
           {#if !editor.detail?.currentReleaseId}<p
               id="issue-reason"
-              class="text-muted-foreground mt-2 text-[length:var(--fs-small)]"
+              class="text-muted-foreground mt-2 text-sm"
             >
               {t.formWork.needsRelease}
             </p>{/if}

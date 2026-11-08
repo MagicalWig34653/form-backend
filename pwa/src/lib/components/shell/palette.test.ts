@@ -73,23 +73,26 @@ it('entries link follows the current form, otherwise explains itself', () => {
   expect(entries?.href).toBe(`/t/${tenant}/f/${form}/entries`);
   expect(entries?.hint).toBeUndefined();
   const off = buildNav(ctx({ name: 'forms', tenant }))[0]?.items.find((i) => i.id === 'entries');
-  expect(off?.hint).toBe('Bitte zuerst ein Formular wählen.');
+  expect(off?.hint).toBe('Wählen Sie zuerst ein Formular.');
 });
 
-it('entries and statistics are inactive without a form, usable with the last opened one', () => {
+it('no entry is dead: without a form or customer it leads to the list that explains the choice', () => {
   const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
   const form = 'bbbbbbbb-1111-4111-8111-111111111111';
   const find = (nav: ReturnType<typeof buildNav>, id: string) =>
     nav[0]?.items.find((i) => i.id === id);
-  const off = buildNav(ctx({ name: 'forms', tenant }));
-  expect(find(off, 'entries')?.disabled).toBe(true);
-  expect(find(off, 'statistics')?.disabled).toBe(true);
+  const noForm = buildNav(ctx({ name: 'forms', tenant }));
+  expect(find(noForm, 'forms')?.href).toBe(`/t/${tenant}`);
+  expect(find(noForm, 'entries')?.href).toBe(`/t/${tenant}?need=entries`);
+  expect(find(noForm, 'statistics')?.href).toBe(`/t/${tenant}?need=statistics`);
   const remembered = buildNav({ ...ctx({ name: 'forms', tenant }), lastForm: { tenant, form } });
-  expect(find(remembered, 'entries')?.disabled).toBeUndefined();
   expect(find(remembered, 'entries')?.href).toBe(`/t/${tenant}/f/${form}/entries`);
   const none = buildNav(ctx({ name: 'tenants' }));
-  expect(find(none, 'forms')?.disabled).toBe(true);
-  expect(find(none, 'customers')?.disabled).toBeUndefined();
+  expect(find(none, 'forms')?.href).toBe('/t?need=customer');
+  expect(find(none, 'entries')?.href).toBe('/t?need=customer');
+  expect(find(none, 'statistics')?.href).toBe('/t?need=customer');
+  expect(find(none, 'customers')?.href).toBe('/t');
+  for (const item of none.flatMap((g) => g.items)) expect(item).not.toHaveProperty('disabled');
 });
 
 it('breadcrumbs end on the current page', () => {

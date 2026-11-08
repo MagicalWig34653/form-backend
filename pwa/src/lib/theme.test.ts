@@ -2,6 +2,7 @@ import { beforeAll, afterAll, expect, test, vi } from 'vitest';
 let dark = false;
 let change: () => void;
 let theme: typeof import('./theme.svelte').theme;
+const root = document.documentElement;
 beforeAll(async () => {
   vi.stubGlobal('matchMedia', () => ({
     matches: dark,
@@ -17,9 +18,11 @@ afterAll(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
 });
-test('invalid stored accent falls back to a known color', () => {
-  expect(theme.accent).toBe('blue');
-  expect(document.documentElement.style.getPropertyValue('--ui-accent')).toBe('#2563eb');
+test('invalid stored accent falls back to the default turquoise', () => {
+  expect(theme.accent).toBe('tuerkis');
+  expect(root.style.getPropertyValue('--ui-accent')).toBe('#0f766e');
+  expect(theme.glow).toBe(0);
+  expect(root.dataset.glow).toBeUndefined();
 });
 test('system changes apply only while the system mode is selected', () => {
   dark = true;
@@ -32,12 +35,31 @@ test('system changes apply only while the system mode is selected', () => {
   theme.setMode('system');
   expect(theme.dark).toBe(true);
 });
-test('accent updates CSS and persists independently of the color scheme', () => {
-  theme.setAccent('green');
-  expect(localStorage.getItem('accent')).toBe('green');
-  expect(document.documentElement.dataset.accent).toBe('green');
-  expect(document.documentElement.style.getPropertyValue('--ui-accent-ink')).toBe('#6ee7b7');
+test('accent updates the tokens, persists and keeps the text ink readable in both schemes', () => {
+  theme.setAccent('gelb');
+  expect(localStorage.getItem('accent')).toBe('gelb');
+  expect(root.dataset.accent).toBe('gelb');
+  expect(root.style.getPropertyValue('--ui-accent')).toBe('#eab308');
+  // light yellow needs black text on the button and a darkened ink for text on white
   theme.setMode('light');
-  expect(theme.accent).toBe('green');
-  expect(document.documentElement.style.getPropertyValue('--ui-accent-ink')).toBe('#047857');
+  expect(root.style.getPropertyValue('--primary-foreground')).toBe('#000000');
+  const ink = root.style.getPropertyValue('--ui-accent-ink');
+  expect(ink).toMatch(/^rgb\(/);
+  expect(ink).not.toBe('rgb(234 179 8)');
+  expect(root.style.getPropertyValue('--ring')).toBe(ink);
+  theme.setMode('dark');
+  expect(root.style.getPropertyValue('--ui-accent-ink')).toBe('rgb(234 179 8)');
+  expect(theme.accent).toBe('gelb');
+});
+test('unknown accents are ignored', () => {
+  theme.setAccent('nicht-vorhanden');
+  expect(theme.accent).toBe('gelb');
+});
+test('glow step switches the data attributes and persists', () => {
+  theme.setGlow(3);
+  expect(root.dataset.glow).toBe('on');
+  expect(root.dataset.glowStep).toBe('3');
+  expect(localStorage.getItem('glow')).toBe('3');
+  theme.setGlow(0);
+  expect(root.dataset.glow).toBeUndefined();
 });

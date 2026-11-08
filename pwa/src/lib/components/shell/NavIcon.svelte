@@ -25,6 +25,7 @@
     danger: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18 M12 7v6 M12 16h.01',
     x: 'M6 6l12 12 M18 6L6 18',
     appearance: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18 M12 3v18 M12 3a9 9 0 0 1 0 18z',
+    panel: 'M3 5h18v14H3z M9 5v14',
     inbox: 'M3 13l3-8h12l3 8v6H3z M3 13h5l1 3h6l1-3h5',
   };
 </script>

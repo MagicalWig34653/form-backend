@@ -96,7 +96,7 @@
   onMount(() => void load());
 </script>
 
-<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+<div class="flex w-full max-w-[820px] flex-col gap-6">
   <PageHeader title={t.admin.connections.title} description={t.admin.connections.intro} />
   <Notice message={message || ok} kind={message ? 'error' : 'ok'} />
 
@@ -106,13 +106,13 @@
       <Skeleton class="h-20" /><Skeleton class="h-20" />
     </div>
   {:else if items.length === 0}
-    <div class="surface-card">
+    <div class="bg-card ring-1 ring-foreground/10 rounded-xl">
       <EmptyState title={t.admin.connections.none} icon="connections" />
     </div>
   {:else}
     <ul class="flex flex-col gap-3">
       {#each items as c (c.id)}
-        <li class="surface-card flex flex-col gap-3 px-5 py-4">
+        <li class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-3 px-5 py-4">
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <span class="font-medium">{c.name}</span>
             <span class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm"

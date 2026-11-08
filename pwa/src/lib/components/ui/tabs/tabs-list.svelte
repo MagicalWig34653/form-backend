@@ -6,6 +6,10 @@
 </script>
 
 <Tabs.List
-  class={cn('bg-secondary inline-flex min-h-10 w-fit items-center gap-1 rounded-lg p-1', className)}
+  data-slot="tabs-list"
+  class={cn(
+    'text-muted-foreground bg-muted inline-flex h-10 w-fit max-w-full items-center gap-1 overflow-x-auto rounded-lg p-[3px]',
+    className,
+  )}
   {...rest}>{@render children?.()}</Tabs.List
 >

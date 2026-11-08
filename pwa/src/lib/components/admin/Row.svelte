@@ -48,5 +48,7 @@
   {#if hint}<p id={`${id}-hint`} class="text-muted-foreground text-xs leading-[18px]">
       {hint}
     </p>{/if}
-  {#if error}<p id={`${id}-error`} role="alert" class="text-danger text-sm">{error}</p>{/if}
+  {#if error}<p id={`${id}-error`} role="alert" class="text-red-700 dark:text-destructive text-sm">
+      {error}
+    </p>{/if}
 </div>

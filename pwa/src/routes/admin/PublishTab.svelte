@@ -113,23 +113,23 @@
 </script>
 
 <Panel title={t.formWork.publish} description={t.admin.publish.intro}>
-  <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)]">
+  <p class="text-muted-foreground max-w-prose text-sm">
     {t.formWork.versionHint}
   </p>
 </Panel>
 {#if editor.draft}
   <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
     <Panel title={t.formWork.checks} description={t.formWork.checkHint}>
-      <ul class="divide-border-subtle -my-1 divide-y">
+      <ul class="divide-border -my-1 divide-y">
         {#each checks as check (check.target)}
           <li>
             <a
-              class="hover:bg-surface-sunken -mx-2 flex min-h-11 items-center gap-3 rounded-md px-2"
+              class="hover:bg-muted -mx-2 flex min-h-11 items-center gap-3 rounded-md px-2"
               href={router.path.replace(/publish$/, check.target)}
             >
               <span
                 aria-hidden="true"
-                class="bg-info-soft text-info flex size-6 shrink-0 items-center justify-center rounded-full"
+                class="bg-blue-500/10 text-blue-700 dark:text-blue-400 flex size-6 shrink-0 items-center justify-center rounded-full"
                 ><NavIcon name="info" size={13} /></span
               >
               <span class="min-w-0 flex-1 underline-offset-4">{check.label}</span>
@@ -152,7 +152,7 @@
                 onclick={() => void bump()}>{t.admin.publish.bump}</Button
               >
             </div>
-            <p class="text-muted-foreground text-[length:var(--fs-small)]">
+            <p class="text-muted-foreground text-sm">
               {t.admin.publish.bumpHint}
             </p>
           </div>
@@ -208,7 +208,7 @@
             >
             {#if !confirmed && !busy && !conflict}<p
                 id="publish-reason"
-                class="text-muted-foreground mt-2 text-[length:var(--fs-small)]"
+                class="text-muted-foreground mt-2 text-sm"
               >
                 {t.formUi.publishDisabledReason}
               </p>{/if}

@@ -25,9 +25,12 @@ test('dialog opens and theme toggles', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();
-  const before = await page.locator('html').getAttribute('class');
-  await page.getByRole('button', { name: /Design wechseln/ }).click();
-  expect(await page.locator('html').getAttribute('class')).not.toBe(before);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.getByRole('button', { name: 'Darstellung', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Dunkel', exact: true }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.getByRole('dialog').getByRole('button', { name: 'Hell', exact: true }).click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
 });
 
 test('manifest is served', async ({ request }) => {
@@ -220,7 +223,7 @@ test('appearance persists accent and follows the system scheme', async ({ page }
   await dialog.getByRole('button', { name: 'Dunkel', exact: true }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-accent', 'violet');
+  await expect(page.locator('html')).toHaveAttribute('data-accent', 'violett');
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.getByRole('button', { name: 'Darstellung', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'System', exact: true }).click();

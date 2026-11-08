@@ -78,7 +78,7 @@
 </script>
 
 <div class="flex flex-col gap-2" role="group" aria-label={t.listUi.exportTitle}>
-  <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-5">
+  <p class="text-muted-foreground max-w-prose text-sm leading-5">
     {ui.downloadHint}
   </p>
   <div class="flex flex-wrap gap-2">
@@ -95,7 +95,7 @@
       onclick={() => void download('json')}>{ui.json}</Button
     >
   </div>
-  {#if reason}<p id="export-reason" class="text-muted-foreground text-[length:var(--fs-small)]">
+  {#if reason}<p id="export-reason" class="text-muted-foreground text-sm">
       {reason}
     </p>{/if}
 </div>

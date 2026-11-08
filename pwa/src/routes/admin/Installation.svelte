@@ -51,18 +51,18 @@
     } else error = ui.errSave;
   }
   const link =
-    'border-border hover:bg-surface-sunken flex min-h-11 items-center justify-between gap-3 border-b px-2 -mx-2 text-sm font-medium last:border-b-0 rounded-md';
+    'border-border hover:bg-muted flex min-h-11 items-center justify-between gap-3 border-b px-2 -mx-2 text-sm font-medium last:border-b-0 rounded-md';
 </script>
 
 <section class="flex min-w-0 max-w-3xl flex-col gap-5">
-  <PageHeader hero title={ui.title} description={required ? ui.intro : undefined} />
+  <PageHeader title={ui.title} description={required ? ui.intro : undefined} />
   {#if loading}
     <div aria-busy="true" class="flex flex-col gap-3">
-      <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+      <p role="status" class="text-muted-foreground text-sm">
         {ui.loading}
       </p>
-      <Skeleton class="h-16 rounded-[var(--r-card)]" />
-      <Skeleton class="h-40 rounded-[var(--r-card)]" />
+      <Skeleton class="h-16 rounded-xl" />
+      <Skeleton class="h-40 rounded-xl" />
     </div>
   {:else if error}
     <Banner tone="danger">
@@ -72,8 +72,8 @@
       {/snippet}
     </Banner>
   {:else if required}
-    <div class="surface-card px-5 py-4">
-      <p class="text-muted-foreground mb-3 text-[length:var(--fs-small)]">
+    <div class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-4">
+      <p class="text-muted-foreground mb-3 text-sm">
         {ui.progress.replace('{n}', String(step + 1))}
       </p>
       <ol aria-label={ui.stepsLabel} class="grid gap-2 sm:grid-cols-6 sm:gap-1">
@@ -85,11 +85,11 @@
           >
             <span
               aria-hidden="true"
-              class={`flex size-7 shrink-0 items-center justify-center rounded-full text-[length:var(--fs-small)] font-semibold ${state === 'done' ? 'bg-ok-soft text-ok' : state === 'current' ? 'bg-primary text-primary-foreground' : 'bg-idle-soft text-idle'}`}
+              class={`flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${state === 'done' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : state === 'current' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
               >{#if state === 'done'}<NavIcon name="check" size={14} />{:else}{index + 1}{/if}</span
             >
             <span
-              class={`text-[length:var(--fs-small)] leading-4 ${state === 'current' ? 'font-semibold' : 'text-muted-foreground'}`}
+              class={`text-sm leading-4 ${state === 'current' ? 'font-semibold' : 'text-muted-foreground'}`}
               ><span class="sr-only">{index + 1} </span>{label}</span
             >
           </li>

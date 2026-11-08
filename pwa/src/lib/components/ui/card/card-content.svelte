@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements';
   import { cn } from '$lib/utils';
-
   let { class: className, children, ...rest }: HTMLAttributes<HTMLDivElement> = $props();
 </script>
 
-<div class={cn('flex flex-col gap-4', className)} {...rest}>
+<div data-slot="card-content" class={cn('px-(--card-spacing)', className)} {...rest}>
   {@render children?.()}
 </div>

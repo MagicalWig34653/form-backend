@@ -50,7 +50,7 @@
   const items = $derived.by<PaletteItem[]>(() => {
     const list: PaletteItem[] = [];
     for (const group of nav.groups)
-      for (const item of group.items.filter((i) => !i.disabled))
+      for (const item of group.items)
         list.push({
           id: `page-${item.id}`,
           group: 'pages',
@@ -176,13 +176,13 @@
     <DialogPrimitive.Overlay class="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
     <DialogPrimitive.Content
       onCloseAutoFocus={closeFocus}
-      class="bg-surface-raised border-border-subtle fixed top-[12vh] left-1/2 z-50 flex max-h-[70vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-[var(--r-pop)] border shadow-[var(--shadow-pop)]"
+      class="bg-popover border-border fixed top-[12vh] left-1/2 z-50 flex max-h-[70vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border"
     >
       <DialogPrimitive.Title class="sr-only">{t.palette.title}</DialogPrimitive.Title>
       <DialogPrimitive.Description class="sr-only"
         >{t.palette.description}</DialogPrimitive.Description
       >
-      <div class="border-border-subtle flex items-center gap-3 border-b px-4">
+      <div class="border-border flex items-center gap-3 border-b px-4">
         <span class="text-muted-foreground" aria-hidden="true"
           ><NavIcon name="search" size={18} /></span
         >
@@ -212,7 +212,7 @@
           <div role="group" aria-labelledby={`palette-group-${group.id}`} class="mb-1">
             <p
               id={`palette-group-${group.id}`}
-              class="text-muted-foreground px-3 pt-2 pb-1 text-[length:var(--fs-micro)] font-semibold tracking-[0.06em] uppercase"
+              class="text-muted-foreground px-3 pt-2 pb-1 text-xs font-semibold tracking-[0.06em] uppercase"
             >
               {groupLabels[group.id]}
             </p>
@@ -227,14 +227,13 @@
                 tabindex="-1"
                 onclick={() => choose(item)}
                 onmousemove={() => (active = flat.findIndex((x) => x.id === item.id))}
-                class="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--r-ctl)] px-3 text-[length:var(--fs-body)] aria-selected:bg-ui-accent-soft aria-selected:text-ui-accent-ink"
+                class="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 aria-selected:bg-brand-soft aria-selected:text-brand-ink"
               >
                 <span aria-hidden="true" class="text-muted-foreground"
                   ><NavIcon name={item.icon} size={17} /></span
                 >
                 <span class="min-w-0 flex-1 truncate">{item.label}</span>
-                {#if item.hint}<span
-                    class="text-muted-foreground shrink-0 text-[length:var(--fs-small)]"
+                {#if item.hint}<span class="text-muted-foreground shrink-0 text-sm"
                     >{item.hint}</span
                   >{/if}
               </div>
@@ -242,10 +241,7 @@
           </div>
         {/each}
         {#if flat.length === 0}
-          <p
-            role="status"
-            class="text-muted-foreground px-3 py-8 text-center text-[length:var(--fs-small)]"
-          >
+          <p role="status" class="text-muted-foreground px-3 py-8 text-center text-sm">
             {formsLoading ? t.palette.formsLoading : t.palette.empty}
           </p>
         {/if}
@@ -253,9 +249,7 @@
       <p role="status" class="sr-only">
         {flat.length === 0 ? '' : t.palette.count.replace('{n}', String(flat.length))}
       </p>
-      <p
-        class="text-muted-foreground border-border-subtle border-t px-4 py-2 text-[length:var(--fs-micro)]"
-      >
+      <p class="text-muted-foreground border-border border-t px-4 py-2 text-xs">
         {t.palette.hintsLabel}
       </p>
     </DialogPrimitive.Content>

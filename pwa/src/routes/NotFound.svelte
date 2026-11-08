@@ -8,7 +8,7 @@
 <div class="mx-auto flex max-w-md flex-col items-center gap-4 px-4 py-20 text-center">
   <span
     aria-hidden="true"
-    class="bg-surface-sunken text-muted-foreground ring-border-subtle flex size-14 items-center justify-center rounded-full ring-1"
+    class="bg-muted/60 text-muted-foreground ring-border flex size-14 items-center justify-center rounded-full ring-1"
     ><NavIcon name="search" size={26} /></span
   >
   <h1 id="page-title" tabindex="-1" class="text-2xl font-semibold outline-none">

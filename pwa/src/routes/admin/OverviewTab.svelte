@@ -69,10 +69,13 @@
   }
 </script>
 
-<section aria-label={t.lists.readStatus} class="surface-card px-5 py-4">
+<section
+  aria-label={t.lists.readStatus}
+  class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-4"
+>
   <dl class="grid gap-4 sm:grid-cols-3">
     <div>
-      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.publication}</dt>
+      <dt class="text-muted-foreground text-sm">{t.lists.publication}</dt>
       <dd class="mt-1.5">
         <StatusChip
           tone={editor.detail?.currentReleaseVersion != null ? 'ok' : 'idle'}
@@ -83,7 +86,7 @@
       </dd>
     </div>
     <div>
-      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.status}</dt>
+      <dt class="text-muted-foreground text-sm">{t.lists.status}</dt>
       <dd class="mt-1.5">
         <StatusChip
           tone={editor.detail?.active ? 'ok' : 'idle'}
@@ -92,7 +95,7 @@
       </dd>
     </div>
     <div>
-      <dt class="text-muted-foreground text-[length:var(--fs-small)]">{t.lists.draft}</dt>
+      <dt class="text-muted-foreground text-sm">{t.lists.draft}</dt>
       <dd class="mt-1.5">
         <StatusChip
           tone={editor.draft ? 'info' : 'idle'}
@@ -114,11 +117,12 @@
       <Button
         type="button"
         variant="outline"
+        class="h-auto min-h-10 py-2 text-left whitespace-normal"
         disabled={editor.saving}
         onclick={() => void editor.createDraft()}>{t.admin.form.newDraft}</Button
       >
     </div>
-    <p class="text-muted-foreground text-[length:var(--fs-small)]">{t.admin.form.newDraftHint}</p>
+    <p class="text-muted-foreground text-sm">{t.admin.form.newDraftHint}</p>
   </div>
 {/if}
 
@@ -134,7 +138,7 @@
       />
       <div class="flex items-center gap-3">
         <Button type="submit" disabled={editor.saving}>{t.admin.form.titleSave}</Button>
-        <span class="text-muted-foreground text-[length:var(--fs-small)]"
+        <span class="text-muted-foreground text-sm"
           >{t.admin.form.revision.replace('{n}', String(editor.draft?.revision ?? 0))}</span
         >
       </div>
@@ -148,10 +152,10 @@
   aria-busy={statsLoading}
   class="flex scroll-mt-20 flex-col gap-4"
 >
-  <div role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+  <div role="status" class="text-muted-foreground text-sm">
     {statsLoading ? (slow ? t.lists.slow : t.lists.statsLoading) : ''}
   </div>
-  {#if statsLoading && !stats}<Skeleton class="min-h-48 rounded-[var(--r-card)]" />{/if}
+  {#if statsLoading && !stats}<Skeleton class="min-h-48 rounded-xl" />{/if}
   {#if statsError}
     <Banner tone="danger">
       {statsError}

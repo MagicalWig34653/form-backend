@@ -28,7 +28,7 @@
 
 {#if items.length > 0}
   <nav aria-label={t.ui.breadcrumbs} class={cn('min-w-0', className)}>
-    <ol class="text-muted-foreground flex min-w-0 items-center text-[length:var(--fs-small)]">
+    <ol class="text-muted-foreground flex min-w-0 items-center text-sm">
       {#each items as item, i (i)}
         {@const last = i === items.length - 1}
         <li class={cn('flex min-w-0 items-center', collapseOnMobile && !last && 'hidden sm:flex')}>

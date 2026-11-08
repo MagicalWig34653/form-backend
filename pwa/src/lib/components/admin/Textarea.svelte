@@ -1,14 +1,7 @@
 <script lang="ts">
+  import Textarea from '$lib/components/ui/textarea/textarea.svelte';
   import type { HTMLTextareaAttributes } from 'svelte/elements';
-  import { cn } from '$lib/utils';
-
-  let { value = $bindable(), class: className, ...rest }: HTMLTextareaAttributes = $props();
+  let { value = $bindable(), ...rest }: HTMLTextareaAttributes = $props();
 </script>
 
-<textarea
-  bind:value
-  class={cn(
-    'border-input bg-background placeholder:text-muted-foreground flex min-h-24 w-full min-w-0 rounded-md border px-3 py-2 text-sm shadow-xs disabled:opacity-50',
-    className,
-  )}
-  {...rest}></textarea>
+<Textarea bind:value {...rest} />

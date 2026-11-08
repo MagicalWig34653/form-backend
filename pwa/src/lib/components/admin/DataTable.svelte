@@ -32,9 +32,9 @@
     column.hideBelow === 'sm' ? 'max-sm:hidden' : column.hideBelow === 'md' ? 'max-md:hidden' : '';
 </script>
 
-<Table {label} class={cn('text-[length:var(--fs-body)]', className)}>
+<Table {label} class={className}>
   <caption class="sr-only">{label}</caption>
-  <thead class="bg-surface-sunken text-muted-foreground text-[length:var(--fs-small)]">
+  <thead class="bg-muted/50 text-muted-foreground text-sm">
     <tr>
       {#each columns as column (column.id)}
         <th
@@ -51,7 +51,7 @@
   </thead>
   <tbody>
     {#each rows as row (rowKey(row))}
-      <tr class="hover:bg-surface-sunken/60 h-11 transition-colors">
+      <tr class="hover:bg-muted/50 h-12 transition-colors">
         {#each columns as column, index (column.id)}
           {#if index === 0}
             <th scope="row" class={cn('!py-1.5 text-left font-medium', hide(column), column.class)}

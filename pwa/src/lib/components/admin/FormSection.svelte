@@ -33,7 +33,7 @@
     {@render children?.()}
   </div>
   {#if footer}
-    <div class="border-subtle mt-5 flex flex-wrap items-center gap-2 border-t pt-4">
+    <div class="border-border mt-5 flex flex-wrap items-center gap-2 border-t pt-4">
       {@render footer()}
     </div>
   {/if}

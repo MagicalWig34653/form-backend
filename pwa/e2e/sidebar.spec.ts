@@ -3,7 +3,9 @@ import { test, expect, type Page } from '@playwright/test';
 const T = 'aaaaaaaa-1111-4111-8111-11111111111a';
 const F = '22222222-2222-4222-8222-222222222222';
 
-async function mockApi(page: Page, tenants = true) {
+type State = 'none' | 'one-no-forms' | 'one-with-forms' | 'two';
+async function mockApi(page: Page, tenants: boolean | State = true) {
+  const state: State = tenants === false ? 'none' : tenants === true ? 'one-with-forms' : tenants;
   const j = (b: unknown, s = 200) => ({
     status: s,
     contentType: 'application/json',
@@ -17,11 +19,14 @@ async function mockApi(page: Page, tenants = true) {
       );
     if (p === '/me') return r.fulfill(j({ id: 'a', username: 'u', systemAdministrator: true }));
     if (p === '/setup-state') return r.fulfill(j({ required: false }));
-    if (p === '/tenants' && !tenants) return r.fulfill(j({ items: [] }));
+    if (p === '/tenants' && state === 'none') return r.fulfill(j({ items: [] }));
     if (p === '/tenants')
       return r.fulfill(
         j({
           items: [
+            ...(state === 'two'
+              ? [{ id: 'bbbbbbbb-1111-4111-8111-11111111111b', name: 'Kunde B', permissions: [] }]
+              : []),
             {
               id: T,
               name: 'Kunde A',
@@ -39,7 +44,10 @@ async function mockApi(page: Page, tenants = true) {
     if (p === `/tenants/${T}/forms`)
       return r.fulfill(
         j({
-          items: [{ id: F, name: 'Kontakt', active: true, currentReleaseId: null }],
+          items:
+            state === 'one-no-forms'
+              ? []
+              : [{ id: F, name: 'Kontakt', active: true, currentReleaseId: null }],
           nextCursor: null,
         }),
       );
@@ -75,7 +83,7 @@ for (const [name, viewport] of [
           await page.goto(start);
           if (name === 'mobile')
             await page.getByRole('button', { name: 'Navigation öffnen' }).click();
-          const scope = name === 'mobile' ? page.getByRole('dialog') : page.locator('aside');
+          const scope = page.locator('aside');
           await scope.getByRole('link', { name: label, exact: true }).first().click();
           await expect(page).toHaveURL(url);
           await expect(page.locator('#page-title')).toBeVisible();
@@ -85,28 +93,86 @@ for (const [name, viewport] of [
   });
 }
 
-test('without a customer the form entries are inactive instead of linking to the same page', async ({
+// No entry is dead: in every state each one navigates and tells the user what to choose.
+const needEntries = ['Formulare', 'Einsendungen', 'Statistik'] as const;
+
+test('no customer, administrator: every form entry leads to the customer list with a hint and a create button', async ({
   page,
 }) => {
-  await mockApi(page, false);
-  await page.goto('/t');
+  await mockApi(page, 'none');
+  await page.goto('/settings');
   const aside = page.locator('aside');
-  for (const name of ['Formulare', 'Einsendungen', 'Statistik'])
-    await expect(aside.getByText(name, { exact: true })).toHaveAttribute('aria-disabled', 'true');
-  await expect(aside.getByRole('link', { name: 'Einsendungen' })).toHaveCount(0);
-  await expect(aside.getByRole('link', { name: 'Kunden', exact: true })).toBeVisible();
+  for (const name of needEntries) {
+    await aside.getByRole('link', { name, exact: true }).click();
+    await expect(page).toHaveURL(/\/t\?need=customer$/);
+    await expect(page.getByTestId('need-hint')).toBeVisible();
+    await expect(page.getByTestId('first-customer')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Kunde anlegen' }).first()).toBeVisible();
+    await page.goto('/settings');
+  }
+  await expect(aside.locator('[aria-disabled]')).toHaveCount(0);
 });
 
-test('Einsendungen and Statistik reopen the last form after leaving it', async ({ page }) => {
-  await mockApi(page);
+test('one customer without forms: entries open the form list, Einsendungen and Statistik explain what to pick', async ({
+  page,
+}) => {
+  await mockApi(page, 'one-no-forms');
+  await page.goto('/settings');
+  const aside = page.locator('aside');
+  await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}$`));
+  await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=entries$`));
+  await expect(page.getByTestId('need-hint')).toContainText('Formular');
+  await aside.getByRole('link', { name: 'Statistik', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=statistics$`));
+  await expect(page.getByTestId('need-hint')).toBeVisible();
+});
+
+test('customer with a form: Einsendungen and Statistik open the last form after leaving it', async ({
+  page,
+}) => {
+  await mockApi(page, 'one-with-forms');
   await page.goto('/t');
   const aside = page.locator('aside');
-  await expect(aside.getByText('Einsendungen', { exact: true })).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  );
+  await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=entries$`));
   await page.goto(`/t/${T}/f/${F}`);
   await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
   await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}/f/${F}/entries$`));
+  await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
+  await aside.getByRole('link', { name: 'Statistik', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}/f/${F}#statistics$`));
+});
+
+test('several customers and none chosen: entries lead to the customer list with a hint', async ({
+  page,
+}) => {
+  await mockApi(page, 'two');
+  await page.goto('/settings');
+  const aside = page.locator('aside');
+  await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
+  await expect(page).toHaveURL(/\/t\?need=customer$/);
+  await expect(page.getByTestId('need-hint')).toBeVisible();
+});
+
+test('breadcrumb links and the command palette also lead somewhere', async ({ page }) => {
+  await mockApi(page, 'one-with-forms');
+  await page.goto(`/t/${T}/f/${F}/entries`);
+  await page
+    .getByRole('navigation', { name: 'Brotkrumen' })
+    .getByRole('link', { name: 'Formulare' })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}$`));
+  await page.goto('/settings');
+  await expect(page.locator('aside')).toBeVisible();
+  await page
+    .getByRole('button', { name: /Suchen/ })
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('combobox').fill('Statistik');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=statistics$`));
+  await expect(page.getByTestId('need-hint')).toBeVisible();
 });

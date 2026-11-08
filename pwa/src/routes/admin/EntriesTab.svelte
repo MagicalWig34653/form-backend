@@ -367,10 +367,10 @@
   <div class="flex min-w-0 flex-col gap-5">
     <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
       <div class="min-w-0">
-        <h2 class="text-[length:var(--fs-h2)] leading-[26px] font-semibold tracking-tight">
+        <h2 class="text-[17px] leading-[26px] font-semibold tracking-tight">
           {t.admin.entries.title}
         </h2>
-        <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-[18px]">
+        <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
           {t.admin.entries.intro}
         </p>
       </div>
@@ -378,7 +378,7 @@
     </header>
     <Panel flush class="overflow-hidden">
       <section aria-label={ui.list} aria-busy={loading}>
-        <div class="border-border-subtle border-b p-3">
+        <div class="border-border border-b p-3">
           <FilterBar
             activeCount={activeFilters}
             hint={ui.filterHint}
@@ -423,7 +423,7 @@
         {/if}
         {#if loading}
           <div class="flex flex-col gap-2 p-4" aria-busy="true">
-            <p role="status" class="text-muted-foreground text-[length:var(--fs-small)]">
+            <p role="status" class="text-muted-foreground text-sm">
               {slow ? ui.slow : t.admin.loading}
             </p>
             {#if items.length === 0}
@@ -453,7 +453,7 @@
         {/if}
         {#if visible.length > 0}
           <div
-            class="border-border-subtle bg-surface-sunken/60 text-muted-foreground mt-3 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-y px-4 text-[length:var(--fs-small)]"
+            class="border-border bg-muted/50 text-muted-foreground mt-3 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-y px-4 text-sm"
           >
             <label class="flex min-h-9 items-center gap-3">
               <input
@@ -480,7 +480,7 @@
         {/if}
         {#if selected.length}
           <div
-            class="bg-ui-accent-soft border-ui-accent/30 sticky top-16 z-10 flex flex-wrap items-center gap-2 border-b px-4 py-2"
+            class="bg-brand-soft border-brand/40 sticky top-16 z-10 flex flex-wrap items-center gap-2 border-b px-4 py-2"
             role="group"
             aria-label={t.listUi.selectionBar}
           >
@@ -500,7 +500,7 @@
               onclick={() => void holdSelection(false)}>{t.admin.entries.unhold}</Button
             >
             <DialogTrigger
-              class={`${rowButton} text-danger`}
+              class={`${rowButton} text-red-700 dark:text-destructive`}
               disabled={busy}
               onclick={() => {
                 deleteIds = [...selected];
@@ -512,11 +512,11 @@
             >
           </div>
         {/if}
-        <ul class="divide-border-subtle divide-y">
+        <ul class="divide-border divide-y">
           {#each visible as entry (entry.id)}
             {@const access = !!keyring.dataKey(entry.keyId ?? '')}
             <li
-              class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors ${selected.includes(entry.id) ? 'bg-ui-accent-soft' : 'hover:bg-surface-sunken/60'}`}
+              class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors ${selected.includes(entry.id) ? 'bg-brand-soft' : 'hover:bg-muted/50'}`}
             >
               <label class="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-3 text-sm">
                 <input
@@ -555,8 +555,7 @@
               <div class="ml-auto flex flex-wrap items-center gap-1.5">
                 {#if !access}<span
                     id={`no-access-${entry.id}`}
-                    class="text-muted-foreground mr-1 text-[length:var(--fs-small)]"
-                    >{t.listUi.noAccessShort}</span
+                    class="text-muted-foreground mr-1 text-sm">{t.listUi.noAccessShort}</span
                   >{/if}
                 <Dialog
                   open={openId === entry.id}
@@ -682,7 +681,7 @@
                   }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
                 >
                 <DialogTrigger
-                  class={`${rowButton} text-danger`}
+                  class={`${rowButton} text-red-700 dark:text-destructive`}
                   disabled={busy || entry.held}
                   onclick={() => {
                     deleteIds = [entry.id];
@@ -694,7 +693,7 @@
           {/each}
         </ul>
         {#if next}
-          <div class="border-border-subtle border-t p-3">
+          <div class="border-border border-t p-3">
             <Button
               variant="outline"
               disabled={loading}
@@ -715,12 +714,12 @@
           lock();
         }}
       />{/key}
-    <details class="surface-card px-5">
+    <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5">
       <summary class="min-h-12 cursor-pointer py-3 font-semibold"
         >{t.admin.entries.retentionTitle}</summary
       >
       <div class="pb-4">
-        <p class="text-muted-foreground max-w-prose text-[length:var(--fs-small)] leading-5">
+        <p class="text-muted-foreground max-w-prose text-sm leading-5">
           {ui.retentionHint}
         </p>
         <form onsubmit={(e) => void saveRetention(e)} class="mt-4 flex max-w-xl flex-col gap-3">

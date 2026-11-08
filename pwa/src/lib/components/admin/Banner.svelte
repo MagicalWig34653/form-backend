@@ -15,11 +15,12 @@
     class?: string;
   }
   let { tone = 'info', title, ondismiss, action, children, class: className }: Props = $props();
+  // Getönte Hinweiskästen: nie volle Farbflächen; Zustand zusätzlich über Symbol und Text.
   const tones: Record<Tone, string> = {
-    info: 'bg-info-soft border-info/30 text-foreground [&_svg.tone]:text-info',
-    warn: 'bg-warn-soft border-warn/35 text-foreground [&_svg.tone]:text-warn',
-    danger: 'bg-danger-soft border-danger/35 text-foreground [&_svg.tone]:text-danger',
-    ok: 'bg-ok-soft border-ok/30 text-foreground [&_svg.tone]:text-ok',
+    info: 'bg-blue-500/10 border-blue-500/40 [&_svg.tone]:text-blue-700 dark:[&_svg.tone]:text-blue-400',
+    warn: 'bg-amber-500/10 border-amber-500/50 [&_svg.tone]:text-amber-700 dark:[&_svg.tone]:text-amber-400',
+    danger: 'bg-destructive/10 border-destructive/40 [&_svg.tone]:text-destructive',
+    ok: 'bg-emerald-500/10 border-emerald-500/40 [&_svg.tone]:text-emerald-700 dark:[&_svg.tone]:text-emerald-400',
   };
   const icons: Record<Tone, string> = { info: 'info', warn: 'warn', danger: 'danger', ok: 'check' };
 </script>
@@ -28,7 +29,7 @@
   role={tone === 'danger' ? 'alert' : 'status'}
   data-tone={tone}
   class={cn(
-    'flex flex-wrap items-start gap-x-3 gap-y-2 rounded-[var(--r-card)] border px-4 py-3 text-[length:var(--fs-small)] leading-5',
+    'text-foreground flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg border px-3.5 py-2.5 text-sm leading-5',
     tones[tone],
     className,
   )}
@@ -37,7 +38,7 @@
     ><NavIcon name={icons[tone]} /></span
   >
   <div class="min-w-0 flex-1 basis-56">
-    {#if title}<p class="font-semibold">{title}</p>{/if}
+    {#if title}<p class="m-0 font-semibold">{title}</p>{/if}
     <div>{@render children?.()}</div>
   </div>
   {#if action}<div class="flex shrink-0 items-center gap-2">{@render action()}</div>{/if}

@@ -109,7 +109,7 @@
   onMount(() => void initialize());
 </script>
 
-<div class="mx-auto flex w-full max-w-[1100px] flex-col gap-6">
+<div class="flex w-full max-w-[1100px] flex-col gap-6">
   <PageHeader title={t.ops.title} description={t.ops.description}>
     {#snippet badges()}
       {#if access?.alarm}
@@ -135,7 +135,10 @@
     />
   {/if}
   {#if busy && !access}
-    <div aria-busy="true" class="surface-card flex flex-col gap-3 p-5">
+    <div
+      aria-busy="true"
+      class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-3 p-5"
+    >
       <p role="status" class="sr-only">{t.ops.loading}</p>
       <Skeleton class="h-10" /><Skeleton class="h-10" /><Skeleton class="h-32" />
     </div>
@@ -204,7 +207,7 @@
         tabindex="0"
       >
         <table class="w-full min-w-[40rem] text-left text-sm">
-          <thead class="bg-surface-sunken text-muted-foreground text-xs"
+          <thead class="bg-muted/60 text-muted-foreground text-xs"
             ><tr
               >{#each [t.ops.time, t.ops.event, t.ops.operation, t.ops.priority, t.ops.submission, t.ops.target] as heading (heading)}<th
                   scope="col"
@@ -212,7 +215,7 @@
                 >{/each}</tr
             ></thead
           ><tbody>
-            {#each items as item (item.id)}<tr class="border-border-subtle border-t"
+            {#each items as item (item.id)}<tr class="border-border border-t"
                 ><td class="px-4 py-3 whitespace-nowrap">{item.occurredAt}</td><td class="px-4 py-3"
                   >{t.ops.events[item.event]}</td
                 ><td class="px-4 py-3">{t.ops.operations[item.operation]}</td><td class="px-4 py-3"
@@ -226,7 +229,7 @@
       </div>
       {#if loaded && !items.length}<EmptyState title={t.ops.empty} icon="ops" />{/if}
       {#if next}
-        <div class="border-border-subtle border-t px-4 py-3">
+        <div class="border-border border-t px-4 py-3">
           <Button variant="outline" disabled={busy} onclick={() => void load(true)}
             >{t.ops.next}</Button
           >

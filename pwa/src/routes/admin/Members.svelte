@@ -92,7 +92,7 @@
   });
 </script>
 
-<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+<div class="flex w-full max-w-[820px] flex-col gap-6">
   <PageHeader title={m.title} description={m.intro} />
   {#if !loaded}
     <div aria-busy="true" class="flex flex-col gap-3">
@@ -102,7 +102,7 @@
   {:else}
     <ul class="flex flex-col gap-4">
       {#each members as x (x.accountId)}
-        <li class="surface-card px-5 py-4">
+        <li class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-4">
           <h2 class="font-semibold">
             {x.username}{x.accountId === session.me?.id ? ` ${m.you}` : ''}
           </h2>
@@ -135,10 +135,10 @@
     </ul>
   {/if}
   {#if session.me?.systemAdministrator}
-    <h2 class="text-[length:var(--fs-h2)] font-semibold">{c.accounts}</h2>
+    <h2 class="text-[17px] font-semibold">{c.accounts}</h2>
     <ul class="flex flex-col gap-3">
       {#each accounts as x (x.id)}
-        <li class="surface-card px-5 py-4">
+        <li class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-4">
           <p class="flex flex-wrap items-center gap-2">
             <span class="font-medium">{x.username}</span>
             <StatusChip tone={x.active ? 'ok' : 'idle'} label={x.active ? c.active : c.locked} />

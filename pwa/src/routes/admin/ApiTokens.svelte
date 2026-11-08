@@ -143,11 +143,11 @@
   });
 </script>
 
-<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+<div class="flex w-full max-w-[820px] flex-col gap-6">
   <PageHeader title={text.title} description={text.hint} />
   {#if error}<Banner tone="danger">{error}</Banner>{/if}
   {#if consent}
-    <Panel title={oauthText.consent} level={3} class="border-warn/40">
+    <Panel title={oauthText.consent} level={3} class="border-amber-500/50">
       <div class="flex flex-col gap-4">
         <div class="grid gap-1 text-sm font-medium">
           <p>{oauthText.client}: {consent.clientName}</p>
@@ -175,9 +175,11 @@
     </Panel>
   {/if}
   {#if secret}
-    <div role="status" class="bg-ok-soft border-ok/30 rounded-[var(--r-card)] border p-5">
+    <div role="status" class="bg-emerald-500/10 border-emerald-500/40 rounded-xl border p-5">
       <p class="font-medium">{text.once}</p>
-      <code class="bg-surface-card my-3 block rounded-md px-3 py-2 break-all">{secret}</code>
+      <code class="bg-card ring-1 ring-foreground/10 rounded-xl my-3 block px-3 py-2 break-all"
+        >{secret}</code
+      >
       <Button
         variant="outline"
         onclick={() => {
@@ -213,7 +215,7 @@
   {#if items.length}
     <ul class="flex flex-col gap-3">
       {#each items as item (item.id)}
-        <li class="surface-card flex flex-col gap-2 px-5 py-4">
+        <li class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-2 px-5 py-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <strong>{item.label}</strong>
             {#if item.revoked_at != null}<StatusChip tone="idle" label={text.revoked} />
@@ -233,11 +235,11 @@
   {/if}
 
   <section class="flex flex-col gap-3">
-    <h2 class="text-[length:var(--fs-h2)] font-semibold">{oauthText.title}</h2>
+    <h2 class="text-[17px] font-semibold">{oauthText.title}</h2>
     {#if grants.length}
       <ul class="flex flex-col gap-3">
         {#each grants as grant (grant.id)}
-          <li class="surface-card flex flex-col gap-2 px-5 py-4">
+          <li class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-2 px-5 py-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <strong>{grant.clientName}</strong>
               {#if grant.revoked}<StatusChip tone="idle" label={text.revoked} />{/if}
@@ -259,7 +261,9 @@
         {/each}
       </ul>
     {:else}
-      <div class="surface-card"><EmptyState title={t.formKit.tokens.noGrants} icon="tokens" /></div>
+      <div class="bg-card ring-1 ring-foreground/10 rounded-xl">
+        <EmptyState title={t.formKit.tokens.noGrants} icon="tokens" />
+      </div>
     {/if}
   </section>
 </div>

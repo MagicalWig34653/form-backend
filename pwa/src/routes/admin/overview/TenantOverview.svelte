@@ -144,7 +144,7 @@
 
 <div class="flex min-w-0 flex-col gap-4">
   <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-    <p class="text-muted-foreground text-[length:var(--fs-small)]">
+    <p class="text-muted-foreground text-sm">
       {ui.subtitle.replace('{time}', timeText)}
       <span class="block sm:ml-2 sm:inline">· {scope}{moreForms ? ` · ${ui.scopeMore}` : ''}</span>
     </p>
@@ -153,62 +153,70 @@
       >{/if}
   </div>
 
-  <div class="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="kpi-grid">
-    <KpiTile
-      index={0}
-      label={ui.kpiSubmits}
-      hint={ui.hintSubmits}
-      status={tileStatus}
-      value={submitsTotal}
-      series={submits}
-      seriesLabel={describe(ui.kpiSubmits, submits)}
-      delta={submits ? countDelta(weekOverWeek(submits)) : null}
-    />
-    <KpiTile
-      index={1}
-      label={ui.kpiVisits}
-      hint={ui.hintVisits}
-      status={tileStatus}
-      value={visitsTotal}
-      series={visits}
-      seriesLabel={describe(ui.kpiVisits, visits)}
-      delta={visits ? countDelta(weekOverWeek(visits)) : null}
-    />
-    <KpiTile
-      index={2}
-      label={ui.kpiConversion}
-      hint={ui.hintConversion}
-      status={tileStatus}
-      value={convValue}
-      format={fmtPercent}
-      series={convSeries}
-      seriesLabel={describe(ui.kpiConversion, convSeries)}
-      delta={visits && submits ? pointsDelta(conversionWeeks(visits, submits)) : null}
-      reason={tileStatus === 'ready' ? ui.noConversion : undefined}
-    />
-    <KpiTile
-      index={3}
-      label={ui.kpiActive}
-      hint={ui.hintActive}
-      value={activeCount}
-      note={ui.activeOf.replace('{n}', String(forms.length))}
-    />
+  <div class="tile-grid" data-testid="kpi-grid">
+    <div data-w="3">
+      <KpiTile
+        index={0}
+        label={ui.kpiSubmits}
+        hint={ui.hintSubmits}
+        status={tileStatus}
+        value={submitsTotal}
+        series={submits}
+        seriesLabel={describe(ui.kpiSubmits, submits)}
+        delta={submits ? countDelta(weekOverWeek(submits)) : null}
+      />
+    </div>
+    <div data-w="3">
+      <KpiTile
+        index={1}
+        label={ui.kpiVisits}
+        hint={ui.hintVisits}
+        status={tileStatus}
+        value={visitsTotal}
+        series={visits}
+        seriesLabel={describe(ui.kpiVisits, visits)}
+        delta={visits ? countDelta(weekOverWeek(visits)) : null}
+      />
+    </div>
+    <div data-w="3">
+      <KpiTile
+        index={2}
+        label={ui.kpiConversion}
+        hint={ui.hintConversion}
+        status={tileStatus}
+        value={convValue}
+        format={fmtPercent}
+        series={convSeries}
+        seriesLabel={describe(ui.kpiConversion, convSeries)}
+        delta={visits && submits ? pointsDelta(conversionWeeks(visits, submits)) : null}
+        reason={tileStatus === 'ready' ? ui.noConversion : undefined}
+      />
+    </div>
+    <div data-w="3">
+      <KpiTile
+        index={3}
+        label={ui.kpiActive}
+        hint={ui.hintActive}
+        value={activeCount}
+        note={ui.activeOf.replace('{n}', String(forms.length))}
+      />
+    </div>
   </div>
 
-  <div class="grid gap-4 lg:grid-cols-2">
-    <div class="order-1 min-w-0 lg:order-1" style="--i:4">
+  <div class="tile-grid">
+    <div data-w="6">
       <AttentionList
         {tenant}
         items={attention}
         partial={anyLoading || detailState.status === 'error'}
       />
     </div>
-    <div class="order-2 min-w-0" style="--i:5">
+    <div data-w="6">
       <SetupProgress {tenant} {steps} loading={anyLoading && detailState.status === 'loading'} />
     </div>
   </div>
 
-  <div style="--i:6">
+  <div>
     <RecentEntries
       {tenant}
       rows={recent}

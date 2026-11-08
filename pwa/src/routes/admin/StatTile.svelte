@@ -26,12 +26,17 @@
   });
 </script>
 
-<div class={cn('surface-card flex min-w-0 flex-col gap-0.5 px-4 py-3.5', className)}>
-  <dt class="text-muted-foreground text-[length:var(--fs-small)] leading-[18px]">{label}</dt>
-  <dd class="m-0 text-[length:var(--fs-display)] leading-9 font-[650] tracking-tight tabular-nums">
+<div
+  class={cn(
+    'bg-card ring-1 ring-foreground/10 rounded-xl flex min-w-0 flex-col gap-0.5 px-4 py-3.5',
+    className,
+  )}
+>
+  <dt class="text-muted-foreground text-sm leading-[18px]">{label}</dt>
+  <dd class="m-0 text-[32px] leading-9 font-[650] tracking-tight tabular-nums">
     {value}
   </dd>
-  {#if hint}<dd class="text-muted-foreground m-0 text-[length:var(--fs-small)] leading-[18px]">
+  {#if hint}<dd class="text-muted-foreground m-0 text-sm leading-[18px]">
       {hint}
     </dd>{/if}
   {#if geometry}
