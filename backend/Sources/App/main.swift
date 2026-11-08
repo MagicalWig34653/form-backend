@@ -185,7 +185,7 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
         FileHandle.standardError.write(Data("admin API configuration failed: \(type(of: error))\n".utf8))  // never the key or its path content
         exit(78)
     }
-} else if config.admin == nil {
+} else if config.admin == nil, !isMigrate {
     app.logger.notice("admin API not configured (FORM_SERVER_KEY_FILE/FORM_ADMIN_ORIGIN/FORM_RP_ID unset)")
 }
 // Freeze the internal router before registering the strictly separate public surface.
