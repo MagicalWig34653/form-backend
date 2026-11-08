@@ -234,7 +234,13 @@ read_config "$ENV_FILE"
         assert not any(('--name' in c and c[c.index('--name') + 1].endswith('_dbcheck')) or ('run' in c and 'SELECT 1' in c) for c in log2), 'Default must not use the MariaDB client image'
         assert any(is_migration(c) for c in log2) and any(is_rollout(c) for c in log2)
         assert not any('CREATE DATABASE' in ' '.join(c) for c in log), 'Setup/update created DB'
-        assert '@sha256:' in config.read_text()
+        # Der Digest gilt nur im Lauf (Rollout mit @sha256), gespeichert bleibt der Tag; ein alter gespeicherter Digest hält nichts fest.
+        assert not re.search(r'^FORM_IMAGE="[^"]*@sha256', config.read_text(), re.M) and re.search(r'^FORM_IMAGE_TAG="new-release-2"', config.read_text(), re.M)
+        old = base / 'old-digest.env'
+        old.write_text(config.read_text().replace('FORM_IMAGE=""', 'FORM_IMAGE="ghcr.io/magicalwig34653/form-backend@sha256:' + 'b' * 64 + '"'))
+        old.chmod(0o600)
+        res = run([update, '--non-interactive', '--dry-run', '--env-file', str(old)], env)
+        assert 'b' * 64 not in res.stdout, 'alter gespeicherter Digest wurde weiterverwendet'
         assert config.stat().st_mode & 0o777 == 0o600
         assert 'synthetic-db-password' not in config.read_text()
         assert 'synthetic-db-password' not in (state / 'commands').read_text()
