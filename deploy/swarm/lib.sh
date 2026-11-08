@@ -518,6 +518,13 @@ finalize_config() {
   : "${NETWORK_NAME:=${STACK}_backend}" "${DB_PASSWORD_SECRET:=${STACK}_db_password}" "${SERVER_KEY_SECRET:=${STACK}_server_key}" "${BOOTSTRAP_PASSWORD_SECRET:=${STACK}_bootstrap_password}"
   [[ -z "$KEY_ARG" ]] || SERVER_KEY_SOURCE_FILE=$KEY_ARG
   [[ -z "$PASSWORD_ARG" ]] || DB_PASSWORD_SOURCE_FILE=$PASSWORD_ARG
+  # Gespeicherter Standardpfad eines früheren Installationsorts (Verzeichnis umgezogen): zurück auf den Standard dieses Orts.
+  for key in DB_PASSWORD_SOURCE_FILE SERVER_KEY_SOURCE_FILE BOOTSTRAP_PASSWORD_SOURCE_FILE; do
+    if [[ -n "${!key}" && "${!key}" == */deploy/*/secrets/* && ! -e "${!key}" && ! -d "$(dirname "${!key}")" && "${!key}" != "$KEY_ARG" && "${!key}" != "$PASSWORD_ARG" ]]; then
+      say "Hinweis: gespeicherter Pfad $key (${!key}) existiert nicht mehr; Standard dieses Verzeichnisses wird genutzt."
+      printf -v "$key" '%s' ''
+    fi
+  done
   EXPLICIT_DB_SOURCE=0; EXPLICIT_KEY_SOURCE=0; EXPLICIT_BOOTSTRAP_SOURCE=0
   [[ -z "$DB_PASSWORD_SOURCE_FILE" ]] || EXPLICIT_DB_SOURCE=1
   [[ -z "$SERVER_KEY_SOURCE_FILE" ]] || EXPLICIT_KEY_SOURCE=1
@@ -548,6 +555,11 @@ save_config() {
     fi
     case "$line" in ''|'#'*) printf '%s\n' "$line" ;; *)
       key=${line%%=*}; value=${!key}
+      case "$key" in
+        DB_PASSWORD_SOURCE_FILE) [[ "$value" != "$BASE/secrets/db_password" ]] || value='' ;;
+        SERVER_KEY_SOURCE_FILE) [[ "$value" != "$BASE/secrets/server_key" ]] || value='' ;;
+        BOOTSTRAP_PASSWORD_SOURCE_FILE) [[ "$value" != "$BASE/secrets/bootstrap_password" ]] || value='' ;;
+      esac
       # Preserve JSON lists using dotenv single quotes; the parser does not unescape values.
       if [[ "$value" == *'"'* ]]; then
         [[ "$value" != *"'"* ]] || fail "Gemischte Quotes im Wert nicht unterstützt: $key"

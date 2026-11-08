@@ -653,6 +653,12 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             run(['bash', '-c', 'MODE=$1 ACTION=update BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; save_config',
                  'legacy', mode, str(ROOT / 'deploy' / mode), str(legacy)], env)
             assert 'FORM_HTTP_PORT' not in legacy.read_text()
+            # Umgezogener Installationsort: gespeicherter Secret-Pfad existiert nicht mehr -> Standard, nichts Festes gespeichert
+            moved = work / 'moved.env'
+            moved.write_text(legacy.read_text() + 'DB_PASSWORD_SOURCE_FILE="/opt/alt/form-backend/deploy/' + mode + '/secrets/db_password"\n'); moved.chmod(0o600)
+            out = run(['bash', '-c', 'MODE=$1 ACTION=update BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; save_config',
+                       'moved', mode, str(ROOT / 'deploy' / mode), str(moved)], env).stdout
+            assert 'existiert nicht mehr' in out and '/opt/alt/' not in moved.read_text()
             assert 'sekret' not in settings(mode, envfile, '--list', ok=True, extra_env=leaked).stdout
             assert 'sekret' not in settings(mode, envfile, '--check', extra_env=leaked).stdout
             assert 'sekret' not in envfile.read_text() and not backups(envfile)
