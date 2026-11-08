@@ -590,7 +590,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
         assert key in table_used, f'{key} in config-extra.tsv, aber in keiner Vorlage'
     help_keys = [l.split('\t')[0] for l in (ROOT / 'deploy' / 'swarm' / 'config-help.tsv').read_text().splitlines() if l and not l.startswith('#')]
     assert len(help_keys) == len(set(help_keys)), 'config-help.tsv: doppelte Schlüssel'
-    assert all(k in tables and tables[k][9] != '1' for k in help_keys), [k for k in help_keys if k not in tables]
+    assert all(k in tables for k in help_keys), [k for k in help_keys if k not in tables]
 
     bash44 = bash_44()
     if bash44 is None:
@@ -624,7 +624,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             result = settings(mode, envfile, '--check', ok=True)
             assert 'Ergebnis: 0 Fehler' in result.stdout, result.stdout
             listing = settings(mode, envfile, '--list', ok=True).stdout
-            assert 'FORM_MCP_TOKEN_RATE_LIMIT' in listing and 'FORM_DB_PASSWORD' in listing and '(Secret)' in listing, listing
+            assert 'FORM_MCP_TOKEN_RATE_LIMIT' in listing and 'FORM_DB_PASSWORD' in listing and (mode == 'compose' or '(Secret)' in listing), listing
             assert settings(mode, envfile, '--get', 'FORM_DB_PORT', ok=True).stdout == '3306\n'
             leaked_env = {'FORM_DB_PASSWORD': 'sekret-db-4711'}
             # Ausführliche Erklärungen: Ports sind gegeneinander abgegrenzt, Secrets bleiben ohne Wert
@@ -637,6 +637,8 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             # Geheimnisse: nie ausgeben, nie schreiben (auch nicht aus dem Prozess-ENV)
             leaked = {'FORM_DB_PASSWORD': 'sekret-db-4711', 'FORM_SERVER_KEY': 'sekret-key-4711'}
             for secret_key, secret_value in leaked.items():
+                if mode == 'compose':
+                    continue  # Compose: einfache ENV, eigener Test unten
                 result = settings(mode, envfile, '--get', secret_key, ok=False, extra_env=leaked)
                 assert result.stdout == '' and secret_value not in result.stderr
                 result = settings(mode, envfile, '--set', f'{secret_key}={secret_value}', ok=False, extra_env=leaked)
@@ -644,6 +646,28 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             assert 'sekret' not in settings(mode, envfile, '--list', ok=True, extra_env=leaked).stdout
             assert 'sekret' not in settings(mode, envfile, '--check', extra_env=leaked).stdout
             assert 'sekret' not in envfile.read_text() and not backups(envfile)
+            if mode == 'compose':
+                # Compose: Geheimnisse sind einfache ENV (verdeckt angezeigt, Datei 0600), Server-Key mit Formprüfung
+                sec = work / 'sec.env'
+                shutil.copy(envfile, sec); sec.chmod(0o600)
+                key64 = 'ab' * 32
+                settings(mode, sec, '--set', 'FORM_DB_PASSWORD=pw-4711', '--set', f'FORM_SERVER_KEY={key64}', ok=True)
+                text = sec.read_text()
+                assert 'FORM_DB_PASSWORD="pw-4711"' in text and f'FORM_SERVER_KEY="{key64}"' in text and sec.stat().st_mode & 0o777 == 0o600
+                for out in (settings(mode, sec, '--list', ok=True).stdout, settings(mode, sec, '--check', ok=True).stdout,
+                            settings(mode, sec, '--info', 'FORM_DB_PASSWORD', ok=True).stdout):
+                    assert 'pw-4711' not in out and key64 not in out
+                assert settings(mode, sec, '--get', 'FORM_DB_PASSWORD', ok=False).stdout == ''
+                settings(mode, sec, '--set', 'FORM_SERVER_KEY=zz', ok=False)
+                settings(mode, sec, '--set', 'FORM_DB_PASSWORD=a"b', ok=False)
+                # lib.sh liest die Datei und behält die Werte beim Speichern; sie landen nicht im Dry-run-Plan
+                keep = work / 'keep.env'
+                shutil.copy(sec, keep); keep.chmod(0o600)
+                run(['bash', '-c', 'MODE=compose ACTION=update BASE=$1; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$2"; save_config',
+                     'keep', str(ROOT / 'deploy' / 'compose'), str(keep)], env)
+                assert 'FORM_DB_PASSWORD="pw-4711"' in keep.read_text() and f'FORM_SERVER_KEY="{key64}"' in keep.read_text()
+                settings(mode, sec, '--unset', 'FORM_DB_PASSWORD', '--unset', 'FORM_SERVER_KEY', ok=True)
+                assert 'pw-4711' not in sec.read_text() and key64 not in sec.read_text()
             before = envfile.read_bytes()
             # ungültige Werte werden abgelehnt: Datei und Sicherungen bleiben unberührt
             for pair in ('FORM_MCP_TOKEN_RATE_LIMIT=0', 'FORM_MCP_TOKEN_RATE_LIMIT=abc', 'FORM_MCP_TOKEN_RATE_LIMIT=060',
@@ -706,7 +730,7 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             result = settings(mode, broken, '--check', ok=False)
             out = result.stdout
             assert 'leak-4711' not in out + result.stderr
-            for needle in ('FOO_BAR', 'FORM_DB_PASSWORD', 'FORM_MCP_TOKEN_RATE_LIMIT=0', 'FORM_DB_PORT steht', 'Dateimodus ist 644', 'Zeile'):
+            for needle in ('FOO_BAR', *(() if mode == 'compose' else ('FORM_DB_PASSWORD',)), 'FORM_MCP_TOKEN_RATE_LIMIT=0', 'FORM_DB_PORT steht', 'Dateimodus ist 644', 'Zeile'):
                 assert needle in out, (needle, out)
             broken.write_text(envfile.read_text() + 'FORM_DB_PASSWORD="leak-4711"\n')
             settings(mode, broken, '--unset', 'FORM_DB_PASSWORD', ok=True)

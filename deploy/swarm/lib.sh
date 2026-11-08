@@ -20,6 +20,8 @@ read_config() {
     # No shell expansion, substitutions or multi-line values. Passwords should come from source files.
     [[ "$value" != *'$'* && "$value" != *'`'* && "$value" != *\\* && "$value" != *$'\n'* ]] || fail "Keine Expansion/Steuerzeichen erlaubt: $key"
     printf -v "$key" '%s' "$value"; export "${key?}"
+    # Compose: Geheimnisse dürfen als einfache ENV in der 0600-Datei stehen (settings.sh); sie bleiben dort bei jedem Speichern erhalten.
+    if [[ "$1" == "${ENV_FILE:-}" && "$MODE" == compose ]]; then case " $SECRET_KEYS " in *" $key "*) printf -v "SAVED_$key" '%s' "$value" ;; esac; fi
   done < "$1"
 }
 # Eingabe-Prüfung je Feld (gleiche Regeln wie validate); Rückgabe 0 = ok, sonst Hinweistext in FIELD_ERR.
@@ -552,6 +554,12 @@ save_config() {
       fi ;;
     esac
   done < "$TEMPLATE" > "$tmp"
+  if [[ "$MODE" == compose ]]; then
+    for key in $SECRET_KEYS; do
+      value=SAVED_$key; value=${!value:-}
+      [[ -z "$value" ]] || printf '%s="%s"\n' "$key" "$value" >> "$tmp"
+    done
+  fi
   if [[ -f "$ENV_FILE" ]]; then cp -p "$ENV_FILE" "${ENV_FILE}.bak"; chmod 600 "${ENV_FILE}.bak"; fi
   mv "$tmp" "$ENV_FILE"
 }
@@ -608,6 +616,11 @@ prepare_secrets() {
       say "Secret unverändert: $name (Schlüsselbackup separat sicherstellen)"; continue
     fi
     [[ ! -L "$path" ]] || fail 'Secret-Datei darf kein Symlink sein'
+    # Compose: ein Wert aus der Env-Datei (settings.sh) ersetzt eine abweichende Secret-Datei; der Server-Key nie (Daten wären unlesbar).
+    if [[ "$MODE" == compose && -n "${!var:-}" && -e "$path" ]] && [[ "$(cat "$path")" != "${!var}" ]]; then
+      [[ "$kind" != server_key ]] || fail 'FORM_SERVER_KEY in der Env-Datei weicht von der vorhandenen Secret-Datei ab; Key lässt sich nicht ändern (Eintrag entfernen oder gleichen Wert setzen)'
+      chmod u+w "$path"; rm -f "$path"
+    fi
     if [[ ! -e "$path" ]]; then
       [[ "$explicit" == 0 || -n "${!var:-}" ]] || fail "Explizite Secret-Quelldatei fehlt: $path"
       [[ -d "$(dirname "$path")" ]] || fail "Quellverzeichnis fehlt: $(dirname "$path")"

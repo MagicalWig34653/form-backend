@@ -43,6 +43,11 @@ ENV_FILE=""
 BACKTITLE="form-backend ($MODE): Einstellungen"
 # Geheimnisse, die update.sh aus dem Prozess-ENV akzeptiert, die aber nie in der Datei stehen dürfen.
 SECRET_ENV_KEYS=" FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD "
+# Compose hat keine Docker-Secrets: dort sind die drei Werte gewöhnliche (verdeckt angezeigte) ENV-Werte der 0600-Datei. setup.sh/update.sh
+# legen daraus die Secret-Dateien an, wenn sie fehlen. Swarm: nie in der Datei.
+PLAIN_SECRETS=""
+if [ "$MODE" = compose ]; then PLAIN_SECRETS=" FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD "; SECRET_ENV_KEYS=" "; fi
+is_masked() { [[ $PLAIN_SECRETS == *" $1 "* ]] || is_secretlike "$1"; }
 # Ports haben bewusst keine _FILE-Variante (lib.sh lehnt sie ab).
 NO_FILE_KEYS=" FORM_PUBLIC_PORT FORM_INTERNAL_PORT "
 
@@ -96,6 +101,18 @@ load_tables() {
   declare -A seen=()
   load_table "$TSV_REGISTRY"; load_table "$TSV_EXTRA"; load_help
   load_template
+  if [ "$MODE" = compose ]; then
+    local pk
+    for pk in FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD; do
+      [ -n "${T_GROUP[$pk]+x}" ] || continue
+      T_SECRET[$pk]=0; T_DEF[$pk]=""; T_MAX[$pk]=200; T_APPLY[$pk]="envOnly"
+      case "$pk" in
+        FORM_SERVER_KEY) T_TYPE[$pk]="text:hexkey?"; T_SUM[$pk]="Server-Key (64 Hexzeichen) als einfache ENV. Beim ersten Rollout entsteht daraus die Secret-Datei; ein vorhandener Key lässt sich nicht ändern." ;;
+        FORM_DB_PASSWORD) T_TYPE[$pk]="text:secretval?"; T_SUM[$pk]="Passwort des DB-Benutzers als einfache ENV (Wert wird verdeckt angezeigt). Leer = Setup fragt danach bzw. nutzt die Secret-Datei." ;;
+        *) T_TYPE[$pk]="text:secretval?"; T_SUM[$pk]="Einmaliges Start-Passwort des ersten Administrators als einfache ENV. Leer = der Server erzeugt eines." ;;
+      esac
+    done
+  fi
   # Reihenfolge: Tabellenzeilen in Dateireihenfolge, soweit die Vorlage des Modus die Variable kennt.
   while IFS= read -r k; do
     [ -n "$k" ] || continue
@@ -259,6 +276,8 @@ validate_text() { # KEY WERT REGEL (KEY ungenutzt, für Meldungen reserviert) (R
   local val="$2" rule="$3" item
   case "$rule" in
     free) ;;
+    secretval) [[ $val =~ ^[[:print:]]{1,200}$ && $val != *[\$\`\\\"\']* ]] || { V_ERR='1 bis 200 druckbare Zeichen ohne $ ` \ " und Apostroph'; return 1; } ;;
+    hexkey) [[ $val =~ ^[a-fA-F0-9]{64}$ ]] || { V_ERR='64 Hexzeichen (z. B. openssl rand -hex 32)'; return 1; } ;;
     hostaddr) [[ $val =~ ^[A-Za-z0-9.:_-]+$ && $val != -* ]] || { V_ERR="Hostname oder IP-Adresse (Buchstaben, Ziffern, . : _ -)"; return 1; } ;;
     dbhost) [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9.:_-]*$ ]] || { V_ERR="Hostname oder IP-Adresse des DB-Servers"; return 1; } ;;
     dbuser) [[ $val =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$ ]] || { V_ERR="Buchstabe am Anfang, dann Buchstaben, Ziffern, _ . - (höchstens 64 Zeichen)"; return 1; } ;;
@@ -500,7 +519,7 @@ build_new_lines() {
       line="${NEW_LINES[$i]}"
       if [[ $line == "$k="* ]]; then
         # Ein Geheimnis wird gelöscht, nicht auskommentiert (es soll nicht als Kommentar lesbar bleiben).
-        if is_secretlike "$k"; then NEW_LINES[i]=$'\x01DELETE'; else NEW_LINES[i]="# $line"; fi
+        if is_masked "$k"; then NEW_LINES[i]=$'\x01DELETE'; else NEW_LINES[i]="# $line"; fi
       fi
     done
   done
@@ -539,11 +558,11 @@ write_env() {
 
 show_val() { # Wert für die Anzeige (Geheimnisse nie)
   local k="$1" v="$2"
-  if is_secretlike "$k"; then printf '***'; elif [ -z "$v" ]; then printf '(leer)'; else printf '%s' "$v"; fi
+  if is_masked "$k"; then if [ -n "$v" ]; then printf '***'; else printf '(leer)'; fi; elif [ -z "$v" ]; then printf '(leer)'; else printf '%s' "$v"; fi
 }
 redact_line() { # eine Datei-Zeile ohne Geheimnisse ausgeben
   local line="$1"
-  if [[ $line =~ ^[[:space:]]*#?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] && { [[ $SECRET_ENV_KEYS == *" ${BASH_REMATCH[1]} "* ]] || is_secretlike "${BASH_REMATCH[1]}"; }; then
+  if [[ $line =~ ^[[:space:]]*#?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] && { [[ $SECRET_ENV_KEYS == *" ${BASH_REMATCH[1]} "* ]] || is_masked "${BASH_REMATCH[1]}"; }; then
     printf '%s=***' "${BASH_REMATCH[1]}"
   else printf '%s' "$line"; fi
 }
@@ -612,7 +631,7 @@ ui_yesno() { # Titel Text [--defaultno]
 }
 ui_input() { # Titel Text Startwert
   local h; ui_size; h="$(text_height "$2")"; h=$((h + 2)); [ "$h" -gt "$H" ] && h=$H
-  wt --title "$1" --inputbox "$2" "$h" "$W" "$3"
+  if [ "${UI_PASSWORD:-0}" = 1 ]; then wt --title "$1" --passwordbox "$2" "$h" "$W"; else wt --title "$1" --inputbox "$2" "$h" "$W" "$3"; fi
 }
 ui_textfile() { # Titel Datei
   local text h; text="$(cat "$2")"; ui_size; h="$(text_height "$text")"
@@ -667,6 +686,7 @@ item_desc() { # KEY Breite -> "Wert  Zustand  Wirkung" (Wert wird auf die Breite
   local k="$1" dw="${2:-34}" v u vb
   if [ "${T_SECRET[$k]}" = 1 ]; then printf 'Geheimnis (nicht in der Datei)'; return; fi
   v="$(eff_value "$k")"; u="${T_UNIT[$k]}"
+  if is_masked "$k" && [ -n "$v" ]; then v="***"; fi
   if [ "$dw" -ge 32 ]; then vb=$((dw - 19)); elif [ "$dw" -ge 20 ]; then vb=$((dw - 9)); else vb=$dw; fi
   [ "$vb" -ge 6 ] || vb=6; [ "$vb" -le 26 ] || vb=26
   if [ -z "$v" ]; then v="(leer)"; elif [ -n "$u" ] && [ $((${#v} + ${#u} + 1)) -le "$vb" ]; then v="$v $u"; fi
@@ -703,7 +723,8 @@ edit_key() { # KEY
   ct="$(crumb ${PARENT_CRUMB:+"$PARENT_CRUMB"} "$k")"
   if [ "${T_SECRET[$k]}" = 1 ]; then ui_msg "$ct" "$(secret_hint "$k")"; return 0; fi
   [ -z "${T_HELP[$k]:-}" ] || ui_msg "$ct: Erklärung" "$(info_text "$k")"
-  init="$(eff_value "$k")"; lo="${T_MIN[$k]}"; hi="${T_MAX[$k]}"; def="$(default_of "$k")"
+  init="$(eff_value "$k")"; lo="${T_MIN[$k]}"
+  UI_PASSWORD=0; if [[ $PLAIN_SECRETS == *" $k "* ]]; then UI_PASSWORD=1; init=""; fi; hi="${T_MAX[$k]}"; def="$(default_of "$k")"
   case "$base" in
     bool) opts=(true "an" false "aus") ;;
     choice) IFS='|' read -ra ch <<< "${T_CHOICES[$k]}"; for tok in "${ch[@]}"; do opts+=("$tok" ""); done
@@ -968,6 +989,7 @@ cli_list() {
       continue
     fi
     v="$(eff_value "$k")"
+    if is_masked "$k" && [ -n "$v" ]; then v="***"; fi
     if in_file "$k"; then src="Datei"; else src="Default"; fi
     printf '%-38s %-26s %-18s %s\n' "$k" "${v:-(leer)}" "$(default_of "$k")" "$src"
   done
@@ -985,6 +1007,7 @@ cli_info() {
 }
 cli_get() {
   local k="$1"
+  if [[ $PLAIN_SECRETS == *" $k "* ]]; then echo "$k ist ein Geheimnis und wird nie ausgegeben." >&2; return 2; fi
   if [[ $SECRET_ENV_KEYS == *" $k "* ]] || { [ -n "${T_SECRET[$k]+x}" ] && [ "${T_SECRET[$k]}" = 1 ]; }; then
     echo "$k ist ein Geheimnis und wird nie ausgegeben." >&2; return 2
   fi
@@ -1016,7 +1039,7 @@ cli_unset() {
   if ! is_known "$k" && [ -z "${ENV_COUNT[$k]+x}" ]; then echo "Unbekannte Variable: $k" >&2; return 2; fi
   if ! in_file "$k"; then echo "$k ist nicht gesetzt (Default)."; return 0; fi
   queue_unset "$k"
-  if is_secretlike "$k" || [[ $SECRET_ENV_KEYS == *" $k "* ]]; then echo "$k wird aus der Datei gelöscht (Geheimnisse gehören nicht hinein)."
+  if is_masked "$k" || [[ $SECRET_ENV_KEYS == *" $k "* ]]; then echo "$k wird aus der Datei gelöscht (Zeile wird entfernt, nicht auskommentiert)."
   else echo "$k wird auf den Default zurückgesetzt (Zeile auskommentiert)."; fi
 }
 
