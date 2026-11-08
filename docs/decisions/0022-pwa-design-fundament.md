@@ -23,7 +23,7 @@ Verwaltungsseiten werden innerhalb der neuen Shell gerendert.
 
 Die Referenz wurde ausschließlich gelesen. Adaptierte Zinc-Tokens sind im CSS
 gekennzeichnet; der vollständige MIT-Hinweis liegt in `pwa/SHADCN-LICENSE.md`.
-Inter liegt lokal mit OFL-Lizenz unter `pwa/public/fonts`. Die Anwendung bleibt
+Seit 08.11.2026 gibt es keine eigenen Schriftdateien mehr: Systemschrift (ui-sans-serif, system-ui, Helvetica, Arial, sans-serif). Die Anwendung bleibt
 AGPL-3.0-only. Shell und geometrische SVG-Symbole sind projektspezifisch; keine
 zusätzliche npm-Abhängigkeit. Schlüsselbezogene Dateien/Panels gehören P12-B
 und sind ausgeschlossen. Schritt 2 gestaltet die übrigen Seiten.

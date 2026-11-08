@@ -31,7 +31,6 @@ Rows marked **ACTION** need a decision or a change before/at publication.
 
 | # | Item | License | Issue | Recommendation | Status |
 |---|------|---------|-------|----------------|--------|
-| 1 | Inter variable font (`pwa/public/fonts/*.woff2`) | OFL-1.1 | OFL requires the copyright notice and license text to accompany redistributed font files; no license file sits next to the fonts. OFL fonts may be bundled with AGPL software (the font stays under OFL). Must not be sold standalone; derived fonts must not use a Reserved Font Name. | License copy added as `LICENSES/OFL-1.1-Inter.txt`. **ACTION (low):** also place a copy next to the fonts or serve it with the app. Verify font version/origin by hand (not recorded in repo). | open |
 | 2 | Swift: BoringSSL code inside swift-crypto and swift-nio-ssl | ISC + OpenSSL + SSLeay | BoringSSL mixes ISC with the original OpenSSL/SSLeay licenses, which contain an advertising clause; the FSF considers the OpenSSL license GPL-incompatible. Practical risk is low (system-library style use of Apple packages by many GPL/AGPL projects), but it is a recognised grey area. | Keep `LICENSES/Swift-embedded-components.txt` with every binary/image release. **ACTION (medium):** have a human/legal check confirm acceptance before publication; no drop-in replacement exists for swift-crypto/NIO-SSL. | needs human judgement |
 | 3 | Argon2 (`phc-winner-argon2`) | CC0-1.0 OR Apache-2.0 | Dual license; choose one. | Treat as **Apache-2.0** (attribution via `LICENSES/Argon2-CC0-1.0-OR-Apache-2.0.txt`) or CC0 (no attribution). No problem. | OK |
 | 4 | axe-core, @axe-core/playwright | MPL-2.0 | Weak copyleft (file level). Used only for a11y tests; not distributed, not modified. | None needed. If ever bundled/modified, MPL source must be offered for modified files. | OK (test only) |
@@ -189,8 +188,6 @@ Composer packages, so no third-party code is bundled.
 
 | Asset | Path | License | Source | Use | Notice |
 |-------|------|---------|--------|-----|--------|
-| Inter variable (latin) | `pwa/public/fonts/inter-latin-wght-normal.woff2` | OFL-1.1 | https://github.com/rsms/inter (Fontsource packaging) | runtime | Copyright (c) 2016 The Inter Project Authors; `LICENSES/OFL-1.1-Inter.txt` |
-| Inter variable (latin-ext) | `pwa/public/fonts/inter-latin-ext-wght-normal.woff2` | OFL-1.1 | same | runtime | same |
 | App icons | `pwa/public/icon.svg`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` | project-owned (assumed; simple rounded square + 3 bars) | - | runtime | none |
 | Docs site icon | `site/assets/icon.svg` | same as above | - | runtime (docs site) | none |
 | Docs site CSS/JS | `site/assets/site.css`, `site.js`, `theme-init.js` | project-owned | - | runtime | none |
