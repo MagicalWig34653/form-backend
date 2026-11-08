@@ -77,6 +77,15 @@
           .length
       : 0,
   );
+  const groupCounts = $derived(
+    groups
+      .map((g) => ({ g, n: visible.filter((x) => x.definition.group === g).length }))
+      .filter((x) => x.n > 0),
+  );
+  const emptyGroups = $derived(
+    groups.filter((g) => !(snapshot?.items ?? []).some((x) => x.definition.group === g)),
+  );
+  const slug = (g: string) => 'grp-' + g.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   async function failure(e: Parameters<typeof describeError>[0]) {
     if (e.status === 409) error = text.conflict;
     else if (needsFreshLogin(e)) await reauthenticate('/settings');
@@ -122,7 +131,7 @@
   onMount(() => void load());
 </script>
 
-<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+<div class="mx-auto flex w-full max-w-[1040px] flex-col gap-6">
   <PageHeader title={text.title} description={text.precedence}>
     {#snippet badges()}
       <StatusChip tone="info" label={ui.precedenceChain} />
@@ -175,46 +184,66 @@
         </Select>
       </div>
     </div>
+    {#if groupCounts.length > 1}
+      <nav aria-label="Gruppen" class="flex flex-wrap gap-2">
+        {#each groupCounts as { g, n } (g)}
+          <a
+            href={`#${slug(g)}`}
+            class="border-border bg-card hover:bg-surface-sunken inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
+            >{g}<span class="text-muted-foreground">{n}</span></a
+          >
+        {/each}
+      </nav>
+    {/if}
     <p class="sr-only" role="status">{ui.count.replace('{n}', String(visible.length))}</p>
     <form onsubmit={save} class="flex flex-col gap-5" aria-busy={busy}>
       {#each groups as group, index (group)}
         {@const items = visible.filter((x) => x.definition.group === group)}
-        {#if items.length || (!query && !sourceFilter)}
-          <FormSection title={group} {index}>
-            {#each items as item (item.definition.key)}
-              {@const source = sourceOf(item)}
-              <div data-setting={item.definition.key} class="flex flex-col gap-2">
-                <Row
-                  id={item.definition.key}
-                  label={item.definition.key}
-                  hint={`${ui.envName}: ${item.definition.envName}${item.definition.minimum !== undefined ? ` · ${ui.range}: ${item.definition.minimum}–${item.definition.maximum}` : ''}`}
+        {#if items.length}
+          <FormSection title={group} {index} id={slug(group)}>
+            <div class="grid gap-4 md:grid-cols-2">
+              {#each items as item (item.definition.key)}
+                {@const source = sourceOf(item)}
+                <div
+                  data-setting={item.definition.key}
+                  class="border-border-subtle bg-surface-sunken/50 flex flex-col gap-2 rounded-lg border p-3"
                 >
-                  <Input
+                  <Row
                     id={item.definition.key}
-                    type={item.definition.sensitive ? 'password' : 'text'}
-                    bind:value={values[item.definition.key]}
-                    disabled={busy || item.locked}
-                    inputmode={item.definition.type === 'integer' ? 'numeric' : 'text'}
-                    class="font-mono"
-                  />
-                </Row>
-                <p class="flex flex-wrap items-center gap-2">
-                  <span class="text-muted-foreground text-xs">{text.source}:</span>
-                  <StatusChip tone={tones[source]} label={ui.sources[source]} />
-                  <span class="sr-only">{ui.sourceLong[source]}</span>
-                  {#if item.locked}<StatusChip tone="idle" label={text.locked} />{/if}
-                  {#if item.definition.restartRequired}<StatusChip
-                      tone="warn"
-                      label={text.restart}
-                    />{/if}
-                </p>
-              </div>
-            {:else}<p class="text-muted-foreground text-sm">{text.noExistingEnv}</p>{/each}
+                    label={item.definition.key}
+                    hint={`${ui.envName}: ${item.definition.envName}${item.definition.minimum !== undefined ? ` · ${ui.range}: ${item.definition.minimum}–${item.definition.maximum}` : ''}`}
+                  >
+                    <Input
+                      id={item.definition.key}
+                      type={item.definition.sensitive ? 'password' : 'text'}
+                      bind:value={values[item.definition.key]}
+                      disabled={busy || item.locked}
+                      inputmode={item.definition.type === 'integer' ? 'numeric' : 'text'}
+                      class="font-mono"
+                    />
+                  </Row>
+                  <p class="flex flex-wrap items-center gap-2">
+                    <span class="text-muted-foreground text-xs">{text.source}:</span>
+                    <StatusChip tone={tones[source]} label={ui.sources[source]} />
+                    <span class="sr-only">{ui.sourceLong[source]}</span>
+                    {#if item.locked}<StatusChip tone="idle" label={text.locked} />{/if}
+                    {#if item.definition.restartRequired}<StatusChip
+                        tone="warn"
+                        label={text.restart}
+                      />{/if}
+                  </p>
+                </div>
+              {/each}
+            </div>
           </FormSection>
         {/if}
       {/each}
-      {#if query || sourceFilter}
-        {#if !visible.length}<EmptyState title={ui.noMatch} icon="search" />{/if}
+      {#if (query || sourceFilter) && !visible.length}
+        <EmptyState title={ui.noMatch} icon="search" />
+      {:else if !query && !sourceFilter && emptyGroups.length}
+        <p class="text-muted-foreground text-sm">
+          {text.noExistingEnv} ({emptyGroups.join(', ')})
+        </p>
       {/if}
       <div
         class="glass-bar border-border-subtle sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 md:-mx-8 md:px-8"

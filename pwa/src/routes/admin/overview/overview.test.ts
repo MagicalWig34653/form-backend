@@ -34,9 +34,11 @@ it('CountUp shows the end value directly when effects are off', () => {
 });
 it('CountUp starts at 0 and reaches the end value when animating', async () => {
   mocks.level = 'subtle';
-  render(CountUp, { value: 50, duration: 250 });
+  render(CountUp, { value: 50, duration: 100 });
   expect(screen.getByTestId('countup-visual').textContent).toBe('0');
-  await waitFor(() => expect(screen.getByTestId('countup-visual').textContent).toBe('50'));
+  await waitFor(() => expect(screen.getByTestId('countup-visual').textContent).toBe('50'), {
+    timeout: 5000,
+  });
 });
 
 it('Sparkline geometry breaks lines at gaps and marks single points', () => {

@@ -274,6 +274,12 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Programmatischer Fokus auf Überschriften (Seitenwechsel) bekommt keinen Rahmen; Bedienelemente behalten ihren. */
+  h1[tabindex='-1']:focus,
+  h1[tabindex='-1']:focus-visible,
+  [id='page-title']:focus-visible {
+    outline: none;
+  }
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
