@@ -454,6 +454,10 @@ check_all() {
       else chk_warn "$k: gehört nicht in die Datei (leer, wird ignoriert)."; fi
       continue
     fi
+    if [[ " FORM_HTTP_PORT " == *" $k "* ]]; then
+      chk_warn "$k: entfernte Variable (heute FORM_INTERNAL_PORT); wird ignoriert. Entfernen: settings.sh --unset $k"
+      continue
+    fi
     if [ -z "${TPL_KEY[$k]+x}" ]; then
       if is_secretlike "$k"; then chk_err "$k: unbekannte Variable, Name deutet auf ein Geheimnis; update.sh bricht ab."
       else chk_err "$k: unbekannte Variable (nicht in der Vorlage); update.sh bricht ab."; fi
@@ -538,7 +542,7 @@ build_new_lines() {
       line="${NEW_LINES[$i]}"
       if [[ $line == "$k="* ]]; then
         # Ein Geheimnis wird gelöscht, nicht auskommentiert (es soll nicht als Kommentar lesbar bleiben).
-        if is_masked "$k"; then NEW_LINES[i]=$'\x01DELETE'; else NEW_LINES[i]="# $line"; fi
+        if is_masked "$k" || [ "$k" = FORM_HTTP_PORT ]; then NEW_LINES[i]=$'\x01DELETE'; else NEW_LINES[i]="# $line"; fi
       fi
     done
   done

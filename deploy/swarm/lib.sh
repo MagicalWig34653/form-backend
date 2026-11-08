@@ -6,6 +6,7 @@ fail() { printf 'Fehler: %s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
 need() { command -v "$1" >/dev/null || fail "$1 wird benötigt"; }
 SECRET_KEYS='FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD'
+LEGACY_KEYS='FORM_HTTP_PORT'
 
 read_config() {
   local line key value
@@ -15,6 +16,8 @@ read_config() {
     [[ "$line" == *=* ]] || fail 'Konfiguration erwartet KEY=VALUE'
     key=${line%%=*}; value=${line#*=}
     [[ "$key" =~ ^[A-Z][A-Z0-9_]+$ ]] || fail 'Ungültiger Variablenname'
+    # Entfernte Variablen früherer Versionen: ignorieren (save_config schreibt die Datei ohne sie neu).
+    case " $LEGACY_KEYS " in *" $key "*) continue ;; esac
     case " $CONFIG_KEYS $SECRET_KEYS " in *" $key "*) ;; *) fail "Unbekannte Variable: $key" ;; esac
     case "$value" in \"*\"|\'*\') value=${value:1:${#value}-2} ;; esac
     # No shell expansion, substitutions or multi-line values. Passwords should come from source files.
