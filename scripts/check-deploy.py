@@ -633,6 +633,8 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                 info = settings(mode, envfile, '--info', key, ok=True).stdout
                 assert all(n in info for n in needles) and 'Default:' in info, (key, info)
             assert settings(mode, envfile, '--info', 'NICHT_DA', ok=False).stdout == ''
+            if mode == 'swarm':
+                settings(mode, envfile, '--generate', 'FORM_SERVER_KEY', ok=False)
             assert 'sekret' not in settings(mode, envfile, '--info', 'FORM_DB_PASSWORD', ok=True, extra_env=leaked_env).stdout
             # Geheimnisse: nie ausgeben, nie schreiben (auch nicht aus dem Prozess-ENV)
             leaked = {'FORM_DB_PASSWORD': 'sekret-db-4711', 'FORM_SERVER_KEY': 'sekret-key-4711'}
@@ -659,6 +661,25 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                     assert 'pw-4711' not in out and key64 not in out
                 assert settings(mode, sec, '--get', 'FORM_DB_PASSWORD', ok=False).stdout == ''
                 settings(mode, sec, '--set', 'FORM_SERVER_KEY=zz', ok=False)
+                # Zufällig erzeugen: Key nie ausgegeben, Bootstrap-Passwort einmalig; vorhandene Secret-Datei sperrt den Key
+                settings(mode, sec, '--unset', 'FORM_SERVER_KEY', ok=True)
+                gen = settings(mode, sec, '--generate', 'FORM_SERVER_KEY', ok=True).stdout
+                assert re.search(r'^FORM_SERVER_KEY="[0-9a-f]{64}"$', sec.read_text(), re.M)
+                assert re.search(r'FORM_SERVER_KEY="([0-9a-f]{64})"', sec.read_text()).group(1) not in gen
+                gen = settings(mode, sec, '--generate', 'FORM_BOOTSTRAP_PASSWORD', ok=True).stdout
+                pw = re.search(r'FORM_BOOTSTRAP_PASSWORD="([^"]{24})"', sec.read_text()).group(1)
+                assert pw in gen
+                settings(mode, sec, '--generate', 'FORM_DB_PASSWORD', ok=False)
+                (ROOT / 'deploy' / 'compose' / 'secrets').mkdir(exist_ok=True)
+                existing = ROOT / 'deploy' / 'compose' / 'secrets' / 'server_key'
+                had = existing.exists()
+                if not had:
+                    existing.write_text('x\n')
+                    try:
+                        settings(mode, sec, '--generate', 'FORM_SERVER_KEY', ok=False)
+                    finally:
+                        existing.unlink()
+                settings(mode, sec, '--set', f'FORM_SERVER_KEY={key64}', '--set', 'FORM_DB_PASSWORD=pw-4711', ok=True)
                 settings(mode, sec, '--set', 'FORM_DB_PASSWORD=a"b', ok=False)
                 # lib.sh liest die Datei und behält die Werte beim Speichern; sie landen nicht im Dry-run-Plan
                 keep = work / 'keep.env'

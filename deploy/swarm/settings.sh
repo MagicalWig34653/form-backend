@@ -10,6 +10,7 @@
 #   --set KEY=VALUE   Wert prüfen und speichern (mit Sicherung); mehrfach möglich
 #   --unset KEY       Variable aus der Datei nehmen (zurück auf den Default); mehrfach möglich
 #   --info KEY        ausführliche Erklärung einer Variablen (Zweck, Beispiele, Abgrenzung zu ähnlichen Variablen)
+#   --generate KEY    Compose: FORM_SERVER_KEY (nur ohne vorhandene Secret-Datei) oder FORM_BOOTSTRAP_PASSWORD zufällig erzeugen und speichern
 #   --check           gesamte Datei prüfen (Typ, Grenzen, Konflikte, unbekannte Variablen, Secrets)
 #   -h, --help        diese Hilfe
 #
@@ -47,6 +48,24 @@ SECRET_ENV_KEYS=" FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD "
 # legen daraus die Secret-Dateien an, wenn sie fehlen. Swarm: nie in der Datei.
 PLAIN_SECRETS=""
 if [ "$MODE" = compose ]; then PLAIN_SECRETS=" FORM_DB_PASSWORD FORM_SERVER_KEY FORM_BOOTSTRAP_PASSWORD "; SECRET_ENV_KEYS=" "; fi
+gen_secret() { # KEY -> Zufallswert auf stdout (Server-Key: 64 Hexzeichen, Bootstrap-Passwort: 24 Zeichen)
+  local v
+  case "$1" in
+    FORM_SERVER_KEY) if command -v openssl >/dev/null 2>&1; then v="$(openssl rand -hex 32)"; else v="$(LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"; fi ;;
+    *) v="$(LC_ALL=C tr -dc 'A-HJ-NP-Za-km-z2-9' </dev/urandom | head -c 24 || true)" ;;
+  esac
+  printf '%s' "$v"
+}
+# Erzeugen nur, wo es sicher ist: Compose, und der Server-Key nur solange noch keine Secret-Datei existiert (ein Key lässt sich nicht ändern).
+can_generate() { # KEY -> Rückgabe 0 = ja, sonst Grund in GEN_ERR
+  GEN_ERR=""
+  case "$1" in FORM_SERVER_KEY|FORM_BOOTSTRAP_PASSWORD) ;; *) GEN_ERR="$1 wird nicht zufällig erzeugt."; return 1 ;; esac
+  [[ $PLAIN_SECRETS == *" $1 "* ]] || { GEN_ERR="Nur in Compose; Swarm legt Secrets aus Dateien an."; return 1; }
+  if [ "$1" = FORM_SERVER_KEY ] && [ -s "$MODE_DIR/secrets/server_key" ]; then
+    GEN_ERR="Es gibt schon einen Server-Key ($MODE_DIR/secrets/server_key). Ein neuer würde alle verschlüsselten Daten unlesbar machen."; return 1
+  fi
+  return 0
+}
 is_masked() { [[ $PLAIN_SECRETS == *" $1 "* ]] || is_secretlike "$1"; }
 # Ports haben bewusst keine _FILE-Variante (lib.sh lehnt sie ab).
 NO_FILE_KEYS=" FORM_PUBLIC_PORT FORM_INTERNAL_PORT "
@@ -718,13 +737,26 @@ reset_key() {
   if [ -n "${PEND_SET[$k]+x}" ]; then unset 'PEND_SET[$k]'; fi
 }
 edit_key() { # KEY
-  local k="$1" base="${T_TYPE[$1]%%:*}" init prompt tok n lo hi ct i choice def
+  local k="$1" base="${T_TYPE[$1]%%:*}" init prompt tok n lo hi ct i choice def v
   local -a opts=() ch
   ct="$(crumb ${PARENT_CRUMB:+"$PARENT_CRUMB"} "$k")"
   if [ "${T_SECRET[$k]}" = 1 ]; then ui_msg "$ct" "$(secret_hint "$k")"; return 0; fi
   [ -z "${T_HELP[$k]:-}" ] || ui_msg "$ct: Erklärung" "$(info_text "$k")"
   init="$(eff_value "$k")"; lo="${T_MIN[$k]}"
-  UI_PASSWORD=0; if [[ $PLAIN_SECRETS == *" $k "* ]]; then UI_PASSWORD=1; init=""; fi; hi="${T_MAX[$k]}"; def="$(default_of "$k")"
+  UI_PASSWORD=0; if [[ $PLAIN_SECRETS == *" $k "* ]]; then UI_PASSWORD=1; init=""; fi
+  if [[ $PLAIN_SECRETS == *" $k "* ]] && can_generate "$k"; then
+    if ui_yesno "$ct" "Zufälligen Wert erzeugen?
+Ja = $k wird jetzt zufällig erzeugt (sicherer als selbst ausgedacht), Nein = selbst eingeben." ; then
+      v="$(gen_secret "$k")"; queue_set "$k" "$v"
+      if [ "$k" = FORM_BOOTSTRAP_PASSWORD ]; then ui_msg "$ct" "Erzeugt (wird nur jetzt angezeigt):
+
+$v
+
+Notieren Sie es für die erste Anmeldung; gespeichert wird beim Speichern der Einstellungen."
+      else ui_msg "$ct" "Erzeugt (64 Hexzeichen, wird nicht angezeigt). Nach dem Speichern und Rollout liegt der Key in ${MODE_DIR}/secrets/server_key: unbedingt separat und verschlüsselt sichern."; fi
+      return 0
+    fi
+  fi; hi="${T_MAX[$k]}"; def="$(default_of "$k")"
   case "$base" in
     bool) opts=(true "an" false "aus") ;;
     choice) IFS='|' read -ra ch <<< "${T_CHOICES[$k]}"; for tok in "${ch[@]}"; do opts+=("$tok" ""); done
@@ -976,7 +1008,7 @@ main_menu() {
 }
 
 # ---------------------------------------------------------------- Kommandozeile
-usage() { sed -n "4,15p" "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n "4,16p" "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 cli_list() {
   local k v src extra
@@ -999,6 +1031,14 @@ cli_list() {
     if is_secretlike "$k" || [[ $SECRET_ENV_KEYS == *" $k "* ]]; then extra="***"; else extra="${ENV_VAL[$k]:-(leer)}"; fi
     printf '%-38s %-26s %-18s %s\n' "$k" "$extra" "-" "Datei (unbekannt)"
   done
+}
+cli_generate() {
+  local k="$1" v
+  can_generate "$k" || { echo "$GEN_ERR" >&2; return 2; }
+  v="$(gen_secret "$k")"; [ -n "$v" ] || { echo "Zufallswert konnte nicht erzeugt werden." >&2; return 2; }
+  queue_set "$k" "$v"
+  if [ "$k" = FORM_BOOTSTRAP_PASSWORD ]; then echo "$k zufällig erzeugt (einmalig angezeigt): $v"
+  else echo "$k zufällig erzeugt (64 Hexzeichen, wird nicht angezeigt). Separat und verschlüsselt sichern."; fi
 }
 cli_info() {
   local k="$1"
@@ -1054,6 +1094,7 @@ main() {
       --set) actions+=("set:${2:?--set braucht KEY=VALUE}"); want_menu=0; shift 2 ;;
       --unset) actions+=("unset:${2:?--unset braucht einen Namen}"); want_menu=0; shift 2 ;;
       --info) actions+=("info:${2:?--info braucht einen Namen}"); want_menu=0; shift 2 ;;
+      --generate) actions+=("generate:${2:?--generate braucht FORM_SERVER_KEY oder FORM_BOOTSTRAP_PASSWORD}"); want_menu=0; shift 2 ;;
       --check) actions+=("check"); want_menu=0; shift ;;
       -h|--help) usage; exit 0 ;;
       *) echo "Unbekannte Option: $1 (siehe --help)" >&2; exit 64 ;;
@@ -1080,6 +1121,7 @@ main() {
     case "$act" in
       list) cli_list ;;
       get:*) cli_get "${act#get:}" || rc=$? ;;
+      generate:*) cli_generate "${act#generate:}" || { rc=$?; break; } ;;
       info:*) cli_info "${act#info:}" || rc=$? ;;
       set:*) cli_set "${act#set:}" || { rc=$?; break; } ;;
       unset:*) cli_unset "${act#unset:}" || { rc=$?; break; } ;;
