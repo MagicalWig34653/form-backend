@@ -645,6 +645,14 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                 assert result.stdout == '' and secret_value not in result.stderr
                 result = settings(mode, envfile, '--set', f'{secret_key}={secret_value}', ok=False, extra_env=leaked)
                 assert secret_value not in result.stdout + result.stderr
+            # Altlast FORM_HTTP_PORT: update/setup lesen die Datei weiter, settings.sh warnt und entfernt die Zeile
+            legacy = work / 'legacy.env'
+            legacy.write_text(envfile.read_text() + 'FORM_HTTP_PORT="8081"\n'); legacy.chmod(0o600)
+            res = settings(mode, legacy, '--check', ok=True)
+            assert 'FORM_HTTP_PORT' in res.stdout and 'FEHLER   FORM_HTTP_PORT' not in res.stdout, res.stdout
+            run(['bash', '-c', 'MODE=$1 ACTION=update BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; save_config',
+                 'legacy', mode, str(ROOT / 'deploy' / mode), str(legacy)], env)
+            assert 'FORM_HTTP_PORT' not in legacy.read_text()
             assert 'sekret' not in settings(mode, envfile, '--list', ok=True, extra_env=leaked).stdout
             assert 'sekret' not in settings(mode, envfile, '--check', extra_env=leaked).stdout
             assert 'sekret' not in envfile.read_text() and not backups(envfile)
