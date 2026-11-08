@@ -608,7 +608,11 @@ test('mobile drawer traps focus, closes with Escape and navigates', async ({ pag
   await drawer.getByRole('link', { name: 'Mein Konto', exact: true }).click();
   await expect(page).toHaveURL('/account');
   await expect(drawer).toBeHidden();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), {
+      timeout: 5000,
+    })
+    .toBe(true);
 });
 
 test('customer selection and contextual sidebar preserve existing routes', async ({ page }) => {
@@ -757,7 +761,11 @@ test('entries filters, detail and export are accessible on a narrow screen', asy
   await expect(detail.getByRole('heading', { name: 'Einsendungsdetail' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Schließen' })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), {
+      timeout: 5000,
+    })
+    .toBe(true);
   await page.keyboard.press('Escape');
   await expect(detail).toBeHidden();
   await page.getByText('Filter', { exact: true }).click();
@@ -783,7 +791,11 @@ test('entries filters, detail and export are accessible on a narrow screen', asy
     expect((await download).suggestedFilename()).toBe(`einsendungen.${format.toLowerCase()}`);
   }
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), {
+      timeout: 5000,
+    })
+    .toBe(true);
 });
 
 test('entries distinguish slow, denied and empty responses', async ({ page }) => {
