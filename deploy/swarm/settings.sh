@@ -1084,6 +1084,7 @@ cli_unset() {
   if ! in_file "$k"; then echo "$k ist nicht gesetzt (Default)."; return 0; fi
   queue_unset "$k"
   if is_masked "$k" || [[ $SECRET_ENV_KEYS == *" $k "* ]]; then echo "$k wird aus der Datei gelöscht (Zeile wird entfernt, nicht auskommentiert)."
+  elif [ "$k" = FORM_HTTP_PORT ]; then echo "$k ist entfernt und wird aus der Datei gelöscht."
   else echo "$k wird auf den Default zurückgesetzt (Zeile auskommentiert)."; fi
 }
 
