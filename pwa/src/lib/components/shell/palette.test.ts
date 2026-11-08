@@ -76,6 +76,22 @@ it('entries link follows the current form, otherwise explains itself', () => {
   expect(off?.hint).toBe('Bitte zuerst ein Formular wählen.');
 });
 
+it('entries and statistics are inactive without a form, usable with the last opened one', () => {
+  const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const form = 'bbbbbbbb-1111-4111-8111-111111111111';
+  const find = (nav: ReturnType<typeof buildNav>, id: string) =>
+    nav[0]?.items.find((i) => i.id === id);
+  const off = buildNav(ctx({ name: 'forms', tenant }));
+  expect(find(off, 'entries')?.disabled).toBe(true);
+  expect(find(off, 'statistics')?.disabled).toBe(true);
+  const remembered = buildNav({ ...ctx({ name: 'forms', tenant }), lastForm: { tenant, form } });
+  expect(find(remembered, 'entries')?.disabled).toBeUndefined();
+  expect(find(remembered, 'entries')?.href).toBe(`/t/${tenant}/f/${form}/entries`);
+  const none = buildNav(ctx({ name: 'tenants' }));
+  expect(find(none, 'forms')?.disabled).toBe(true);
+  expect(find(none, 'customers')?.disabled).toBeUndefined();
+});
+
 it('breadcrumbs end on the current page', () => {
   const tenants = [{ id: 't1', name: 'Kunde A' }];
   const trail = crumbsFor({ name: 'form', tenant: 't1', form: 'f1', tab: 'entries' }, tenants, []);

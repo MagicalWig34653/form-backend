@@ -141,7 +141,7 @@
   onMount(() => void load());
 </script>
 
-<div class="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+<div class="flex w-full max-w-[820px] min-w-0 flex-col gap-6">
   <PageHeader title={a.title} />
   <Panel title={t.access.security}>
     <div class="flex flex-col gap-4">

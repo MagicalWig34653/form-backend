@@ -204,12 +204,13 @@
     <RecoveryStep oncomplete={continueLogin} />
     <Button
       variant="outline"
+      class="w-full"
       onclick={() => {
         keyring.lock();
         step = 'passkey';
       }}>{t.recovery.other}</Button
     >
-    <Button variant="ghost" onclick={continueLogin}>{t.recovery.skip}</Button>
+    <Button variant="outline" class="w-full" onclick={continueLogin}>{t.recovery.skip}</Button>
   {:else if step === 'loading'}
     <div aria-busy="true" class="flex flex-col gap-3">
       <p role="status" class="text-muted-foreground text-sm">{t.login.loading}</p>

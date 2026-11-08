@@ -3,6 +3,7 @@ import { router } from '$lib/router.svelte';
 import { matchRoute } from '$lib/routes';
 import { session } from '$lib/session.svelte';
 import { accountItem, buildNav } from './nav';
+import { formContext } from '$lib/formContext.svelte';
 import { shellState } from './shell-state.svelte';
 
 /** Reactive navigation model for the current route; call during component initialisation. */
@@ -22,6 +23,7 @@ export function useNav() {
       manageTenant,
       systemAdministrator: session.me?.systemAdministrator === true,
       opsVisible: shellState.opsVisible,
+      lastForm: formContext.last,
     }),
   );
   return {

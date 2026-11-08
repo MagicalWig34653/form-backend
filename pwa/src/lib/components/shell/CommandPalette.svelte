@@ -50,7 +50,7 @@
   const items = $derived.by<PaletteItem[]>(() => {
     const list: PaletteItem[] = [];
     for (const group of nav.groups)
-      for (const item of group.items)
+      for (const item of group.items.filter((i) => !i.disabled))
         list.push({
           id: `page-${item.id}`,
           group: 'pages',

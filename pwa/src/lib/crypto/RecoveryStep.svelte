@@ -4,6 +4,9 @@
   import { keyring } from './keyring.svelte';
   import { accessAutomation } from './automation.svelte';
   import { t } from '$lib/i18n';
+  import { Button } from '$lib/components/ui/button';
+  import { Input } from '$lib/components/ui/input';
+  import { Label } from '$lib/components/ui/label';
   let { oncomplete = () => {}, security = false }: { oncomplete?: () => void; security?: boolean } =
     $props();
   const c = t.recovery;
@@ -64,42 +67,58 @@
   }
 </script>
 
-<section class="space-y-3 rounded-md border p-3" aria-label={c.title}>
-  <h2>{c.title}</h2>
+<section
+  class="bg-surface-sunken border-border flex flex-col gap-4 rounded-xl border p-5"
+  aria-label={c.title}
+>
+  <h2 class="text-base font-semibold">{c.title}</h2>
   {#if keyring.recoveryCode}
-    <p>{c.save}</p>
-    <p>{c.warning}</p>
-    <p class="font-mono select-all" data-testid="account-recovery-code">{keyring.recoveryCode}</p>
-    <button onclick={download}>{c.download}</button>
-    <button
-      onclick={async () => {
-        try {
-          await navigator.clipboard.writeText(keyring.recoveryCode);
-        } catch {
-          message = c.failed;
-        }
-      }}>{c.copy}</button
+    <p class="text-sm">{c.save}</p>
+    <p class="bg-warn-soft border-warn/40 rounded-md border px-3 py-2 text-sm">{c.warning}</p>
+    <p
+      class="bg-surface-sunken rounded-md px-3 py-3 font-mono text-sm break-all select-all"
+      data-testid="account-recovery-code"
     >
+      {keyring.recoveryCode}
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <Button type="button" variant="outline" onclick={download}>{c.download}</Button>
+      <Button
+        type="button"
+        variant="outline"
+        onclick={async () => {
+          try {
+            await navigator.clipboard.writeText(keyring.recoveryCode);
+          } catch {
+            message = c.failed;
+          }
+        }}>{c.copy}</Button
+      >
+    </div>
     <form
+      class="flex flex-col gap-3"
       onsubmit={(e) => {
         e.preventDefault();
         void perform('confirm');
       }}
     >
-      <label for="account-recovery-confirm">{c.confirmLabel}</label>
-      <input
-        id="account-recovery-confirm"
-        type="password"
-        bind:value={input}
-        autocomplete="off"
-        required
-      />
-      <button disabled={busy}>{c.confirm}</button>
+      <div class="flex flex-col gap-1.5">
+        <Label for="account-recovery-confirm">{c.confirmLabel}</Label>
+        <Input
+          id="account-recovery-confirm"
+          type="password"
+          bind:value={input}
+          autocomplete="off"
+          required
+        />
+      </div>
+      <Button type="submit" disabled={busy}>{c.confirm}</Button>
     </form>
   {:else if !ready}
-    <p>{c.save}</p>
+    <p class="text-sm">{c.save}</p>
     {#if existing && !keyring.unlocked}
-      <button
+      <Button
+        type="button"
         disabled={busy}
         onclick={async () => {
           busy = true;
@@ -109,35 +128,45 @@
           } finally {
             busy = false;
           }
-        }}>{c.other}</button
+        }}>{c.other}</Button
       >
     {:else}
-      <button disabled={busy} onclick={() => void perform('prepare')}>{c.prepare}</button>
+      <Button type="button" disabled={busy} onclick={() => void perform('prepare')}
+        >{c.prepare}</Button
+      >
     {/if}
   {:else if !keyring.unlocked || security}
-    <p>{c.prompt}</p>
+    <p class="text-sm">{c.prompt}</p>
     <form
+      class="flex flex-col gap-3"
       onsubmit={(e) => {
         e.preventDefault();
         void perform(keyring.unlocked ? 'check' : 'open');
       }}
     >
-      <label for="account-recovery-input">{c.code}</label>
-      <input
-        id="account-recovery-input"
-        type="password"
-        bind:value={input}
-        autocomplete="off"
-        required
-      />
-      <button disabled={busy}>{keyring.unlocked ? c.check : c.open}</button>
+      <div class="flex flex-col gap-1.5">
+        <Label for="account-recovery-input">{c.code}</Label>
+        <Input
+          id="account-recovery-input"
+          type="password"
+          bind:value={input}
+          autocomplete="off"
+          required
+        />
+      </div>
+      <Button type="submit" disabled={busy}>{keyring.unlocked ? c.check : c.open}</Button>
     </form>
-    {#if keyring.unlocked}<button disabled={busy} onclick={() => void perform('prepare')}
-        >{c.renew}</button
-      >{/if}
+    {#if keyring.unlocked}
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy}
+        onclick={() => void perform('prepare')}>{c.renew}</Button
+      >
+    {/if}
   {:else}
-    <p role="status">{c.saved}</p>
-    <button onclick={oncomplete}>{c.continue}</button>
+    <p role="status" class="text-ok text-sm font-medium">{c.saved}</p>
+    <Button type="button" onclick={oncomplete}>{c.continue}</Button>
   {/if}
-  {#if message}<p role="status">{message}</p>{/if}
+  {#if message}<p role="status" class="text-danger text-sm">{message}</p>{/if}
 </section>

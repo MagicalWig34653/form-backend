@@ -51,7 +51,7 @@
     } else error = ui.errSave;
   }
   const link =
-    'hover:bg-surface-sunken flex min-h-11 items-center gap-3 rounded-md px-2 -mx-2 underline-offset-4 hover:underline';
+    'border-border hover:bg-surface-sunken flex min-h-11 items-center justify-between gap-3 border-b px-2 -mx-2 text-sm font-medium last:border-b-0 rounded-md';
 </script>
 
 <section class="flex min-w-0 max-w-3xl flex-col gap-5">
@@ -112,9 +112,21 @@
     {/if}
     <Panel title={ui.nextTitle}>
       <nav aria-label={ui.nextTitle} class="flex flex-col">
-        <a class={link} href="/connections">{ui.mail}</a>
-        <a class={link} href="/settings">{ui.addresses}</a>
-        <a class={link} href="/migration">{ui.migration}</a>
+        <a class={link} href="/connections"
+          >{ui.mail}<span aria-hidden="true" class="text-muted-foreground"
+            ><NavIcon name="chevron" size={16} /></span
+          ></a
+        >
+        <a class={link} href="/settings"
+          >{ui.addresses}<span aria-hidden="true" class="text-muted-foreground"
+            ><NavIcon name="chevron" size={16} /></span
+          ></a
+        >
+        <a class={link} href="/migration"
+          >{ui.migration}<span aria-hidden="true" class="text-muted-foreground"
+            ><NavIcon name="chevron" size={16} /></span
+          ></a
+        >
       </nav>
     </Panel>
   {:else}

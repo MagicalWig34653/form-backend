@@ -275,6 +275,7 @@ export const de = {
     version: 'Version',
     versionBody: 'Formularverwaltung · GNU AGPLv3',
     chooseForm: 'Bitte zuerst ein Formular wählen.',
+    noCustomer: 'Bitte zuerst einen Kunden anlegen.',
     secure: 'Sicherer Zugang',
     loginIntro: 'Ihre Formulare. Ein übersichtlicher Arbeitsbereich.',
     setupIntro: 'Willkommen in Ihrer Formularverwaltung.',

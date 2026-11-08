@@ -25,15 +25,25 @@
 </script>
 
 {#snippet link(item: NavItem)}
-  <a
-    href={item.href}
-    onclick={(e) => navigate(e, item.href)}
-    aria-current={item.active ? 'page' : undefined}
-    title={item.hint}
-    class={linkClass}
-    ><span aria-hidden="true" class="flex w-5 justify-center"><NavIcon name={item.icon} /></span
-    >{item.label}</a
-  >
+  {#if item.disabled}
+    <span
+      aria-disabled="true"
+      title={item.hint}
+      class="text-muted-foreground/60 flex min-h-11 cursor-not-allowed items-center gap-3 rounded-[var(--r-ctl)] px-3 text-[length:var(--fs-body)] font-medium md:min-h-9"
+      ><span aria-hidden="true" class="flex w-5 justify-center"><NavIcon name={item.icon} /></span
+      >{item.label}</span
+    >
+  {:else}
+    <a
+      href={item.href}
+      onclick={(e) => navigate(e, item.href)}
+      aria-current={item.active ? 'page' : undefined}
+      title={item.hint}
+      class={linkClass}
+      ><span aria-hidden="true" class="flex w-5 justify-center"><NavIcon name={item.icon} /></span
+      >{item.label}</a
+    >
+  {/if}
 {/snippet}
 
 <div class="flex h-full flex-col">

@@ -626,7 +626,11 @@
                                 {#if d.state === 'waiting-manual' || d.state === 'uncertain'}
                                   {#if d.state === 'uncertain'}
                                     <label class="flex items-start gap-2">
-                                      <input type="checkbox" bind:checked={confirmed[d.id]} />
+                                      <input
+                                        type="checkbox"
+                                        class="mt-0.5 size-5 shrink-0 accent-[var(--ui-accent)]"
+                                        bind:checked={confirmed[d.id]}
+                                      />
                                       <span>{t.admin.entries.resendUncertain}</span>
                                     </label>
                                   {/if}

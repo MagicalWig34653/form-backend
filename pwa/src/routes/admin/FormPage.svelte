@@ -69,6 +69,7 @@
     formContext.tenant = tenant;
     formContext.form = form;
     formContext.name = editor.detail?.name ?? '';
+    formContext.last = { tenant, form };
     return () => {
       formContext.tenant = formContext.form = formContext.name = '';
     };

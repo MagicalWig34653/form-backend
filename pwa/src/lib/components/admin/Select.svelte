@@ -8,7 +8,7 @@
 <select
   bind:value
   class={cn(
-    'border-input bg-background flex min-h-10 w-full min-w-0 rounded-md border px-3 py-2 text-sm shadow-xs disabled:opacity-50',
+    'select-ctl border-input bg-background min-h-10 w-full min-w-0 rounded-[var(--r-ctl)] border py-2 pr-9 pl-3 text-sm shadow-xs disabled:opacity-50',
     className,
   )}
   {...rest}

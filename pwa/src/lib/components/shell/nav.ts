@@ -10,6 +10,8 @@ export interface NavItem {
   active: boolean;
   /** Tooltip explaining why the target is only a fallback (e.g. no form chosen yet). */
   hint?: string;
+  /** Nothing to open yet (no customer or form): shown as inactive text instead of a link that would stay on the same page. */
+  disabled?: boolean;
 }
 export interface NavGroup {
   id: 'work' | 'admin';
@@ -23,6 +25,8 @@ export interface NavContext {
   manageTenant: string | undefined;
   systemAdministrator: boolean;
   opsVisible: boolean;
+  /** Form last opened in this session; keeps "Einsendungen"/"Statistik" usable outside a form page. */
+  lastForm?: { tenant: string; form: string } | undefined;
 }
 
 /** Navigation model shared by the sidebar and the command palette. */
@@ -30,6 +34,11 @@ export function buildNav(c: NavContext): NavGroup[] {
   const { route } = c;
   const forms = c.tenant ? tenantPath(c.tenant) : '/t';
   const onForm = route.name === 'form';
+  const target = onForm
+    ? { tenant: route.tenant, form: route.form }
+    : c.lastForm && c.lastForm.tenant === c.tenant
+      ? c.lastForm
+      : undefined;
   const work: NavItem[] = [
     {
       id: 'customers',
@@ -44,22 +53,23 @@ export function buildNav(c: NavContext): NavGroup[] {
       href: forms,
       icon: 'forms',
       active: route.name === 'forms' || (onForm && route.tab !== 'entries'),
+      ...(c.tenant ? {} : { disabled: true, hint: t.shell.noCustomer }),
     },
     {
       id: 'entries',
       label: t.shell.entries,
-      href: onForm ? formPath(route.tenant, route.form, 'entries') : forms,
+      href: target ? formPath(target.tenant, target.form, 'entries') : forms,
       icon: 'entries',
       active: onForm && route.tab === 'entries',
-      ...(onForm ? {} : { hint: t.shell.chooseForm }),
+      ...(target ? {} : { hint: t.shell.chooseForm, disabled: true }),
     },
     {
       id: 'statistics',
       label: t.shell.statistics,
-      href: onForm ? formPath(route.tenant, route.form) + '#statistics' : forms,
+      href: target ? formPath(target.tenant, target.form) + '#statistics' : forms,
       icon: 'statistics',
       active: false,
-      ...(onForm ? {} : { hint: t.shell.chooseForm }),
+      ...(target ? {} : { hint: t.shell.chooseForm, disabled: true }),
     },
   ];
   const admin: NavItem[] = [];
