@@ -746,6 +746,8 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             plog = menu_double(work / 'pflicht', ['0|Pflichtangaben', '1|', '1|'])
             settings(mode, envfile, ok=True, extra_env=dict(menu_env, PATH=str(work / 'pflicht') + os.pathsep + os.environ['PATH']), input_text='\n' * 40)
             ptext = menu_texts(plog)
+            lst = settings(mode, envfile, '--list', ok=True).stdout
+            assert ('DB_PASSWORD_SECRET' in lst) == (mode == 'swarm'), mode
             host_key = 'PUBLISHED_PORT' if mode == 'compose' else 'FORM_PUBLISH_PORT'
             for needle in ('Pflichtangaben', 'FORM_ADMIN_ORIGIN', 'FORM_RP_ID', 'FORM_DB_HOST', 'FORM_PUBLIC_PUBLISH_PORT', host_key,
                            'FORM_TRUSTED_PROXIES', 'FORM_MIGRATION_ALLOWED_NETS'):
