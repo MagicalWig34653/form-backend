@@ -99,6 +99,8 @@ load_tables() {
   # Reihenfolge: Tabellenzeilen in Dateireihenfolge, soweit die Vorlage des Modus die Variable kennt.
   while IFS= read -r k; do
     [ -n "$k" ] || continue
+    # Docker-Secret-Namen gibt es nur in Swarm; Compose liest die Secrets aus Dateien (*_SOURCE_FILE).
+    if [ "$MODE" = compose ]; then case "$k" in DB_PASSWORD_SECRET|SERVER_KEY_SECRET|BOOTSTRAP_PASSWORD_SECRET) continue ;; esac; fi
     if [ -n "${TPL_KEY[$k]+x}" ] && [ -z "${seen[$k]+x}" ]; then KEYS+=("$k"); seen[$k]=1; fi
   done < <(awk -F'\t' '!/^#/ && NF >= 11 { print $1 }' "$TSV_REGISTRY" "$TSV_EXTRA")
   # KEY_FILE ohne eigene Zeile: Datei mit dem Wert von KEY (der Wrapper liest sie im Container).
