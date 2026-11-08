@@ -513,6 +513,13 @@ finalize_config() {
     done
     [[ "$explicit_tag" != 1 || "$explicit_image" == 1 ]] || FORM_IMAGE=''
   fi
+  # Ein früher gespeicherter Digest (ältere Versionen schrieben ihn bei jedem Rollout) hält sonst das Image fest: verwerfen,
+  # sofern nicht ausdrücklich per Umgebung oder --image gesetzt. Gespeichert wird weiter Repository:Tag (siehe save_config).
+  EXPLICIT_IMAGE=0
+  [[ -z "$IMAGE_ARG" ]] || EXPLICIT_IMAGE=1
+  for key in "${ENV_KEYS[@]}"; do [[ "$key" != FORM_IMAGE ]] || EXPLICIT_IMAGE=1; done
+  if [[ "$EXPLICIT_IMAGE" == 0 && "${FORM_IMAGE:-}" == *@sha256:* ]]; then FORM_IMAGE=''; fi
+  SAVED_FORM_IMAGE=${FORM_IMAGE:-}
   [[ -z "$IMAGE_ARG" ]] || FORM_IMAGE=$IMAGE_ARG
   : "${FORM_IMAGE:=${FORM_IMAGE_REPOSITORY}:${FORM_IMAGE_TAG}}"
   : "${NETWORK_NAME:=${STACK}_backend}" "${DB_PASSWORD_SECRET:=${STACK}_db_password}" "${SERVER_KEY_SECRET:=${STACK}_server_key}" "${BOOTSTRAP_PASSWORD_SECRET:=${STACK}_bootstrap_password}"
@@ -555,6 +562,8 @@ save_config() {
     fi
     case "$line" in ''|'#'*) printf '%s\n' "$line" ;; *)
       key=${line%%=*}; value=${!key}
+      # Der beim Rollout aufgelöste Digest gilt nur für diesen Lauf (sonst würde update.sh immer dasselbe Image nehmen).
+      [[ "$key" != FORM_IMAGE || "${EXPLICIT_IMAGE:-1}" == 1 ]] || value=${SAVED_FORM_IMAGE:-}
       case "$key" in
         DB_PASSWORD_SOURCE_FILE) [[ "$value" != "$BASE/secrets/db_password" ]] || value='' ;;
         SERVER_KEY_SOURCE_FILE) [[ "$value" != "$BASE/secrets/server_key" ]] || value='' ;;
@@ -835,5 +844,5 @@ main() {
   fi
   save_config; UNLOCK_SAFE=1
   public_health
-  say "Deployment erfolgreich; Digest in $ENV_FILE (0600). DB und TLS-Proxy bleiben extern."
+  say "Deployment erfolgreich ($FORM_IMAGE). Gespeichert bleibt Repository:Tag; der nächste update.sh holt das neueste Image zu diesem Tag. DB und TLS-Proxy bleiben extern."
 }

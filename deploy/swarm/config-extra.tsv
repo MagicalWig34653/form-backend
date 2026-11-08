@@ -43,7 +43,7 @@ FORM_SERVER_KEY	Secrets	secret						envOnly	1	Server-Key: nie in der Datei; Quel
 FORM_BOOTSTRAP_PASSWORD	Secrets	secret						envOnly	1	Bootstrap-Passwort: nie in der Datei.
 APP_UID	Secrets	int	10001		1	999999		envOnly	0	UID des App-Benutzers im Image (Besitzer der Secret-Dateien).
 APP_GID	Secrets	int	10001		1	999999		envOnly	0	GID des App-Benutzers im Image.
-FORM_IMAGE	Image	text:imageref?				200		envOnly	0	Vollständige Image-Referenz; überschreibt Repository und Tag. Ein erfolgreiches Update trägt hier den Digest ein.
+FORM_IMAGE	Image	text:imageref?				200		envOnly	0	Vollständige Image-Referenz; überschreibt Repository und Tag und hält das Image fest. Leer lassen: update.sh holt dann das neueste Image zum Tag.
 FORM_IMAGE_REPOSITORY	Image	text:imageref	ghcr.io/magicalwig34653/form-backend			200		envOnly	0	Image-Repository (ohne Tag).
 FORM_IMAGE_TAG	Image	text:imagetag	latest			128		envOnly	0	Image-Tag; update.sh --tag ersetzt ihn (auch einen gespeicherten Digest).
 FORM_APP_BINARY	Image	text:cpath	/app/App			500		envOnly	0	Pfad der Anwendung im Image.

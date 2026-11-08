@@ -30,7 +30,7 @@ DB_CLIENT_IMAGE	Image der einmaligen MariaDB-Clients für Backup/Restore (und di
 DB_PRECHECK	0 = der DB-Zugang wird nur durch den Migrationslauf mit dem App-Image geprüft (kein zusätzliches Image nötig).\n1 = vorher zusätzlich mit dem MariaDB-Client-Image (DB_CLIENT_IMAGE) prüfen; zieht dieses Image.
 FORM_DB_PASSWORD_FILE	Pfad IM Container, unter dem das DB-Passwort als Secret-Datei liegt (Standard /run/secrets/db_password). Das Passwort selbst steht nie in dieser Datei; nur der Pfad.
 FORM_SERVER_KEY_FILE	Pfad IM Container der Secret-Datei mit dem Server-Key. Der Key verschlüsselt serverseitige Geheimnisse; ohne ihn sind sie nicht lesbar. Separat sichern.
-FORM_IMAGE	Vollständige Image-Referenz, überschreibt Repository und Tag. Nach einem erfolgreichen Update steht hier der feste Digest (repo@sha256:...), damit alle Replikate dasselbe Image nutzen. Leer = Repository:Tag.
+FORM_IMAGE	Vollständige Image-Referenz, überschreibt Repository und Tag. Nur setzen, um ein Image bewusst festzuhalten (z. B. repo@sha256:...). Leer lassen (empfohlen): update.sh zieht das neueste Image zu FORM_IMAGE_TAG und löst es für den Lauf zu einem Digest auf, damit alle Replikate dasselbe Image nutzen; gespeichert wird er nicht.
 FORM_IMAGE_TAG	Version des Images, z. B. latest oder ein Commit. update.sh --tag setzt sie und löst den Tag zu einem festen Digest auf.
 STACK	Name der Installation (Swarm: Stack-Name, Compose: Projektname). Er steckt in den Namen von Containern, Netzen und Secrets; eine Änderung legt eine zweite, getrennte Installation an.
 NETWORK_NAME	Name des Docker-Netzes zwischen App und Hilfsjobs. Leer = STACK_backend.
