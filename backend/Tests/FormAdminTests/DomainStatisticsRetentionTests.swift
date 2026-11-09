@@ -115,7 +115,7 @@ final class DomainStatisticsRetentionTests: XCTestCase {
                 INSERT INTO submissions (id, customer_id, form_id, release_id, release_evidence, received_at, environment, state, removable, malware_scan_status)
                 VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(tenant)), \(bind: DB.bin(form)), \(bind: ids.release_id), 'recorded', '2026-11-02 12:00:00', 'production', 'accepted', 1, 'none')
                 """).run()
-            let path = "tenants/\(tenant)/forms/\(form)/statistics?days=7"
+            let path = "tenants/\(tenant)/forms/\(form)/statistics?days=366"
             try await client.get(path) {
                 XCTAssertEqual($0.status, .ok)
                 let body = jsonObject($0)
