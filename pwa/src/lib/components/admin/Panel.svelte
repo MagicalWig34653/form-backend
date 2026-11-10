@@ -32,6 +32,7 @@
   {id}
   class={cn(
     'min-w-0 [--card-spacing:--spacing(5)] max-sm:[--card-spacing:--spacing(4)]',
+    flush && !title && !actions && 'py-0',
     className,
   )}
 >
@@ -40,8 +41,7 @@
       <div class="min-w-0">
         {#if title}<svelte:element
             this={heading}
-            class="m-0 text-[17px] leading-snug font-semibold tracking-tight"
-            >{title}</svelte:element
+            class="m-0 text-xl leading-snug font-semibold tracking-tight">{title}</svelte:element
           >{/if}
         {#if description}<p class="text-muted-foreground m-0 mt-0.5 text-sm leading-5">
             {description}

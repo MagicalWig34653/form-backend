@@ -35,11 +35,7 @@
   const id = $props.id();
 </script>
 
-<div
-  role="group"
-  aria-label={label}
-  class={cn('bg-muted/60 flex flex-col gap-3 rounded-xl p-3', className)}
->
+<div role="group" aria-label={label} class={cn('flex flex-col gap-3', className)}>
   {#if collapsible}
     <button
       type="button"

@@ -148,6 +148,7 @@ conservatively.
 | style-to-object | 1.0.14 | MIT | https://github.com/remarkablemark/style-to-object | runtime (bundled) |
 | inline-style-parser | 0.2.7 | MIT | https://github.com/remarkablemark/inline-style-parser | runtime (bundled) |
 | tabbable | 6.5.1 | MIT | https://github.com/focus-trap/tabbable | runtime (bundled) |
+| @lucide/svelte | 1.57.0 | ISC | https://github.com/lucide-icons/lucide | runtime (bundled), icons; notice in `LICENSES/ISC-lucide.txt` |
 | tailwind-merge | 3.7.0 | MIT | https://github.com/dcastil/tailwind-merge | runtime (bundled) |
 
 Notices: `LICENSES/MIT.txt` (MIT), `LICENSES/Apache-2.0.txt` (aria-query,

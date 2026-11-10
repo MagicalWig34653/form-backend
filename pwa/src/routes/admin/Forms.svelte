@@ -141,7 +141,6 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-4">
-  <AccessStatus />
   <PageHeader
     title={t.admin.forms.title}
     description={`${session.tenants.find((c) => c.id === tenant)?.name ?? ''} · ${t.lists.formsIntro}`}
@@ -154,6 +153,7 @@
         >{/if}
     {/snippet}
   </PageHeader>
+  <AccessStatus />
   <NeedHint
     accepts={['entries', 'statistics']}
     onshown={() => setTimeout(() => listEl?.focus(), 80)}
@@ -199,7 +199,12 @@
           {/snippet}
         </Banner>
       </div>{/if}
-    <div bind:this={listEl} tabindex="-1" aria-busy={loading} class="min-h-48 outline-none">
+    <div
+      bind:this={listEl}
+      tabindex="-1"
+      aria-busy={loading}
+      class={`outline-none ${loading && items === null ? 'min-h-48' : ''}`}
+    >
       {#if items === null && loading}
         <div class="flex flex-col gap-4 p-4" aria-hidden="true">
           {#each [1, 2, 3] as n (n)}<div class="bg-muted h-10 rounded"></div>{/each}

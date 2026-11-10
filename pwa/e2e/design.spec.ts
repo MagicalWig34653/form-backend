@@ -121,22 +121,16 @@ test('keyboard only: skip link, menu arrows and drawer escape', async ({ page })
   await expect(first).toBeFocused();
 });
 
-test('menu groups collapse, are remembered and the active group stays open', async ({ page }) => {
+test('menu groups are fixed headings with their entries (no collapsing)', async ({ page }) => {
   await mock(page);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/t');
-  const group = page.getByRole('button', { name: 'Verwaltung' });
-  await expect(group).toHaveAttribute('aria-expanded', 'true');
-  await group.click();
-  await expect(group).toHaveAttribute('aria-expanded', 'false');
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Verwaltung' })).toHaveAttribute(
-    'aria-expanded',
-    'false',
-  );
   await page.goto('/settings');
-  await expect(page.getByRole('button', { name: 'Verwaltung' })).toHaveAttribute(
-    'aria-expanded',
-    'true',
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await expect(nav.getByRole('group', { name: 'Arbeitsbereich' })).toBeVisible();
+  const admin = nav.getByRole('group', { name: 'Verwaltung' });
+  await expect(admin.getByRole('link', { name: 'Einstellungen' })).toHaveAttribute(
+    'aria-current',
+    'page',
   );
+  await expect(nav.getByRole('button')).toHaveCount(0);
 });

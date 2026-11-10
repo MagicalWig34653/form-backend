@@ -96,21 +96,18 @@
 </header>
 <svelte:window bind:innerWidth={viewport} />
 <dl
-  class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+  class="mb-5 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3"
   aria-label={t.admin.stats.total}
 >
   {#each metrics as metric (metric)}
     <StatTile
       label={t.admin.stats[metric]}
+      icon={metric}
       value={String(stats[metric])}
       series={stats.days.length > 2 ? stats.days.map((d) => d[metric]) : undefined}
     />
   {/each}
-  <StatTile
-    label={t.admin.stats.conversion}
-    value={percent(conversion)}
-    class="col-span-2 sm:col-span-1"
-  />
+  <StatTile label={t.admin.stats.conversion} icon="conversion" value={percent(conversion)} />
 </dl>
 {#if !hasEvents}
   <p class="bg-muted/60 text-muted-foreground rounded-xl p-5 text-center">

@@ -316,6 +316,7 @@ export const de = {
       'Wählen Sie einen Kunden und öffnen Sie ein Formular. Dort finden Sie Felder, Einsendungen, Statistik und Veröffentlichung.',
     version: 'Version',
     versionBody: 'Formularverwaltung · GNU AGPLv3',
+    footerLicense: 'Formular-Backend steht unter der GNU AGPL v3.',
     chooseForm: 'Wählen Sie zuerst ein Formular.',
     noCustomer: 'Wählen Sie zuerst einen Kunden.',
     secure: 'Sicherer Zugang',

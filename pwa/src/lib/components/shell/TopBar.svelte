@@ -1,7 +1,5 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { router } from '$lib/router.svelte';
-  import { tenantPath } from '$lib/routes';
   import { session } from '$lib/session.svelte';
   import { Button } from '$lib/components/ui/button';
   import Breadcrumb from '$lib/components/admin/Breadcrumb.svelte';
@@ -12,15 +10,15 @@
   import { useNav } from './use-nav.svelte';
 
   const nav = useNav();
-  const crumbs = $derived(
-    crumbsFor(
+  // Wie im thermoctl-Design beginnt der Pfad mit dem Namen der Anwendung.
+  const crumbs = $derived([
+    { label: t.app.name, href: '/t' },
+    ...crumbsFor(
       nav.route,
       session.tenants,
       nav.groups.flatMap((g) => g.items),
     ),
-  );
-  const current = $derived(session.tenants.find((x) => x.id === nav.tenant));
-  const selected = $derived('tenant' in nav.route ? nav.route.tenant : '');
+  ]);
 </script>
 
 <header
@@ -41,24 +39,6 @@
     <Breadcrumb items={crumbs} class="min-w-0" />
   </div>
   <div class="flex items-center gap-1">
-    {#if session.tenants.length > 1}
-      <label class="relative flex items-center max-sm:hidden"
-        ><span class="sr-only">{t.admin.customer}</span><select
-          class="select-ctl border-input hover:bg-muted h-10 max-w-56 min-w-0 truncate rounded-lg border bg-transparent py-1 pr-9 pl-3 text-sm outline-none"
-          value={selected}
-          onchange={(e) => router.navigate(tenantPath(e.currentTarget.value))}
-          ><option value="" disabled>{t.shell.chooseCustomer}</option
-          >{#each session.tenants as tenant (tenant.id)}<option value={tenant.id}
-              >{tenant.name}</option
-            >{/each}</select
-        ></label
-      >
-    {:else if current}
-      <span
-        class="text-muted-foreground inline-flex h-10 items-center truncate text-sm max-sm:hidden"
-        ><span class="sr-only">{t.shell.customerSingle}: </span>{current.name}</span
-      >
-    {/if}
     <Button
       variant="ghost"
       size="icon"

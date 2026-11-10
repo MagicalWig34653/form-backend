@@ -623,9 +623,13 @@ test('customer selection and contextual sidebar preserve existing routes', async
     'href',
     `/t/${T}/f/${F}/entries`,
   );
+  // The top bar has no customer switch (thermoctl layout); the command palette offers every customer.
+  await page.getByRole('button', { name: /^Suchen/ }).click();
   await page
-    .getByRole('combobox', { name: 'Kunde', exact: true })
-    .selectOption('bbbbbbbb-1111-4111-8111-11111111111b');
+    .getByRole('dialog', { name: 'Befehlspalette' })
+    .getByRole('combobox', { name: 'Befehl oder Seite suchen' })
+    .fill('Kunde B');
+  await page.getByRole('option', { name: /Kunde B/ }).click();
   await expect(page).toHaveURL('/t/bbbbbbbb-1111-4111-8111-11111111111b');
 });
 

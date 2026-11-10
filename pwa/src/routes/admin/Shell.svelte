@@ -18,6 +18,7 @@
   import { http } from '$lib/api';
   import Members from './Members.svelte';
   import SidebarNav from '$lib/components/shell/SidebarNav.svelte';
+  import VersionInfo from '$lib/components/shell/VersionInfo.svelte';
   import TopBar from '$lib/components/shell/TopBar.svelte';
   import CommandPalette from '$lib/components/shell/CommandPalette.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
@@ -152,5 +153,10 @@
         <NotFound />
       {/if}
     </div>
+    <footer
+      class="text-muted-foreground mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-6 text-xs sm:px-7"
+    >
+      <span>{t.shell.footerLicense}</span><VersionInfo />
+    </footer>
   </div>
 {/if}

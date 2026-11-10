@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick } from 'svelte';
   import NavIcon from './NavIcon.svelte';
   import Logo from './Logo.svelte';
   import HelpDialog from './HelpDialog.svelte';
-  import VersionInfo from './VersionInfo.svelte';
   import { t } from '$lib/i18n';
   import { cn } from '$lib/utils';
   import { session } from '$lib/session.svelte';
@@ -15,34 +14,6 @@
   const nav = useNav();
   const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.platform);
   const shortcut = isMac ? t.palette.shortcutMac : t.palette.shortcut;
-
-  // Gruppen sind klappbar, die Auswahl bleibt pro Browser erhalten; die Gruppe der aktuellen Seite ist
-  // immer offen. Ohne Speicher gilt: alles offen.
-  const KEY = 'nav-collapsed';
-  function load(): string[] {
-    try {
-      const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-      return Array.isArray(raw) ? raw.filter((x) => typeof x === 'string') : [];
-    } catch {
-      return [];
-    }
-  }
-  let collapsed = $state<string[]>(load());
-  const activeGroup = $derived(nav.groups.find((g) => g.items.some((i) => i.active))?.id);
-  $effect(() => {
-    const id = activeGroup;
-    untrack(() => {
-      if (id && collapsed.includes(id)) collapsed = collapsed.filter((x) => x !== id);
-    });
-  });
-  function toggle(id: string) {
-    collapsed = collapsed.includes(id) ? collapsed.filter((x) => x !== id) : [...collapsed, id];
-    try {
-      localStorage.setItem(KEY, JSON.stringify(collapsed));
-    } catch {
-      /* Auswahl gilt nur für diese Sitzung. */
-    }
-  }
 
   let navEl = $state<HTMLElement | null>(null);
   function keydown(event: KeyboardEvent) {
@@ -110,9 +81,6 @@
     class="border-input text-muted-foreground hover:bg-muted mb-1 flex h-10 w-full items-center gap-2 rounded-lg border px-3 text-sm transition-colors"
   >
     <NavIcon name="search" size={16} /><span class="flex-1 text-left">{t.shell.search}</span>
-    <kbd class="bg-muted rounded px-1.5 py-0.5 font-sans text-xs max-lg:hidden" aria-hidden="true"
-      >{shortcut}</kbd
-    >
   </button>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <nav
@@ -122,23 +90,13 @@
     onkeydown={keydown}
   >
     {#each nav.groups as group (group.id)}
-      {@const open = !collapsed.includes(group.id)}
-      <button
-        type="button"
-        data-nav-item
-        aria-expanded={open}
-        aria-controls={`nav-group-${group.id}`}
-        onclick={() => toggle(group.id)}
-        class="text-muted-foreground hover:text-foreground flex w-full items-center justify-between rounded-md px-2.5 pt-3 pb-1 text-xs font-medium"
+      <div
+        id={`nav-heading-${group.id}`}
+        class="text-muted-foreground px-2.5 pt-4 pb-1.5 text-xs font-medium"
       >
-        <span>{group.label}</span>
-        <span
-          aria-hidden="true"
-          class={cn('transition-transform motion-reduce:transition-none', open && 'rotate-90')}
-          ><NavIcon name="chevron" size={14} /></span
-        >
-      </button>
-      <div id={`nav-group-${group.id}`} hidden={!open} class="flex flex-col gap-0.5">
+        {group.label}
+      </div>
+      <div role="group" aria-labelledby={`nav-heading-${group.id}`} class="flex flex-col gap-0.5">
         {#each group.items as item (item.id)}{@render entry(item)}{/each}
       </div>
     {/each}
@@ -151,14 +109,5 @@
         ><NavIcon name="logout" /></span
       >{t.admin.logout}
     </button>
-    <div class="text-muted-foreground flex items-center justify-between gap-2 px-2.5 pt-2 text-xs">
-      <span class="min-w-0 truncate">
-        {t.admin.signedInAs.replace('{name}', session.me?.username ?? '')}
-      </span>
-      <VersionInfo />
-    </div>
-    {#if session.me?.systemAdministrator}
-      <p class="text-muted-foreground m-0 px-2.5 pt-1 text-xs">{t.admin.systemAdministrator}</p>
-    {/if}
   </div>
 </div>

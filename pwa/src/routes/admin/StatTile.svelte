@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cn } from '$lib/utils';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   interface Props {
     label: string;
@@ -8,9 +9,11 @@
     hint?: string;
     /** Optional per-day series for a decorative sparkline (the table carries the real values). */
     series?: number[];
+    /** Name of a symbol shown top right (see NavIcon). */
+    icon?: string;
     class?: string;
   }
-  let { label, value, hint, series, class: className }: Props = $props();
+  let { label, value, hint, series, icon, class: className }: Props = $props();
 
   const W = 120;
   const H = 28;
@@ -26,14 +29,14 @@
   });
 </script>
 
-<div
-  class={cn(
-    'bg-card ring-1 ring-foreground/10 rounded-xl flex min-w-0 flex-col gap-0.5 px-4 py-3.5',
-    className,
-  )}
->
-  <dt class="text-muted-foreground text-sm leading-[18px]">{label}</dt>
-  <dd class="m-0 text-[32px] leading-9 font-[650] tracking-tight tabular-nums">
+<div class={cn('bg-card flex min-w-0 flex-col gap-1 rounded-xl border px-4 py-4', className)}>
+  <dt class="flex items-start justify-between gap-2 text-base leading-snug font-semibold">
+    <span class="min-w-0">{label}</span>
+    {#if icon}<span aria-hidden="true" class="text-muted-foreground mt-0.5 shrink-0"
+        ><NavIcon name={icon} size={16} /></span
+      >{/if}
+  </dt>
+  <dd class="m-0 mt-1 text-4xl leading-10 font-bold tracking-tight tabular-nums">
     {value}
   </dd>
   {#if hint}<dd class="text-muted-foreground m-0 text-sm leading-[18px]">

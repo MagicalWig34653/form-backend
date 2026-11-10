@@ -3,11 +3,11 @@
   let { class: className = '' }: { class?: string } = $props();
 </script>
 
-<!-- Marke in der Akzentfarbe des Nutzers (Fläche = primary, Striche = Vordergrund mit gesichertem Kontrast). -->
+<!-- Marke wie im thermoctl-Design: weiße Fläche mit Rahmen, Zeichen in Vordergrundfarbe. -->
 <span
   aria-hidden="true"
   class={cn(
-    'bg-primary text-primary-foreground inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+    'bg-background text-foreground border-border inline-flex size-9 shrink-0 items-center justify-center rounded-lg border',
     className,
   )}
 >

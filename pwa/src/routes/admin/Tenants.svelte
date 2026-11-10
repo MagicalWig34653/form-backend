@@ -120,7 +120,6 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-5">
-  <AccessStatus />
   <PageHeader title={t.admin.tenants.title} description={t.lists.intro}>
     {#snippet actions()}
       {#if session.me?.systemAdministrator && !(items !== null && items.length === 0 && !showCreate)}<Button
@@ -130,6 +129,7 @@
         >{/if}
     {/snippet}
   </PageHeader>
+  <AccessStatus />
   <NeedHint accepts={['customer']} onshown={() => setTimeout(() => listEl?.focus(), 80)} />
   {#if items !== null && items.length === 0 && session.me?.systemAdministrator && !showCreate}
     <Card data-testid="first-customer" class="[--card-spacing:--spacing(6)]">
@@ -185,7 +185,12 @@
     </Banner>
   {/if}
   <Panel flush>
-    <div bind:this={listEl} tabindex="-1" aria-busy={loading} class="min-h-48 outline-none">
+    <div
+      bind:this={listEl}
+      tabindex="-1"
+      aria-busy={loading}
+      class={`outline-none ${loading && items === null ? 'min-h-48' : ''}`}
+    >
       {#if loading && items === null}
         <div class="flex flex-col gap-3 p-4" aria-hidden="true">
           {#each [1, 2, 3] as n (n)}<Skeleton class="h-11 rounded-md" />{/each}

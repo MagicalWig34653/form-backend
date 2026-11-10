@@ -43,9 +43,7 @@
               >{item.label}</a
             >
           {:else}
-            <span
-              aria-current={last ? 'page' : undefined}
-              class={cn('truncate', last && 'text-foreground font-medium')}>{item.label}</span
+            <span aria-current={last ? 'page' : undefined} class={cn('truncate')}>{item.label}</span
             >
           {/if}
         </li>

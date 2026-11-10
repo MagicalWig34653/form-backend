@@ -60,8 +60,9 @@
   const published = $derived(!!editor.detail?.currentReleaseId);
   const tabActive = (target: Tab): boolean =>
     tab === target || (target === 'fields' && configuration);
+  // Reiter als Pillen wie im thermoctl-Design: Umriss, aktive Seite hinterlegt.
   const tabClass = (current: boolean): string =>
-    `relative inline-flex min-h-11 items-center px-3.5 font-medium whitespace-nowrap transition-colors after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full ${current ? 'text-foreground after:bg-brand' : 'text-muted-foreground hover:text-foreground after:bg-transparent'}`;
+    `inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium whitespace-nowrap transition-colors ${current ? 'bg-secondary text-secondary-foreground border-transparent' : 'border-border bg-background hover:bg-muted'}`;
   const linkButton =
     'inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-medium';
   // The shell breadcrumb can show the real form name from this shared context.
@@ -186,7 +187,6 @@
 {/snippet}
 
 <section class="flex min-w-0 flex-col gap-5">
-  <AccessStatus />
   <PageHeader title={editor.detail?.name ?? t.formWork.title} description={customer}>
     {#snippet badges()}
       {#if editor.detail}
@@ -226,11 +226,9 @@
         >{/if}
     {/snippet}
   </PageHeader>
-  <nav
-    aria-label={t.admin.form.tabsLabel}
-    class="border-border -mx-4 overflow-x-auto border-b px-4 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden"
-  >
-    <div class="flex w-max min-w-full gap-0.5">
+  <AccessStatus />
+  <nav aria-label={t.admin.form.tabsLabel} class="min-w-0">
+    <div class="flex flex-wrap gap-1">
       {#each navigation as item (item.target)}
         <a
           href={formPath(tenant, form, item.target)}
@@ -276,28 +274,27 @@
         {/snippet}
       </Banner>
     {:else if configuration}
-      <nav aria-label={t.formWork.configuration} class="flex flex-wrap items-center gap-2">
-        <div class="bg-muted/60 flex gap-1 rounded-lg p-1">
-          {#each ['fields', 'mail'] as target (target)}
-            <a
-              class={`inline-flex min-h-9 items-center px-3 text-sm font-medium ${!extra && tab === target ? 'bg-card ring-1 ring-foreground/10 rounded-xl text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              aria-current={!extra && tab === target ? 'page' : undefined}
-              href={formPath(tenant, form, target as Tab)}
-              onclick={(e) => navigate(e, target as Tab)}
-              >{target === 'fields' ? t.formWork.fields : t.formWork.mail}</a
-            >
-          {/each}
-        </div>
+      <nav aria-label={t.formWork.configuration} class="flex flex-wrap gap-1">
+        {#each ['fields', 'mail'] as target (target)}
+          <a
+            class={tabClass(!extra && tab === target)}
+            aria-current={!extra && tab === target ? 'page' : undefined}
+            href={formPath(tenant, form, target as Tab)}
+            onclick={(e) => navigate(e, target as Tab)}
+            >{target === 'fields' ? t.formWork.fields : t.formWork.mail}</a
+          >
+        {/each}
         {#each ['webhooks', 'storage', 'flow'] as target (target)}
-          <Button
-            variant={extra === target ? 'secondary' : 'ghost'}
-            class="min-h-9"
+          <button
+            type="button"
+            class={tabClass(extra === target)}
+            aria-pressed={extra === target}
             onclick={() => {
               if (leave()) {
                 fieldsDirty = abuseDirty = false;
                 extra = target;
               }
-            }}>{t.formWork[target as 'webhooks' | 'storage' | 'flow']}</Button
+            }}>{t.formWork[target as 'webhooks' | 'storage' | 'flow']}</button
           >
         {/each}
       </nav>
