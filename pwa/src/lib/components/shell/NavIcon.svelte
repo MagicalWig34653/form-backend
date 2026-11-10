@@ -42,6 +42,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import UserRound from '@lucide/svelte/icons/user-round';
   import Users from '@lucide/svelte/icons/users';
+  import Webhook from '@lucide/svelte/icons/webhook';
   import X from '@lucide/svelte/icons/x';
 
   let { name, size = 18 }: { name: string; size?: number } = $props();
@@ -60,6 +61,7 @@
     account: UserRound,
     members: Users,
     connections: Plug,
+    webhook: Webhook,
     ops: Activity,
     setup: Hammer,
     migration: ArrowLeftRight,

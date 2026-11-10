@@ -51,11 +51,14 @@
   // Tabs scroll sideways on narrow screens; the current one is brought into view after navigation.
   $effect(() => {
     void tabs.map((x) => x.active).join();
-    void tick().then(() =>
-      list
-        ?.querySelector('[aria-current="page"]')
-        ?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' }),
-    );
+    void tick().then(() => {
+      const current = list?.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!list || !current?.parentElement) return;
+      // Centre the current tab so that the overflow arrows never cover it.
+      const item = current.parentElement;
+      const left = item.offsetLeft - (list.clientWidth - item.offsetWidth) / 2;
+      list.scrollTo?.({ left: Math.max(0, left) });
+    });
   });
 </script>
 

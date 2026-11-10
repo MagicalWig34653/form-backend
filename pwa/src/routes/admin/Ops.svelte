@@ -5,6 +5,8 @@
   import { describeError } from '$lib/admin/describe';
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { t } from '$lib/i18n';
+  import { router } from '$lib/router.svelte';
+  import { confirmAction } from '$lib/confirm.svelte';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Row from '$lib/components/admin/Row.svelte';
@@ -100,6 +102,15 @@
     busy = false;
   }
   async function cleanup() {
+    if (
+      !(await confirmAction({
+        title: t.ops.cleanupConfirmTitle,
+        description: t.ops.cleanupConfirmBody,
+        confirmLabel: t.ops.cleanupNow,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     error = '';
     report = undefined;
@@ -159,7 +170,7 @@
             : access.alarm.outcome === 'claimed'
               ? 'warn'
               : 'idle'}
-      <Panel title={t.ops.alarm} description={access.system ? t.ops.settings : undefined}>
+      <Panel title={t.ops.alarm}>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <StatusChip
             tone={alarmTone}
@@ -169,6 +180,21 @@
             >{t.ops.suppressed}: <span class="tabular-nums">{access.alarm.suppressed}</span></span
           >
         </div>
+        {#if access.system}
+          <p class="text-muted-foreground m-0 mt-3 text-sm">
+            {t.ops.settingsPrefix}
+            <a
+              href="/settings"
+              class="text-brand-ink underline underline-offset-4"
+              onclick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                router.navigate('/settings');
+              }}>{t.ops.settingsLink}</a
+            >
+            {t.ops.settingsSuffix}
+          </p>
+        {/if}
       </Panel>
     {/if}
     {#if access.forms.length}
@@ -228,7 +254,7 @@
           </div>
         </form>
       </Panel>
-      <Panel flush>
+      <Panel title={t.ops.eventsTitle.replace('{n}', String(items.length))} flush>
         {#if items.length}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
           <div
@@ -308,12 +334,15 @@
     {#if access.cleanup}
       <Panel title={t.ops.cleanup} description={t.ops.limit}>
         <Button variant="outline" disabled={busy} onclick={() => void cleanup()}
-          >{t.ops.cleanup}</Button
+          >{t.ops.cleanupNow}</Button
         >
       </Panel>
     {/if}
     {#if report}
-      <Banner tone="ok" title={t.ops.report}>
+      <Banner
+        tone="ok"
+        title={`${t.ops.report}: ${t.ops.removed.replace('{n}', String(Object.values(report).reduce((a, b) => a + b, 0)))}`}
+      >
         {#each Object.entries(report) as [key, count] (key)}<p>
             {t.ops.categories[key as keyof typeof t.ops.categories] ?? key}: {count}
           </p>{/each}

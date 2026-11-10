@@ -8,6 +8,7 @@
     /** Space-separated delay index for the staggered fade-in. */
     index?: number;
     level?: 2 | 3;
+    hint?: string;
     id?: string;
     actions?: Snippet;
     /** Buttons row at the bottom, separated from the fields. */
@@ -20,6 +21,7 @@
     description,
     index = 0,
     level = 2,
+    hint,
     id,
     actions,
     footer,
@@ -28,7 +30,7 @@
   }: Props = $props();
 </script>
 
-<Panel {title} {description} {level} {id} {actions} class={className}>
+<Panel {title} {description} {level} {hint} {id} {actions} class={className}>
   <div style:--i={index} class="grid gap-5">
     {@render children?.()}
   </div>

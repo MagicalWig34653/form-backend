@@ -8,6 +8,39 @@ const DAY = 86_400_000;
 const parse = (iso: string): number => Date.parse(`${iso}T00:00:00Z`);
 const format = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+/** Number of calendar days the server confirmed (from..to inclusive); null when the range is unreadable. */
+export function periodLength(stats: Pick<Statistics, 'from' | 'to'>): number | null {
+  const from = parse(stats.from);
+  const to = parse(stats.to);
+  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
+  return Math.round((to - from) / DAY) + 1;
+}
+
+/**
+ * Every day from..to in order. The server only returns days that have events; the days in between
+ * are real zeros (the server confirmed the period), so they are filled in. Falls back to the rows as delivered.
+ */
+export function denseDays(stats: Statistics): Statistics['days'] {
+  const count = periodLength(stats);
+  if (count === null || count > 400) return stats.days;
+  const byDate = new Map(stats.days.map((d) => [d.date, d]));
+  const from = parse(stats.from);
+  return Array.from({ length: count }, (_, i) => {
+    const date = format(from + i * DAY);
+    return (
+      byDate.get(date) ?? {
+        date,
+        count: 0,
+        visits: 0,
+        begins: 0,
+        submits: 0,
+        abandons: 0,
+        conversion: null,
+      }
+    );
+  });
+}
+
 /**
  * The last `count` days ending at `stats.to`. Days inside the period the server confirmed (from..to)
  * that have no row are real zeros; days outside it stay null.

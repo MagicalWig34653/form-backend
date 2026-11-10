@@ -4,9 +4,11 @@
   import AccessStatus from './AccessStatus.svelte';
   import KeyringPanel from './KeyringPanel.svelte';
   import RotationPanel from './RotationPanel.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { createCredential } from '$lib/api/webauthn';
+  import { formatDay } from '$lib/format';
   import { t } from '$lib/i18n';
-  import { adminApi, http } from '$lib/api';
+  import { adminApi, authApi, http } from '$lib/api';
   import type { PasskeyInfo } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
   import { session } from '$lib/session.svelte';
@@ -66,6 +68,53 @@
   let advancedOpen = $state(false);
   let showPassword = $state(false);
   let ownPassword = $state('');
+
+  function openAdvanced(): void {
+    advancedOpen = true;
+    void tick().then(() => {
+      const summary = document.getElementById('account-advanced');
+      summary?.scrollIntoView({ block: 'center' });
+      summary?.focus();
+    });
+  }
+
+  let adding = $state(false);
+  async function addPasskey(): Promise<void> {
+    if (busy || adding) return;
+    adding = true;
+    message = ok = '';
+    try {
+      const options = await authApi.addPasskeyOptions();
+      if (!options.ok) {
+        if (needsFreshLogin(options.error)) return void (await reauthenticate(router.path));
+        if (!handleSessionError(options.error)) message = a.addFailed;
+        return;
+      }
+      const created = await createCredential(options.data);
+      if (!created.ok) {
+        message =
+          created.reason === 'cancelled'
+            ? a.addCancelled
+            : created.reason === 'duplicate'
+              ? a.addDuplicate
+              : created.reason === 'unsupported'
+                ? a.addUnsupported
+                : a.addFailed;
+        return;
+      }
+      const label = a.addDefaultLabel.replace('{date}', formatDay(new Date().toISOString()));
+      const verified = await authApi.addPasskeyVerify({ ...created.body, label });
+      if (!verified.ok) {
+        if (needsFreshLogin(verified.error)) return void (await reauthenticate(router.path));
+        if (!handleSessionError(verified.error)) message = a.addFailed;
+        return;
+      }
+      ok = a.added;
+      await load();
+    } finally {
+      adding = false;
+    }
+  }
 
   async function savePassword(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -137,10 +186,12 @@
   </PageHeader>
   <Panel title={t.access.security}>
     <div class="flex flex-col gap-4">
-      <AccessStatus showLocked />
+      <AccessStatus showLocked onadvanced={openAdvanced} />
       <RecoveryStep security />
       <details class="border-t pt-3" bind:open={advancedOpen}>
-        <summary class="min-h-6 cursor-pointer text-sm font-medium">{t.access.advanced}</summary>
+        <summary id="account-advanced" class="min-h-6 cursor-pointer text-sm font-medium"
+          >{t.access.advanced}</summary
+        >
         <div class="mt-3 flex flex-col gap-4">
           {#each session.tenants as tenant (tenant.id)}
             <h3 class="font-medium">{tenant.name}</h3>
@@ -221,6 +272,14 @@
     </div>
   </Panel>
   <Panel title={a.passkeys}>
+    {#snippet actions()}
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy || adding}
+        onclick={() => void addPasskey()}>{a.addPasskey}</Button
+      >
+    {/snippet}
     {#if !loaded}
       <div aria-busy="true" class="flex flex-col gap-2">
         <span class="sr-only" role="status">{t.admin.loading}</span>
@@ -235,7 +294,11 @@
             class="border-border flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-b-0"
           >
             <span class="min-w-0 break-words"
-              >{k.label}{k.unlocksKeys ? ` · ${a.unlocksKeys}` : ''}</span
+              >{a.passkeyLine
+                .replace('{label}', k.label)
+                .replace('{date}', formatDay(k.createdAt))}{k.unlocksKeys
+                ? ` · ${a.unlocksLong}`
+                : ''}</span
             >
             {#if keys.length < 2}
               <span class="text-muted-foreground inline-flex items-center gap-1.5 text-sm"

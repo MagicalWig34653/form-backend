@@ -35,7 +35,7 @@
       .replace('{total}', String(steps.length));
     if (!next) return count;
     const name = next.formId ? formNames[next.formId] : undefined;
-    return `${count} · ${ui.setupNextHint.replace('{step}', ui.setupSteps[next.id]).replace('{form}', name ?? '')}`;
+    return `${count} · ${ui.setupNextHint.replace('{step}', ui.setupNextSteps[next.id]).replace('{form}', name ?? '')}`;
   });
 </script>
 
@@ -72,7 +72,14 @@
                 : 'border-border text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full border'}
               >{#if step.done}<NavIcon name="check" size={12} />{/if}</span
             >
-            <span>{ui.setupSteps[step.id]}</span>
+            <span
+              >{ui.setupSteps[step.id]}{#if step.count}<span class="text-muted-foreground ml-1.5"
+                  >{'· ' +
+                    ui.setupFormCount
+                      .replace('{done}', String(step.count.done))
+                      .replace('{total}', String(step.count.total))}</span
+                >{/if}</span
+            >
             <span class="sr-only"
               >({step.done === true
                 ? ui.stepDone
@@ -88,7 +95,7 @@
           <Button
             variant="outline"
             onclick={() => router.navigate(formPath(tenant, next.formId ?? '', tabs[next.id]))}
-            >{ui.setupNext}<span class="sr-only">: {ui.setupSteps[next.id]}</span></Button
+            >{ui.setupNextSteps[next.id]}</Button
           >
         </div>
       {:else if !unknown && steps.length > 0}

@@ -126,6 +126,12 @@
 .tile-grid > * {
   grid-column: span 12;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Cards side by side end on the same line, whatever their content. */
+.tile-grid > * > [data-slot='card'] {
+  flex: 1 1 auto;
 }
 /* Kleine Kennzahlkacheln stehen auch auf schmalen Bildschirmen zu zweit. */
 .tile-grid > [data-w='3'] {

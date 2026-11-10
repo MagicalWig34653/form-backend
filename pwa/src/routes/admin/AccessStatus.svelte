@@ -56,8 +56,7 @@
     {onadvanced || router.path !== '/account' ? t.access.lockedShort : t.access.locked}
     {#snippet action()}
       {#if onadvanced}
-        <Button type="button" variant="outline" onclick={onadvanced}>{t.access.openAdvanced}</Button
-        >
+        <Button type="button" variant="outline" onclick={onadvanced}>{t.access.release}</Button>
       {:else if router.path !== '/account'}
         <Button type="button" variant="outline" onclick={() => router.navigate('/account')}
           >{t.access.release}</Button

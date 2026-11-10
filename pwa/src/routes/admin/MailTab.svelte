@@ -24,6 +24,8 @@
   import Banner from '$lib/components/admin/Banner.svelte';
   import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import SaveBar from '$lib/components/admin/SaveBar.svelte';
+  import SaveStatus from '$lib/components/admin/SaveStatus.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import { router } from '$lib/router.svelte';
   import { session } from '$lib/session.svelte';
   import Row from '$lib/components/admin/Row.svelte';
@@ -49,6 +51,11 @@
   let connections = $state<MailConnectionInfo[] | null>(null);
   // svelte-ignore state_referenced_locally
   let connection = $state(editor.detail?.mailConnectionId ?? '');
+  // svelte-ignore state_referenced_locally
+  let assigned = $state(editor.detail?.mailConnectionId ?? '');
+  const assignedName = $derived(connections?.find((c) => c.id === assigned)?.name ?? '');
+  /** A way is picked in the list but not yet assigned: only "Versandweg zuweisen" makes it effective. */
+  const pending = $derived(connection !== '' && connection !== assigned);
   let connMessage = $state('');
   let connOk = $state('');
   let deliveries = $state<MailDelivery[] | null>(null);
@@ -56,7 +63,6 @@
   let f = $state<MailForm>(emptyMailForm());
   let loadedFor = '';
   let errors = $state<Record<string, string | undefined>>({});
-  let ok = $state('');
   let changed = $state(false);
   let connLoading = $state(false);
   let deliveryLoading = $state(false);
@@ -79,8 +85,9 @@
     connMessage = '';
     const c = await adminApi.tenantConnections(tenant);
     connLoading = false;
-    if (c.ok) connections = c.data.items;
-    else if (!handleSessionError(c.error)) connMessage = describeError(c.error);
+    if (c.ok) {
+      connections = c.data.items;
+    } else if (!handleSessionError(c.error)) connMessage = describeError(c.error);
   }
   async function loadDeliveries(): Promise<void> {
     deliveryLoading = true;
@@ -103,6 +110,15 @@
   }
 
   const names = $derived(editor.draft ? fieldList(editor.draft.document).map((x) => x.name) : []);
+  // Required details still missing or invalid, per template (shown in the section header).
+  const problems = $derived(validateMailForm(f, names));
+  const missing = (keys: string[]): number => keys.filter((k) => problems[k]).length;
+  const orgMissing = $derived(
+    f.organisation.enabled ? missing(['orgTo', 'orgBcc', 'orgSubject', 'orgBody']) : 0,
+  );
+  const confMissing = $derived(
+    f.confirmation.enabled ? missing(['confToField', 'confSubject', 'confBody']) : 0,
+  );
   const derivedNames = $derived(f.derived.map((d) => d.name.trim()).filter(Boolean));
 
   // Load the form state once per draft revision (own saves reload it with the canonical document).
@@ -117,7 +133,6 @@
 
   function discard(): void {
     changed = false;
-    ok = '';
     loadedFor = '';
     void editor.load();
   }
@@ -133,19 +148,18 @@
       if (!handleSessionError(r.error)) connMessage = describeError(r.error);
       return;
     }
+    assigned = connection;
     connOk = t.admin.mail.connectionSaved;
   }
 
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    ok = '';
     const e = validateMailForm(f, names);
     errors = e;
     if (Object.keys(e).length > 0) return;
     const mail = formToMail(f);
     const err = await editor.apply((d) => setMail(d, mail));
     if (!err) {
-      ok = t.admin.saved;
       changed = false;
     }
   }
@@ -162,6 +176,16 @@
 </script>
 
 <Panel title={t.formWork.routeTitle} description={t.formWork.routeHint}>
+  {#snippet actions()}
+    {#if connections !== null}
+      {#if assigned}<StatusChip
+          tone="ok"
+          label={assignedName
+            ? t.formWork.routeAssigned.replace('{name}', assignedName)
+            : t.formWork.routeAssignedShort}
+        />{:else}<StatusChip tone="warn" label={t.formWork.routeNone} />{/if}
+    {/if}
+  {/snippet}
   <div class="flex flex-col gap-4" aria-busy={connLoading || assigning}>
     {#if slow}<p role="status" class="text-muted-foreground m-0 text-sm">{t.formWork.slow}</p>{/if}
     {#if connLoading}<p role="status" class="text-muted-foreground m-0 min-h-10 text-sm">
@@ -194,8 +218,11 @@
           </Select>
         </Row>
       </div>
+      {#if pending}<p class="text-muted-foreground m-0 text-sm" id="mail-connection-pending">
+          {t.formWork.routePending}
+        </p>{/if}
       {#if canAssign}<div>
-          <Button disabled={!connection || assigning} onclick={() => void saveConnection()}
+          <Button disabled={!pending || assigning} onclick={() => void saveConnection()}
             >{t.formWork.saveRoute}</Button
           >
         </div>{:else}<p class="text-muted-foreground m-0 text-sm">{t.formWork.contactAdmin}</p>{/if}
@@ -230,7 +257,31 @@
 {/snippet}
 
 <DraftGate {editor} hint={false}>
-  <Panel title={t.admin.mail.templateTitle} description={t.admin.mail.intro}>
+  <Panel
+    title={t.admin.mail.templateTitle}
+    description={t.admin.mail.intro}
+    hint={t.admin.mail.saveHint}
+  >
+    {#snippet actions()}
+      <SaveStatus
+        state={editor.saving
+          ? 'saving'
+          : editor.error
+            ? 'error'
+            : changed
+              ? 'dirty'
+              : editor.savedAt
+                ? 'saved'
+                : 'idle'}
+        at={editor.savedAt}
+        error={editor.error
+          ? editor.error.status === 409
+            ? t.formWork.conflict
+            : describeError(editor.error)
+          : ''}
+        idle={t.saveStatus.idle}
+      />
+    {/snippet}
     <form
       id="mail-form"
       onsubmit={(e) => void save(e)}
@@ -255,11 +306,22 @@
 
         <section
           class="border-border flex flex-col gap-4 border-t pt-5"
-          aria-label={t.admin.mail.kinds.organisation}
+          aria-labelledby="mail-sec-org"
         >
-          <label class="flex min-h-10 items-center gap-3 text-sm font-semibold"
-            ><Switch bind:checked={f.organisation.enabled} />{t.admin.mail.orgEnabled}</label
-          >
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 id="mail-sec-org" class="m-0 text-base font-semibold">
+                {t.admin.mail.kinds.organisation}
+              </h3>
+              {#if orgMissing > 0}<StatusChip
+                  tone="warn"
+                  label={t.admin.mail.missing.replace('{n}', String(orgMissing))}
+                />{/if}
+            </div>
+            <label class="flex min-h-10 items-center gap-3 text-sm font-medium"
+              ><Switch bind:checked={f.organisation.enabled} />{t.admin.mail.orgEnabled}</label
+            >
+          </div>
           {#if f.organisation.enabled}
             <details open class="flex flex-col gap-4">
               <summary class="text-muted-foreground min-h-8 cursor-pointer text-sm font-medium"
@@ -398,11 +460,22 @@
 
         <section
           class="border-border flex flex-col gap-4 border-t pt-5"
-          aria-label={t.admin.mail.kinds.confirmation}
+          aria-labelledby="mail-sec-conf"
         >
-          <label class="flex min-h-10 items-center gap-3 text-sm font-semibold"
-            ><Switch bind:checked={f.confirmation.enabled} />{t.admin.mail.confEnabled}</label
-          >
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 id="mail-sec-conf" class="m-0 text-base font-semibold">
+                {t.admin.mail.kinds.confirmation}
+              </h3>
+              {#if confMissing > 0}<StatusChip
+                  tone="warn"
+                  label={t.admin.mail.missing.replace('{n}', String(confMissing))}
+                />{/if}
+            </div>
+            <label class="flex min-h-10 items-center gap-3 text-sm font-medium"
+              ><Switch bind:checked={f.confirmation.enabled} />{t.admin.mail.confEnabled}</label
+            >
+          </div>
           {#if f.confirmation.enabled}
             <details open class="flex flex-col gap-4">
               <summary class="text-muted-foreground min-h-8 cursor-pointer text-sm font-medium"
@@ -465,18 +538,7 @@
       </fieldset>
     </form>
   </Panel>
-  <SaveBar
-    dirty={changed}
-    busy={editor.saving}
-    form="mail-form"
-    ondiscard={discard}
-    status={editor.error
-      ? editor.error.status === 409
-        ? t.formWork.conflict
-        : describeError(editor.error)
-      : ok}
-    statusKind={editor.error ? 'error' : 'ok'}
-  />
+  <SaveBar dirty={changed} busy={editor.saving} form="mail-form" ondiscard={discard} status="" />
 </DraftGate>
 
 <Panel title={t.admin.mail.deliveries} description={t.formWork.acceptedHint}>

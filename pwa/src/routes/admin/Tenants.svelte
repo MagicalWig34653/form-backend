@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rightsOf } from '$lib/admin/rights';
   import { onMount, onDestroy } from 'svelte';
   import type { Tenant } from '$lib/api/admin';
   import DataTable, { type Column } from '$lib/components/admin/DataTable.svelte';
@@ -59,14 +60,6 @@
     const raw =
       words.length > 1 ? (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '') : name.trim().slice(0, 2);
     return raw.toLocaleUpperCase('de');
-  }
-  function rights(permissions: string[]): string[] {
-    const list: string[] = [t.listUi.rightsRead];
-    if (permissions.includes('draft.write')) list.push(t.listUi.rightsEdit);
-    if (permissions.includes('release.publish')) list.push(t.listUi.rightsPublish);
-    if (permissions.includes('key.manage')) list.push(t.listUi.rightsKeys);
-    if (permissions.includes('form.create')) list.push(t.listUi.rightsCreate);
-    return list;
   }
   async function load(): Promise<void> {
     controller?.abort();
@@ -232,7 +225,7 @@
               <span class="flex min-w-0 items-center gap-3">
                 <span
                   aria-hidden="true"
-                  class="bg-brand-soft text-brand-ink flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                  class="bg-brand-soft text-brand-ink ring-brand-ink/30 flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ring-1"
                   >{initials(c.name)}</span
                 >
                 <a
@@ -254,7 +247,7 @@
                 {/if}
               </span>
             {:else if column.id === 'rights'}
-              <span class="text-muted-foreground">{rights(c.permissions).join(', ')}</span>
+              <span class="text-muted-foreground">{rightsOf(c.permissions).join(', ')}</span>
             {/if}
           {/snippet}
         </DataTable>

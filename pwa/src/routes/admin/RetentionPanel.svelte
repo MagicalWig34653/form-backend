@@ -14,6 +14,8 @@
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
   import SaveBar from '$lib/components/admin/SaveBar.svelte';
+  import SaveStatus from '$lib/components/admin/SaveStatus.svelte';
+  import { confirmAction } from '$lib/confirm.svelte';
 
   let {
     tenant,
@@ -37,10 +39,13 @@
   let busy = $state(false);
   let status = $state('');
   let statusKind = $state<'ok' | 'error'>('ok');
+  let savedAt = $state<Date | null>(null);
 
   const parsed = $derived(days.trim() === '' ? null : Number(days));
   const valid = $derived(!enabled || (Number.isInteger(parsed) && parsed! >= 1 && parsed! <= 3650));
   const target = $derived(enabled ? parsed : null);
+  /** Shortening (or switching on) deletes existing submissions: the user has to confirm. */
+  const shortens = $derived(target !== null && (saved === null || target < saved));
   const dirty = $derived(loaded && target !== saved);
   $effect(() => ondirty?.(dirty));
 
@@ -63,6 +68,16 @@
       statusKind = 'error';
       return;
     }
+    if (
+      shortens &&
+      !(await confirmAction({
+        title: r.confirmTitle,
+        description: r.confirmBody.replace('{n}', String(target)),
+        confirmLabel: r.confirmLabel,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     status = '';
     const res = await adminApi.setRetention(tenant, form, target);
@@ -76,7 +91,8 @@
       return;
     }
     saved = target;
-    status = t.admin.entries.retentionSaved;
+    savedAt = new Date();
+    status = '';
     statusKind = 'ok';
   }
 
@@ -94,7 +110,25 @@
   onMount(() => void load());
 </script>
 
-<Panel title={r.title} description={r.description}>
+<Panel title={r.title} description={r.description} hint={r.hint}>
+  {#snippet actions()}
+    {#if loaded}
+      <SaveStatus
+        state={busy
+          ? 'saving'
+          : statusKind === 'error' && status
+            ? 'error'
+            : dirty
+              ? 'dirty'
+              : savedAt
+                ? 'saved'
+                : 'idle'}
+        at={savedAt}
+        error={statusKind === 'error' ? status : ''}
+        idle={t.saveStatus.idle}
+      />
+    {/if}
+  {/snippet}
   {#if loadError}
     <Banner tone="danger">
       {loadError}
@@ -144,7 +178,9 @@
       {:else}
         <p class="text-muted-foreground m-0 text-sm">{r.autoDeleteOff}</p>
       {/if}
-      <p class="text-muted-foreground m-0 text-sm leading-5">{r.hint}</p>
+      {#if dirty && shortens}<Banner tone="warn"
+          >{r.shortenWarn.replace('{n}', String(target))}</Banner
+        >{/if}
     </form>
   {/if}
   {#if loaded}
@@ -167,7 +203,6 @@
   {busy}
   form={formId}
   ondiscard={discard}
-  {status}
-  {statusKind}
+  status=""
   saveLabel={t.admin.entries.retentionSave}
 />

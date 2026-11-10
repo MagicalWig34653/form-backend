@@ -92,37 +92,56 @@ export interface SetupStep {
   done: boolean | null;
   /** Form that would need work for this step (first one lacking it). */
   formId?: string;
+  /** How many forms satisfy a per-form step; only set when the customer has several forms. */
+  count?: { done: number; total: number };
 }
 
-/** Customer-wide setup progress: a step is done once any loaded form satisfies it. */
+/**
+ * Customer-wide setup progress. Per-form steps (mail, published, active) are done only when every
+ * form they concern satisfies them, so that a step is never ticked while the next-step hint still
+ * points at a form lacking it. "Eingeschaltet" concerns published forms only (a draft cannot be
+ * switched on); "traffic" is done once any form had a visit or submission.
+ */
 export function setupSteps(
   forms: FormListItem[],
   snapshots: Map<string, FormSnapshot>,
 ): SetupStep[] {
   const snaps = forms.map((f) => snapshots.get(f.id));
-  const mailKnown = snaps.every((s) => (s?.detailStatus ?? 'loading') !== 'loading');
   const trafficKnown = snaps.every((s) => (s?.statsStatus ?? 'loading') !== 'loading');
-  const mailDone = snaps.some((s) => s?.detail?.mailConnectionId);
   const trafficDone = snaps.some((s) => s?.stats && (s.stats.visits > 0 || s.stats.submits > 0));
-  const firstWithout = (pred: (f: FormListItem) => boolean): string | undefined =>
-    forms.find(pred)?.id;
+  const loaded = (f: FormListItem): boolean =>
+    (snapshots.get(f.id)?.detailStatus ?? 'loading') !== 'loading';
+  const hasMail = (f: FormListItem): boolean => !!snapshots.get(f.id)?.detail?.mailConnectionId;
   const idOf = (id: string | undefined) => (id ? { formId: id } : {});
+  const counted = (done: number, total: number) => (total > 1 ? { count: { done, total } } : {});
+
+  const withMail = forms.filter(hasMail).length;
+  const lackingMail = forms.find((f) => loaded(f) && !hasMail(f));
+  const mailKnown = forms.every(loaded);
+  const published = forms.filter((f) => f.currentReleaseId);
+  const unpublished = forms.find((f) => !f.currentReleaseId);
+  const switchedOn = published.filter((f) => f.active);
+  const off = published.find((f) => !f.active);
+
   return [
     { id: 'form', done: forms.length > 0, ...idOf(forms[0]?.id) },
     {
       id: 'mail',
-      done: mailDone ? true : mailKnown ? false : null,
-      ...idOf(firstWithout((f) => !snapshots.get(f.id)?.detail?.mailConnectionId)),
+      done: lackingMail ? false : mailKnown ? forms.length > 0 : null,
+      ...idOf(lackingMail?.id),
+      ...counted(withMail, forms.length),
     },
     {
       id: 'published',
-      done: forms.some((f) => f.currentReleaseId),
-      ...idOf(firstWithout((f) => !f.currentReleaseId)),
+      done: forms.length > 0 && !unpublished,
+      ...idOf(unpublished?.id),
+      ...counted(published.length, forms.length),
     },
     {
       id: 'active',
-      done: forms.some((f) => f.currentReleaseId && f.active),
-      ...idOf(firstWithout((f) => !f.active)),
+      done: published.length > 0 && !off,
+      ...idOf(off?.id),
+      ...counted(switchedOn.length, published.length),
     },
     {
       id: 'traffic',

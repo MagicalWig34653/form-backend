@@ -29,7 +29,8 @@
   role={tone === 'danger' ? 'alert' : 'status'}
   data-tone={tone}
   class={cn(
-    'text-foreground flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg px-3.5 py-2.5 ring-1 ring-inset text-sm leading-5',
+    'text-foreground flex flex-wrap gap-x-3 gap-y-2 rounded-lg px-3.5 py-2.5 ring-1 ring-inset text-sm leading-5',
+    action && !title ? 'items-center' : 'items-start',
     tones[tone],
     className,
   )}

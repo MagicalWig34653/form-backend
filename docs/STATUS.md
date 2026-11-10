@@ -1,5 +1,13 @@
 # Tatsächlicher Stand
 
+## PWA: UI-Bewertung fünfter Durchgang 4,4/5, Umsetzung (11.11.2026, Worktree-Branch `worktree-agent-a6d1e84b67f09cce1`, lokal committet, ungemergt)
+
+Commits 183fdb9, 6681c1f, 0a2a298, 5aa31ba, 34682f4 (Speicherstatus, Formular-Diagramm, Widersprüche, Mail, Felder mobil/Seitenkopf). Echte Fehler und Mock-Artefakte: docs/handoffs/UI-Durchgang-5.md. Geprüft: svelte-check 0, eslint, prettier, vitest 327, Playwright 168 grün. Erneute Bewertung steht aus.
+
+## PWA: UI-Bewertung vierter Durchgang 4,2/5, Umsetzung (11.11.2026, Worktree-Branch `worktree-agent-a97092d048db46028`, lokal committet, ungemergt)
+
+Commits 29fd1dd, 1e1d8d0, fb2808b, 509b9b1, 6249293. Übergabe mit echten Fehlern, Mock-Artefakten und nicht umgesetzten Punkten: docs/handoffs/UI-Durchgang-4.md. Geprüft: svelte-check 0, eslint, prettier, vitest 317, Playwright 167 grün. Erneute Bewertung steht aus.
+
 ## PWA: UI-Bewertung dritter Durchgang 3,8/5, Umsetzung (10.11.2026, Worktree-Branch `worktree-agent-a38f11d123f49c66e`, lokal committet, ungemergt)
 
 Commits 78476e9 (Datumsformate, CardHeader, Seitenraster, KPI, Betrieb), 1414032 (Einstellungen, Verbindungen, Konten, Mitglieder), 6f9dd5f (Speichermuster, Textdiät, Tokens-Dialog, Stepper, Scroll-Hinweis) und Folgecommit. Übergabe: docs/handoffs/UI-Durchgang-3.md.

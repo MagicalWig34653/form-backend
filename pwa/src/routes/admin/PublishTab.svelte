@@ -162,7 +162,7 @@
       </ul>
     </Panel>
     <Panel title={t.formUi.publishAction} description={t.admin.publish.intro}>
-      <div class="flex max-w-md flex-col gap-4">
+      <div class="flex max-w-md flex-col gap-3">
         <label class="flex min-h-11 items-start gap-3 text-sm">
           <Checkbox bind:checked={confirmed} disabled={busy || conflict} class="mt-0.5" />
           <span class="pt-0.5">{t.formWork.review}</span>
@@ -219,9 +219,8 @@
             <div>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                class="-ml-2.5"
                 disabled={editor.saving || busy}
                 onclick={() => void bump()}>{t.admin.publish.bump}</Button
               >

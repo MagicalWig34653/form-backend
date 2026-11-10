@@ -29,6 +29,8 @@
   import Notice from '$lib/components/admin/Notice.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import DraftGate from './DraftGate.svelte';
+  import SaveStatus from '$lib/components/admin/SaveStatus.svelte';
+  import RowMenu from '$lib/components/admin/RowMenu.svelte';
 
   let { editor, ondirty = () => {} }: { editor: Editor; ondirty?: (value: boolean) => void } =
     $props();
@@ -53,6 +55,16 @@
       ),
     );
   }
+
+  // Phones: the arrows move into the row menu, so a row has one control (Alt+Arrow stays).
+  let phone = $state(false);
+  $effect(() => {
+    const query = window.matchMedia('(max-width: 639px)');
+    const update = (): void => void (phone = query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  });
 
   // `editing` is a field id, '' for "new", null for the closed form.
   let editing = $state<string | null>(null);
@@ -261,14 +273,32 @@
   const box = 'size-6 shrink-0 accent-[var(--ui-accent)]';
 </script>
 
-<Panel title={t.formWork.fields} description={t.formUi.editorFieldsHint}>
+<Panel
+  title={t.formWork.fields}
+  description={t.formUi.editorFieldsHint}
+  hint={t.admin.form.draftHint}
+>
   {#snippet actions()}
-    <Button variant="outline" onclick={() => (preview = !preview)} aria-expanded={preview}
-      >{t.formWork.preview}</Button
+    <SaveStatus
+      state={editor.saving ? 'saving' : editor.error ? 'error' : editor.savedAt ? 'saved' : 'idle'}
+      at={editor.savedAt}
+      error={editor.error?.status === 409 ? t.formWork.conflict : ''}
+      idle={t.saveStatus.idle}
+      quiet
+    />
+    <Button
+      variant="outline"
+      class="max-sm:size-11 max-sm:px-0"
+      onclick={() => (preview = !preview)}
+      aria-expanded={preview}
+      aria-label={t.formWork.preview}
+      ><span class="sm:hidden"><NavIcon name="visits" size={18} /></span><span class="max-sm:hidden"
+        >{t.formWork.preview}</span
+      ></Button
     >
   {/snippet}
   <div class="flex flex-col gap-4 pt-2">
-    <DraftGate {editor}>
+    <DraftGate {editor} hint={false}>
       {#if slow}<p role="status">{t.formWork.slow}</p>{/if}
       <form onsubmit={(event) => void saveTitle(event)} class="border-border border-t pt-4">
         <div class="flex max-w-[560px] flex-col gap-3 sm:flex-row sm:items-end">
@@ -322,12 +352,12 @@
                 >
                   {t.formWork.unsupportedField}
                 </p>{/if}
-              <span class="flex flex-wrap gap-1">
+              <span class="flex gap-1">
                 <Button
                   variant="ghost"
                   size="icon"
                   title={t.formWork.up}
-                  class="disabled:opacity-25"
+                  class="disabled:opacity-25 max-sm:hidden"
                   disabled={editor.saving || editing !== null || !canMove(f.id, -1)}
                   data-move-handle
                   onclick={() => void moveAnnounced(f.id, -1)}
@@ -339,28 +369,51 @@
                   variant="ghost"
                   size="icon"
                   title={t.formWork.down}
-                  class="disabled:opacity-25"
+                  class="disabled:opacity-25 max-sm:hidden"
                   disabled={editor.saving || editing !== null || !canMove(f.id, 1)}
                   onclick={() => void moveAnnounced(f.id, 1)}
                   ><NavIcon name="down" size={16} /><span class="sr-only"
                     >{t.formWork.down} {f.label}</span
                   ></Button
                 >
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={editor.saving || !FIELD_KINDS.includes(f.kind as FieldKind)}
-                  onclick={async () => {
-                    if (!changed || (await confirmDiscard())) open(f.id);
-                  }}>{t.admin.edit}<span class="sr-only"> {f.label}</span></Button
-                >
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={editor.saving || editing !== null}
-                  onclick={() => void remove(f.id, f.name)}
-                  >{t.admin.remove}<span class="sr-only"> {f.label}</span></Button
-                >
+                <RowMenu
+                  label={t.admin.fields.menuLabel.replace('{label}', f.label)}
+                  disabled={editor.saving}
+                  items={[
+                    {
+                      id: 'edit',
+                      label: t.admin.edit,
+                      disabled: !FIELD_KINDS.includes(f.kind as FieldKind),
+                      onselect: () =>
+                        void (async () => {
+                          if (!changed || (await confirmDiscard())) open(f.id);
+                        })(),
+                    },
+                    ...(phone
+                      ? [
+                          {
+                            id: 'up',
+                            label: t.formWork.up,
+                            disabled: editing !== null || !canMove(f.id, -1),
+                            onselect: () => void moveAnnounced(f.id, -1),
+                          },
+                          {
+                            id: 'down',
+                            label: t.formWork.down,
+                            disabled: editing !== null || !canMove(f.id, 1),
+                            onselect: () => void moveAnnounced(f.id, 1),
+                          },
+                        ]
+                      : []),
+                    {
+                      id: 'remove',
+                      label: t.admin.remove,
+                      destructive: true,
+                      disabled: editing !== null,
+                      onselect: () => void remove(f.id, f.name),
+                    },
+                  ]}
+                />
               </span>
             </li>
           {/each}

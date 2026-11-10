@@ -152,7 +152,14 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-5">
-  <PageHeader title={ui.title} description={onboarding.open ? ui.intro : undefined} />
+  <PageHeader
+    title={ui.title}
+    description={onboarding.open
+      ? ui.intro
+      : onboarding.required === null
+        ? undefined
+        : ui.completeLead}
+  />
   {#if !onboarding.failed && (onboarding.required === null || (onboarding.open && !onboarding.ready))}
     <div aria-busy="true" class="flex flex-col gap-3">
       <p role="status" class="text-muted-foreground text-sm">{ui.loading}</p>
@@ -390,29 +397,27 @@
       </div>
     </Panel>
   {:else}
-    <Panel
-      title={session.me?.systemAdministrator || finished ? ui.complete.title : undefined}
-      description={session.me?.systemAdministrator || finished
-        ? ui.complete.body
-        : ui.complete.noRight}
-    >
+    <Panel>
       {#if session.me?.systemAdministrator || finished}
-        <div class="flex items-start gap-3">
+        <div class="flex items-start gap-4">
           <span
             aria-hidden="true"
-            class="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-            ><NavIcon name="check" size={18} /></span
+            class="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+            ><NavIcon name="check" size={26} /></span
           >
-          <p class="text-muted-foreground m-0 text-sm">{ui.complete.openHint}</p>
+          <div class="min-w-0">
+            <h2 class="m-0 text-xl leading-snug font-semibold tracking-tight">
+              {ui.complete.title}
+            </h2>
+            <p class="text-muted-foreground m-0 mt-0.5 text-sm">{ui.complete.body}</p>
+            <p class="m-0 mt-3 text-sm">{ui.complete.openHint}</p>
+          </div>
         </div>
+      {:else}
+        <p class="text-muted-foreground m-0 text-sm">{ui.complete.noRight}</p>
       {/if}
       <div class="mt-4 flex flex-wrap gap-2">
         <Button onclick={() => router.navigate('/overview')}>{ui.complete.overview}</Button>
-        {#if session.me?.systemAdministrator}
-          <Button variant="outline" onclick={() => router.navigate('/settings')}
-            >{ui.complete.settings}</Button
-          >
-        {/if}
       </div>
     </Panel>
   {/if}

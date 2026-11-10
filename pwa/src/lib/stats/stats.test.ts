@@ -4,6 +4,8 @@ import {
   conversion,
   conversionWeeks,
   dailySeries,
+  denseDays,
+  periodLength,
   mapLimited,
   relativeTime,
   sumSeries,
@@ -134,8 +136,47 @@ it('computes setup progress and keeps unknown steps unknown', () => {
   const steps = setupSteps(forms, new Map());
   expect(steps.find((s) => s.id === 'form')?.done).toBe(true);
   expect(steps.find((s) => s.id === 'mail')?.done).toBeNull();
-  expect(steps.find((s) => s.id === 'published')?.done).toBe(true);
-  expect(steps.find((s) => s.id === 'published')?.formId).toBe('b');
+  // One of three forms is a draft: the step is not ticked and points at exactly that form.
+  const published = steps.find((s) => s.id === 'published');
+  expect(published?.done).toBe(false);
+  expect(published?.formId).toBe('b');
+  expect(published?.count).toEqual({ done: 2, total: 3 });
+});
+it('ticks a per-form step only when every concerned form satisfies it', () => {
+  const live: FormListItem[] = [
+    { id: 'a', name: 'A', active: true, currentReleaseId: 'r' },
+    { id: 'b', name: 'B', active: true, currentReleaseId: 'r' },
+  ];
+  const snap = (mail: string | null) => ({
+    ...emptySnapshot(),
+    detailStatus: 'ready' as const,
+    detail: { mailConnectionId: mail } as never,
+  });
+  const half = setupSteps(
+    live,
+    new Map([
+      ['a', snap('m')],
+      ['b', snap(null)],
+    ]),
+  );
+  expect(half.find((s) => s.id === 'published')?.done).toBe(true);
+  expect(half.find((s) => s.id === 'active')?.done).toBe(true);
+  expect(half.find((s) => s.id === 'mail')).toMatchObject({ done: false, formId: 'b' });
+  const all = setupSteps(
+    live,
+    new Map([
+      ['a', snap('m')],
+      ['b', snap('m')],
+    ]),
+  );
+  expect(all.find((s) => s.id === 'mail')?.done).toBe(true);
+  // A draft cannot be switched on: "Eingeschaltet" only concerns published forms.
+  const draft = setupSteps(
+    [...live, { id: 'c', name: 'C', active: false, currentReleaseId: null }],
+    new Map(),
+  );
+  expect(draft.find((s) => s.id === 'active')?.done).toBe(true);
+  expect(draft.find((s) => s.id === 'published')?.done).toBe(false);
 });
 
 it('loader fetches per form with at most 8 requests in flight and isolates failures', async () => {
@@ -185,4 +226,15 @@ it('loader turns thrown errors into per-part errors', async () => {
   const s = loader.snapshots.get('a');
   expect(s?.statsStatus).toBe('error');
   expect(s?.detailStatus).toBe('error');
+});
+
+it('counts the confirmed period inclusively and fills days without events with zeros', () => {
+  const s = stats({ from: '2026-10-19', to: '2026-11-01', days: [day('2026-10-31', 3, 5)] });
+  expect(periodLength(s)).toBe(14);
+  const dense = denseDays(s);
+  expect(dense).toHaveLength(14);
+  expect(dense[0]?.date).toBe('2026-10-19');
+  expect(dense[12]).toMatchObject({ date: '2026-10-31', submits: 3, visits: 5 });
+  expect(dense[13]).toMatchObject({ date: '2026-11-01', submits: 0, visits: 0 });
+  expect(periodLength({ from: 'x', to: '2026-11-01' })).toBeNull();
 });

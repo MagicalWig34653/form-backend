@@ -3,8 +3,10 @@
   import { scrollHint } from '$lib/scrollHint';
   import { t } from '$lib/i18n';
   import type { Statistics } from '$lib/api/admin';
+  import { denseDays } from '$lib/stats/series';
 
-  let { stats }: { stats: Statistics } = $props();
+  let { stats: source }: { stats: Statistics } = $props();
+  const stats = $derived({ ...source, days: denseDays(source) });
   const ui = t.admin.statisticsPage;
   const metrics = ['visits', 'begins', 'submits', 'abandons'] as const;
   type Metric = (typeof metrics)[number];
@@ -44,9 +46,8 @@
   let boxWidth = $state(0);
   const W = $derived(boxWidth > 0 ? Math.min(1100, Math.max(260, Math.round(boxWidth))) : 640);
   const H = 220;
-  const direct = $derived(W >= 480);
   const padL = 34;
-  const padR = $derived(direct ? 104 : 12);
+  const padR = 14;
   const padT = 14;
   const padB = 28;
   const plotW = $derived(W - padL - padR);
@@ -63,6 +64,15 @@
   const ticks = $derived(Number.isInteger(top / 2) && top > 2 ? [0, top / 2, top] : [0, top]);
   const x = (i: number): number =>
     padL + (stats.days.length < 2 ? plotW / 2 : (i * plotW) / (stats.days.length - 1));
+  /** Indices of the dates under the axis: first, last and evenly spaced ones between them. */
+  const dateTicks = $derived.by(() => {
+    const n = stats.days.length;
+    if (n < 2) return n === 1 ? [0] : [];
+    const count = Math.min(n, W < 420 ? 3 : W < 700 ? 4 : 5);
+    return [
+      ...new Set(Array.from({ length: count }, (_, k) => Math.round((k * (n - 1)) / (count - 1)))),
+    ];
+  });
   const shortDate = (iso: string): string => formatDayShort(iso);
 
   const lines = $derived(
@@ -78,18 +88,6 @@
           stats.days.map((d, i) => `L${x(i).toFixed(1)},${y(d.visits).toFixed(1)}`).join(' ') +
           ` L${x(stats.days.length - 1)},${y(0)} Z`,
   );
-  // End-of-line labels, pushed apart so that they never overlap.
-  const labels = $derived.by(() => {
-    const last = stats.days[stats.days.length - 1];
-    if (!last) return [];
-    const items = metrics
-      .map((metric) => ({ metric, value: last[metric], y: y(last[metric]) }))
-      .sort((a, b) => a.y - b.y);
-    for (let i = 1; i < items.length; i++)
-      items[i]!.y = Math.max(items[i]!.y, items[i - 1]!.y + 15);
-    return items;
-  });
-
   // Few days: grouped bars read better than two diagonals.
   const groupW = $derived(plotW / Math.max(1, stats.days.length));
   const barW = $derived(Math.min(20, (groupW * 0.8) / metrics.length));
@@ -108,6 +106,35 @@
   <section class="bg-card ring-1 ring-foreground/10 rounded-xl mb-4 min-w-0 px-5 py-4">
     <figure class="mb-3 min-w-0" bind:clientWidth={boxWidth}>
       <figcaption class="mb-2 font-medium">{ui.chart}</figcaption>
+      <ul class="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label={ui.legend}>
+        {#each metrics as metric (metric)}<li class="flex items-center gap-2">
+            <svg width="26" height="12" aria-hidden="true">
+              {#if few}
+                <rect
+                  x="3"
+                  y="1"
+                  width="20"
+                  height="10"
+                  rx="2"
+                  fill={barFill(metric)}
+                  stroke={style[metric].color}
+                />
+              {:else}
+                <line
+                  x1="0"
+                  y1="6"
+                  x2="26"
+                  y2="6"
+                  stroke={style[metric].color}
+                  stroke-width="2.5"
+                  stroke-dasharray={style[metric].dash}
+                />
+                <path d={marker(style[metric].shape, 13, 6, 3.5)} fill={style[metric].color} />
+              {/if}
+            </svg>{t.admin.stats[metric]}
+            <span class="text-muted-foreground tabular-nums">{stats[metric]}</span>
+          </li>{/each}
+      </ul>
       <svg viewBox={`0 0 ${W} ${H}`} class="block h-auto w-full" aria-hidden="true">
         {#each ticks as tick (tick)}
           <line
@@ -196,71 +223,19 @@
                 fill={style[line.metric].color}
               />{/if}
           {/each}
-          <text x={padL} y={H - 8} font-size="11" fill="var(--muted-foreground)"
-            >{shortDate(stats.days[0]?.date ?? '')}</text
-          >
-          <text
-            x={W - padR}
-            y={H - 8}
-            text-anchor="end"
-            font-size="11"
-            fill="var(--muted-foreground)"
-            >{shortDate(stats.days[stats.days.length - 1]?.date ?? '')}</text
-          >
-          {#if direct}
-            {#each labels as item (item.metric)}
-              <line
-                x1={W - padR + 10}
-                x2={W - padR + 24}
-                y1={item.y}
-                y2={item.y}
-                stroke={style[item.metric].color}
-                stroke-width="2.5"
-                stroke-dasharray={style[item.metric].dash}
-              />
-              <path
-                d={marker(style[item.metric].shape, W - padR + 17, item.y, 3.5)}
-                fill={style[item.metric].color}
-              />
-              <text x={W - padR + 29} y={item.y + 4} font-size="12" fill="var(--foreground)"
-                >{t.admin.stats[item.metric]} {item.value}</text
-              >
-            {/each}
-          {/if}
+          {#each dateTicks as i, n (i)}
+            <text
+              x={x(i)}
+              y={H - 8}
+              text-anchor={n === 0 ? 'start' : n === dateTicks.length - 1 ? 'end' : 'middle'}
+              font-size="11"
+              fill="var(--muted-foreground)">{shortDate(stats.days[i]?.date ?? '')}</text
+            >
+          {/each}
         {/if}
       </svg>
-      {#if !direct || few}
-        <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {#each metrics as metric (metric)}<li class="flex items-center gap-2">
-              <svg width="26" height="12" aria-hidden="true">
-                {#if few}
-                  <rect
-                    x="3"
-                    y="1"
-                    width="20"
-                    height="10"
-                    rx="2"
-                    fill={barFill(metric)}
-                    stroke={style[metric].color}
-                  />
-                {:else}
-                  <line
-                    x1="0"
-                    y1="6"
-                    x2="26"
-                    y2="6"
-                    stroke={style[metric].color}
-                    stroke-width="2.5"
-                    stroke-dasharray={style[metric].dash}
-                  />
-                  <path d={marker(style[metric].shape, 13, 6, 3.5)} fill={style[metric].color} />
-                {/if}
-              </svg>{t.admin.stats[metric]}
-            </li>{/each}
-        </ul>
-      {/if}
     </figure>
-    <details open class="group">
+    <details class="group">
       <summary class="focus-visible:outline-ring min-h-11 cursor-pointer py-3 font-medium"
         >{ui.table}</summary
       >

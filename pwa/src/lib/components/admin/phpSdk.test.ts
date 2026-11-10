@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
-import { t } from '$lib/i18n';
+import { phpExample } from '$lib/admin/phpSnippet';
+
+const code = phpExample(['nachricht']);
 
 it('PHP-Beispiel enthält echte Namensräume mit einfachen Backslashes', () => {
-  expect(t.phpSdk.code).toContain('use FormBackend\\Client;');
-  expect(t.phpSdk.code).toContain('use FormBackend\\Exception\\RejectedException;');
-  expect(t.phpSdk.code).toContain("Credentials::fromFile('/etc/myapp/credentials.json')");
-  expect(t.phpSdk.code).not.toContain('\\\\');
+  expect(code).toContain('use FormBackend\\Client;');
+  expect(code).toContain('use FormBackend\\Exception\\RejectedException;');
+  expect(code).toContain("Credentials::fromFile('/etc/myapp/credentials.json')");
+  expect(code).not.toContain('\\\\');
 });

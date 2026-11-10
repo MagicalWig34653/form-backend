@@ -578,7 +578,9 @@ test('retention is set on the Aufbewahrung tab with a sticky save bar', async ({
   await page.getByRole('button', { name: '30 Tage' }).click();
   await expect(page.getByRole('region', { name: 'Änderungen speichern' })).toBeVisible();
   await page.getByRole('button', { name: 'Aufbewahrung speichern' }).click();
-  await expect(page.getByText('Aufbewahrung gespeichert.')).toBeVisible();
+  // Shortening deletes existing entries: the dialog has to be confirmed first.
+  await page.getByRole('button', { name: 'Speichern und löschen' }).click();
+  await expect(page.getByText(/^Gespeichert · \d\d:\d\d$/)).toBeVisible();
   expect(calls).toContain('retention {"days":30}');
 });
 
@@ -588,13 +590,14 @@ test('the overview shows events and conversion with an undefined zero-visit day'
   await mock(page);
   await page.goto(`/t/${T}/f/${F}`);
   await expect(page.getByRole('heading', { name: 'Statistik', exact: true })).toBeVisible();
+  await page.getByText('Datentabelle anzeigen').click();
   const table = page.getByRole('table');
   await expect(table.getByRole('columnheader', { name: 'Besuche' })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: 'Beginn' })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: 'Absenden' })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: 'Abbruch' })).toBeVisible();
   await expect(table.getByRole('cell', { name: '15 %', exact: true })).toBeVisible();
-  await expect(table.getByRole('cell', { name: '—', exact: true })).toBeVisible();
+  await expect(table.getByRole('cell', { name: '—', exact: true }).first()).toBeVisible();
   await expect(page.getByText('25 %', { exact: true })).toBeVisible();
   const scan = await new AxeBuilder({ page }).analyze();
   expect(scan.violations).toEqual([]);
@@ -1000,6 +1003,31 @@ test('Mail-Zustellfehler lässt die Vorlage bearbeitbar und bietet Retry', async
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
+test('Mail: Auswahl und Zuweisung des Versandwegs widersprechen sich nie', async ({ page }) => {
+  await mock(page);
+  let assigned = false;
+  await page.route(`**/forms/${F}/mail-connection`, (r) => {
+    assigned = true;
+    return r.fulfill({ status: 204 });
+  });
+  await page.goto(`/t/${T}/f/${F}/mail`);
+  const select = page.getByLabel('Versandverbindung');
+  const assign = page.getByRole('button', { name: 'Versandweg zuweisen' });
+  // Nothing assigned: the list is not preselected, the badge says so, assigning is not offered.
+  await expect(page.getByText('Kein Versandweg gewählt')).toBeVisible();
+  await expect(select).toHaveValue('');
+  await expect(assign).toBeDisabled();
+  // Picked but not assigned: the page says so explicitly.
+  await select.selectOption({ label: 'Mailserver (SMTP-Server)' });
+  await expect(page.getByText('Ausgewählt, aber noch nicht zugewiesen.')).toBeVisible();
+  await expect(page.getByText('Kein Versandweg gewählt')).toBeVisible();
+  await assign.click();
+  await expect.poll(() => assigned).toBe(true);
+  await expect(page.getByText('Versandweg: Mailserver')).toBeVisible();
+  await expect(page.getByText('Ausgewählt, aber noch nicht zugewiesen.')).toHaveCount(0);
+  await expect(assign).toBeDisabled();
+});
+
 test('Ungespeicherte Feldänderungen bleiben nach abgebrochener Navigation erhalten', async ({
   page,
 }) => {
@@ -1026,14 +1054,14 @@ test('SDK-Datei wird nur bewusst ausgestellt und heruntergeladen', async ({ page
   await page.goto(`/t/${T}/f/${F}/keys`);
   await expect(page.getByRole('heading', { name: 'PHP einbinden', exact: true })).toBeVisible();
   expect(issued).toBe(0);
-  await page.getByRole('button', { name: 'Einrichtungsdatei ausstellen' }).click();
-  await expect(page.getByLabel('Einrichtungsdatei', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Zugangsdatei ausstellen' }).click();
+  await expect(page.getByLabel('Zugangsdatei', { exact: true })).toBeVisible();
   expect(issued).toBe(1);
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Einrichtungsdatei herunterladen' }).click();
+  await page.getByRole('button', { name: 'Zugangsdatei herunterladen' }).click();
   expect((await download).suggestedFilename()).toBe('form-backend-credentials.json');
   await page.getByRole('button', { name: 'Datei ausblenden' }).click();
-  await expect(page.getByLabel('Einrichtungsdatei', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Zugangsdatei', { exact: true })).toHaveCount(0);
 });
 
 test('Einbindung zeigt eine PHP-Kurzanleitung mit kopierbarem Beispiel', async ({ page }) => {
@@ -1166,7 +1194,8 @@ test('Feldänderung erhält Kennung, Metadaten und sendet Ansichtsoptionen mit R
     return r.fulfill({ json: { id: D, revision: 2, hash: 'new-hash', document: next } });
   });
   await page.goto(`/t/${T}/f/${F}/fields`);
-  await page.getByRole('button', { name: 'Bearbeiten Nachricht', exact: true }).click();
+  await page.getByRole('button', { name: 'Aktionen für Feld Nachricht' }).click();
+  await page.getByRole('menuitem', { name: 'Bearbeiten', exact: true }).click();
   await page.getByLabel('Beschriftung', { exact: true }).fill('Neue Nachricht');
   await page.getByLabel('Sichtbarkeit', { exact: true }).selectOption('hidden');
   await page.getByLabel('Schreibgeschützt', { exact: true }).check();
@@ -1184,7 +1213,8 @@ test('Feldkonflikt erhält lokale Eingaben und überschreibt nicht automatisch',
     return r.fulfill({ status: 409, json: {} });
   });
   await page.goto(`/t/${T}/f/${F}/fields`);
-  await page.getByRole('button', { name: 'Bearbeiten Nachricht', exact: true }).click();
+  await page.getByRole('button', { name: 'Aktionen für Feld Nachricht' }).click();
+  await page.getByRole('menuitem', { name: 'Bearbeiten', exact: true }).click();
   await page.getByLabel('Beschriftung', { exact: true }).fill('Nicht verlieren');
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText(
@@ -1246,7 +1276,7 @@ test('Feldreihenfolge lässt sich mit einer Tastaturaktion ändern', async ({ pa
   await expect(page.getByText('Entwurf · Stand 2')).toBeVisible();
   const list = page
     .locator('ul')
-    .filter({ has: page.getByRole('button', { name: 'Bearbeiten Zweites Feld', exact: true }) });
+    .filter({ has: page.getByRole('button', { name: 'Aktionen für Feld Zweites Feld' }) });
   await expect(list.getByRole('listitem').first()).toContainText('Zweites Feld');
   // The move is announced in a live region with the new position.
   await expect(

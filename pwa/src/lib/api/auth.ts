@@ -51,6 +51,11 @@ export function createAuthApi(options: AuthApiOptions = {}) {
       call<CreationOptions>('POST', '/auth/enrollment/options', { token }, signal),
     enrollmentVerify: (body: RegistrationBody, signal?: AbortSignal) =>
       call<{ status: string }>('POST', '/auth/enrollment/verify', body, signal),
+    /** Adds a passkey to the signed-in account (fresh authentication required). */
+    addPasskeyOptions: (signal?: AbortSignal) =>
+      call<CreationOptions>('POST', '/auth/passkeys/options', undefined, signal),
+    addPasskeyVerify: (body: RegistrationBody, signal?: AbortSignal) =>
+      call<{ status: string }>('POST', '/auth/passkeys/verify', body, signal),
     logout: (signal?: AbortSignal) => call<void>('POST', '/auth/logout', undefined, signal),
   };
 }

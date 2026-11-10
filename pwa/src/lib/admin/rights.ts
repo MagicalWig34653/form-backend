@@ -16,3 +16,13 @@ export function rightHint(key: string): string {
 export function rightsText(keys: readonly string[]): string {
   return keys.map(rightLabel).join(', ');
 }
+
+/**
+ * Labels of the rights a customer-wide permission list grants, in the catalogue's order. Reading is
+ * implied by every membership. The customer list and the members page use this one description.
+ */
+export function rightsOf(permissions: readonly string[]): string[] {
+  const order = Object.keys(t.rights.labels);
+  const known = new Set(['form.read', ...permissions]);
+  return order.filter((key) => known.has(key)).map(rightLabel);
+}

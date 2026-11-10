@@ -229,7 +229,10 @@
                 />{:else if result}<StatusChip
                   tone="danger"
                   label={t.admin.connections.testFailedChip}
-                />{:else}<StatusChip tone="idle" label={t.admin.connections.untested} />{/if}
+                />{:else}<StatusChip
+                  tone={names?.length && c.enabled ? 'warn' : 'idle'}
+                  label={t.admin.connections.untested}
+                />{/if}
               <Button
                 type="button"
                 variant="outline"

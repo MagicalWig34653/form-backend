@@ -253,7 +253,9 @@
                   label={t.overview.sparkLabel
                     .replace('{metric}', t.overview.kpiSubmits)
                     .replace('{values}', series.map((v) => (v === null ? '–' : v)).join(', '))}
-                /><span class="text-sm tabular-nums">{total(series) ?? '–'}</span>
+                /><span class="text-sm tabular-nums">{total(series) ?? '–'}</span><span
+                  class="text-muted-foreground text-xs sm:hidden">{t.overview.activityUnit}</span
+                >
               </div>
             {:else}<span class="text-muted-foreground">{t.overview.activityNone}</span>{/if}
           {/snippet}

@@ -6,7 +6,6 @@
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
-  import NavIcon from '$lib/components/shell/NavIcon.svelte';
   import AdsStatisticsTable from './AdsStatisticsTable.svelte';
   let { tenant, form }: { tenant: string; form: string } = $props();
   let stats = $state<AdsStatistics | null>(null);
@@ -39,27 +38,9 @@
   });
 </script>
 
-{#if stats && stats.groups.length === 0 && !stats.suppressed}
-  <p
-    role="status"
-    class="text-muted-foreground m-0 flex flex-wrap items-center gap-x-2 text-sm leading-5"
-  >
-    <span class="shrink-0" aria-hidden="true"><NavIcon name="info" size={16} /></span>
-    <span>{t.formUi.adsTitle}: {t.adsStatistics.empty}</span>
-  </p>
-{:else if unavailable}
-  <p
-    role="status"
-    class="text-muted-foreground m-0 flex flex-wrap items-center gap-x-2 text-sm leading-5"
-  >
-    <span class="shrink-0" aria-hidden="true"><NavIcon name="info" size={16} /></span>
-    <span>{t.formUi.adsTitle}: {t.formUi.adsUnavailable}</span>
-    <button
-      type="button"
-      class="text-brand-ink inline-flex min-h-8 items-center rounded-md px-1 font-medium underline underline-offset-4"
-      onclick={() => retry++}>{t.formUi.adsRetry}</button
-    >
-  </p>
+<!-- Optional block: without evaluable groups (or without the evaluation) nothing is shown at all. -->
+{#if (stats && stats.groups.length === 0 && !stats.suppressed) || unavailable}
+  <!-- hidden -->
 {:else}
   <Panel title={t.formUi.adsTitle} description={t.formUi.adsHint}>
     <div class="flex flex-col gap-3" aria-busy={loading}>

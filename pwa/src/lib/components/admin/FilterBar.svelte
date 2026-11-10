@@ -61,6 +61,12 @@
     )}
   >
     {@render children?.()}
+    {#if hint}<span
+        class="text-muted-foreground inline-flex size-10 items-center justify-center"
+        title={hint}
+        role="img"
+        aria-label={hint}><NavIcon name="info" size={16} /></span
+      >{/if}
     {#if trailing || (onreset && activeCount > 0)}
       <div class="flex max-w-full flex-wrap items-end gap-2">
         {@render trailing?.()}
@@ -70,7 +76,4 @@
       </div>
     {/if}
   </div>
-  {#if hint}<p class="text-muted-foreground text-sm leading-[18px]">
-      {hint}
-    </p>{/if}
 </div>

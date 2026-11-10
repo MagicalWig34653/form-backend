@@ -19,6 +19,7 @@
   import Panel from '$lib/components/admin/Panel.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   interface Props {
     tenant?: string;
@@ -63,7 +64,9 @@
       <ul class="divide-border flex flex-col divide-y">
         {#each rows as row (`${row.formId}:${row.id}`)}
           {@const when = relativeTime(row.receivedAt, now)}
-          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 first:pt-0 last:pb-0">
+          <li
+            class="hover:bg-muted/50 focus-within:bg-muted/50 relative -mx-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2.5"
+          >
             <span class="min-w-24 font-medium">{row.formName}</span>
             <time
               class="text-muted-foreground min-w-28 text-sm"
@@ -73,7 +76,7 @@
             <StatusChip tone="ok" label={row.state === 'accepted' ? ui.stateAccepted : row.state} />
             {#if row.held}<StatusChip tone="info" label={ui.protectedEntry} />{/if}
             <a
-              class="text-brand-ink ml-auto rounded-md px-1 text-sm font-medium underline underline-offset-4"
+              class="text-muted-foreground focus-visible:ring-ring ml-auto inline-flex items-center rounded-md after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:outline-none"
               href={target(row)}
               aria-label={ui.openEntry
                 .replace('{form}', row.formName)
@@ -81,7 +84,7 @@
               onclick={(e) => {
                 e.preventDefault();
                 go(row);
-              }}>{ui.open} ›</a
+              }}><NavIcon name="chevron" size={18} /></a
             >
           </li>
         {/each}

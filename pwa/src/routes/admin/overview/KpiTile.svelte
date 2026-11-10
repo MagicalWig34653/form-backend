@@ -111,9 +111,8 @@
     {:else if series === undefined}
       <!-- no trend for this metric -->
     {:else if hasSeries && series}<Sparkline values={series} label={seriesLabel || label} />
-    {:else}<p class="text-muted-foreground text-sm">
-        {t.overview.sparkNone}
-      </p>{/if}
+    {:else}<span class="sr-only">{t.overview.sparkNone}</span>
+      <div aria-hidden="true" class="my-1 h-10"></div>{/if}
     {#if delta}<p class="text-sm font-medium" data-direction={delta.direction}>
         <span aria-hidden="true" class="mr-1 text-[0.7em]">{arrows[delta.direction]}</span
         >{delta.text}

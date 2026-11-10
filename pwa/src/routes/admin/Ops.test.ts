@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, it, vi } from 'vitest';
 import Ops from './Ops.svelte';
+import { confirmState } from '$lib/confirm.svelte';
 const request = vi.hoisted(() => vi.fn());
 vi.mock('$lib/api', () => ({ http: { request } }));
 vi.mock('$lib/admin/guard.svelte', () => ({ handleSessionError: () => false }));
@@ -54,4 +55,35 @@ it('zeigt einen Ladefehler statt einer falschen Leeranzeige', async () => {
   render(Ops);
   expect((await screen.findByRole('alert')).textContent).toContain('Berechtigung');
   expect(screen.queryByText('Keine passenden Ereignisse.')).toBeNull();
+});
+it('bereinigt erst nach Bestätigung und nennt die Gesamtzahl', async () => {
+  request.mockImplementation(async (method: string, path: string) => ({
+    ok: true,
+    data:
+      path === '/ops/access'
+        ? { system: true, cleanup: true, forms: [{ id: form, name: 'Kontakt' }] }
+        : method === 'POST'
+          ? { deleted: { events: 300, mail: 12 } }
+          : { items: [], next: null },
+  }));
+  render(Ops);
+  await fireEvent.click(await screen.findByRole('button', { name: 'Jetzt bereinigen' }));
+  expect(request).not.toHaveBeenCalledWith('POST', '/ops/cleanup', expect.anything());
+  await waitFor(() => expect(confirmState.current).not.toBeNull());
+  confirmState.settle(true);
+  expect(await screen.findByText(/312 Einträge entfernt/)).toBeTruthy();
+});
+it('verwirft die Bereinigung ohne Bestätigung', async () => {
+  request.mockImplementation(async (_m: string, path: string) => ({
+    ok: true,
+    data:
+      path === '/ops/access'
+        ? { system: true, cleanup: true, forms: [{ id: form, name: 'Kontakt' }] }
+        : { items: [], next: null },
+  }));
+  render(Ops);
+  await fireEvent.click(await screen.findByRole('button', { name: 'Jetzt bereinigen' }));
+  await waitFor(() => expect(confirmState.current).not.toBeNull());
+  confirmState.settle(false);
+  expect(request).not.toHaveBeenCalledWith('POST', '/ops/cleanup', expect.anything());
 });

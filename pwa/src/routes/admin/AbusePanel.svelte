@@ -11,7 +11,7 @@
   import { Input } from '$lib/components/ui/input';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import SaveBar from '$lib/components/admin/SaveBar.svelte';
-  import { stamped } from '$lib/format';
+  import SaveStatus from '$lib/components/admin/SaveStatus.svelte';
   let {
     editor,
     tenant,
@@ -36,6 +36,7 @@
   let noticeKind = $state<'ok' | 'error'>('ok');
   const formId = 'abuse-form';
   let busy = $state(false);
+  let savedAt = $state<Date | null>(null);
   const text = t.abuse;
   $effect(() => {
     if (changed) return;
@@ -81,12 +82,29 @@
     });
     if (!error) changed = false;
     noticeKind = error ? 'error' : 'ok';
-    notice = error ? describeError(error) : stamped(text.saved);
+    if (!error) savedAt = new Date();
+    notice = error ? describeError(error) : '';
     busy = false;
   }
 </script>
 
-<Panel title={text.title} description={text.help}>
+<Panel title={text.title} description={text.help} hint={text.saveHint}>
+  {#snippet actions()}
+    <SaveStatus
+      state={busy
+        ? 'saving'
+        : noticeKind === 'error' && notice
+          ? 'error'
+          : changed
+            ? 'dirty'
+            : savedAt
+              ? 'saved'
+              : 'idle'}
+      at={savedAt}
+      error={noticeKind === 'error' ? notice : ''}
+      idle={t.saveStatus.idle}
+    />
+  {/snippet}
   {#if testMode}<div class="mb-4"><Banner tone="warn">{text.testWarning}</Banner></div>{/if}
   <form
     id={formId}
@@ -127,7 +145,6 @@
   busy={busy || editor.saving}
   form={formId}
   ondiscard={discard}
-  status={notice}
-  statusKind={noticeKind}
+  status=""
   saveLabel={text.save}
 />

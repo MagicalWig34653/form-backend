@@ -1,3 +1,4 @@
+import { SvelteDate } from 'svelte/reactivity';
 import type { AdminApi, Draft, FormDetail, JsonObject } from '../api/admin';
 import type { ApiError } from '../api/client';
 import { restamp } from './doc';
@@ -10,7 +11,8 @@ export function createEditor(api: AdminApi, tenant: string, formId: string) {
     draft: Draft | null;
     saving: boolean;
     error: ApiError | null;
-  }>({ loading: true, detail: null, draft: null, saving: false, error: null });
+    savedAt: SvelteDate | null;
+  }>({ loading: true, detail: null, draft: null, saving: false, error: null, savedAt: null });
 
   async function load(): Promise<void> {
     // Only the first load hides the page; reloads keep the tabs (and their messages) in place.
@@ -60,6 +62,7 @@ export function createEditor(api: AdminApi, tenant: string, formId: string) {
         return r.error;
       }
       s.draft = r.data;
+      s.savedAt = new SvelteDate();
       return null;
     } finally {
       s.saving = false;
@@ -78,6 +81,10 @@ export function createEditor(api: AdminApi, tenant: string, formId: string) {
     },
     get saving() {
       return s.saving;
+    },
+    /** Time of the last successful draft save in this session. */
+    get savedAt() {
+      return s.savedAt;
     },
     get error() {
       return s.error;

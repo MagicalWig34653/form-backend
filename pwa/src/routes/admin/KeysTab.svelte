@@ -11,6 +11,8 @@
   import Banner from '$lib/components/admin/Banner.svelte';
   import RichText from '$lib/components/admin/RichText.svelte';
   import { scrollHint } from '$lib/scrollHint';
+  import { fieldList } from '$lib/draft/doc';
+  import { phpExample } from '$lib/admin/phpSnippet';
 
   let {
     editor,
@@ -32,10 +34,14 @@
     slow = false;
   });
 
+  const fieldNames = $derived(
+    editor.draft ? fieldList(editor.draft.document).map((f) => f.name) : [],
+  );
+  const snippet = $derived(phpExample(fieldNames));
   let snippetCopied = $state('');
   async function copySnippet(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(t.phpSdk.code);
+      await navigator.clipboard.writeText(snippet);
       snippetCopied = t.phpSdk.copied;
     } catch {
       sdkMessage = t.formWork.copyError;
@@ -168,8 +174,11 @@
         tabindex="0"
         aria-labelledby="php-snippet-label"
         class="border-border bg-muted/60 focus-visible:ring-ring/50 m-0 max-w-full overflow-x-auto rounded-lg border p-3 font-mono text-xs leading-5 whitespace-pre focus-visible:ring-3 focus-visible:outline-none"><code
-          >{t.phpSdk.code}</code
+          >{snippet}</code
         ></pre>
+      <p class="text-muted-foreground m-0 text-xs">
+        {fieldNames.length > 0 ? t.phpSdk.fieldsNote : t.phpSdk.placeholderNote}
+      </p>
       <Notice message={snippetCopied} kind="ok" />
       <details class="text-muted-foreground text-sm">
         <summary class="min-h-8 cursor-pointer py-1 font-medium">{t.phpSdk.notes}</summary>
@@ -183,4 +192,3 @@
     </li>
   </ol>
 </Panel>
-<Panel title={t.formWork.domains} description={t.formWork.domainsPending} />

@@ -104,11 +104,15 @@ async function mock(page: Page) {
           nextCursor: null,
         }),
       );
-    if (p === `${f}/statistics`)
+    if (p === `${f}/statistics`) {
+      // Like the server: the period is days long and only days with events are listed.
+      const days = Number(new URL(r.request().url()).searchParams.get('days') ?? '30');
+      const end = Date.parse('2026-11-01T00:00:00Z');
+      const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
       return r.fulfill(
         j({
-          from: '2026-10-03',
-          to: '2026-11-01',
+          from: iso(end - (days - 1) * 86_400_000),
+          to: iso(end),
           total: 5,
           visits: 20,
           begins: 12,
@@ -137,11 +141,32 @@ async function mock(page: Page) {
           ],
         }),
       );
+    }
     if (p === `/tenants/${T}/members`)
       return r.fulfill(
         j({
-          items: [{ accountId: 'a', username: 'admin', permissions: ['form.read'], inherited: [] }],
-          assignable: ['form.read', 'key.manage'],
+          items: [
+            {
+              accountId: 'a',
+              username: 'admin',
+              permissions: [
+                'form.read',
+                'draft.write',
+                'release.publish',
+                'key.manage',
+                'identity.manage',
+              ],
+              inherited: [],
+            },
+          ],
+          assignable: [
+            'form.read',
+            'form.create',
+            'draft.write',
+            'release.publish',
+            'key.manage',
+            'identity.manage',
+          ],
         }),
       );
     if (p === '/me/passkeys')
@@ -178,9 +203,12 @@ async function mock(page: Page) {
             {
               definition: {
                 key: 'mcp.requestsPerMinute',
-                group: 'MCP',
-                envName: 'X',
+                group: 'MCP-Token-Ratelimit',
+                envName: 'FORM_MCP_TOKEN_RATE_LIMIT',
                 type: 'integer',
+                defaultValue: '60',
+                minimum: 1,
+                maximum: 100000,
                 restartRequired: false,
               },
               value: '60',
@@ -190,45 +218,148 @@ async function mock(page: Page) {
             {
               definition: {
                 key: 'admin.origin',
-                group: 'Adressen',
-                envName: 'ADMIN_ORIGIN',
-                type: 'string',
+                group: 'Hosts',
+                envName: 'FORM_ADMIN_ORIGIN',
+                type: 'origin',
+                defaultValue: '',
                 restartRequired: false,
               },
               value: 'https://forms.example.org',
-              source: 'database',
-              locked: false,
+              source: 'env',
+              locked: true,
             },
             {
               definition: {
                 key: 'admin.rpID',
-                group: 'Adressen',
-                envName: 'ADMIN_RPID',
-                type: 'string',
+                group: 'Hosts',
+                envName: 'FORM_RP_ID',
+                type: 'host',
+                defaultValue: '',
                 restartRequired: false,
               },
               value: 'forms.example.org',
-              source: 'database',
+              source: 'env',
+              locked: true,
+            },
+            {
+              definition: {
+                key: 'ops.intervalSeconds',
+                group: 'Limits',
+                envName: 'FORM_OPS_INTERVAL_SECONDS',
+                type: 'integer',
+                defaultValue: '900',
+                minimum: 60,
+                maximum: 86400,
+                restartRequired: false,
+              },
+              value: '1800',
+              source: 'db',
               locked: false,
             },
             {
               definition: {
-                key: 'ingest.maxBodyBytes',
-                group: 'Einsendungen',
-                envName: 'INGEST_MAXBODYBYTES',
+                key: 'ops.threshold',
+                group: 'Limits',
+                envName: 'FORM_OPS_THRESHOLD',
                 type: 'integer',
+                defaultValue: '1',
+                minimum: 1,
+                maximum: 2,
                 restartRequired: false,
               },
-              value: '1048576',
+              value: '1',
               source: 'default',
               locked: false,
             },
             {
               definition: {
-                key: 'mail.retryLimit',
-                group: 'Mail',
-                envName: 'MAIL_RETRYLIMIT',
+                key: 'ops.retentionDays',
+                group: 'Limits',
+                envName: 'FORM_OPS_RETENTION_DAYS',
                 type: 'integer',
+                defaultValue: '30',
+                minimum: 1,
+                maximum: 365,
+                restartRequired: false,
+              },
+              value: '30',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'ops.recipient',
+                group: 'Limits',
+                envName: 'FORM_OPS_RECIPIENT',
+                type: 'mailbox',
+                defaultValue: '',
+                restartRequired: false,
+              },
+              value: '',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'ops.sender',
+                group: 'Limits',
+                envName: 'FORM_OPS_SENDER',
+                type: 'mailbox',
+                defaultValue: '',
+                restartRequired: false,
+              },
+              value: '',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'ops.connection',
+                group: 'Limits',
+                envName: 'FORM_OPS_CONNECTION',
+                type: 'uuid',
+                defaultValue: '',
+                restartRequired: false,
+              },
+              value: '',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'log.level',
+                group: 'Limits',
+                envName: 'FORM_LOG_LEVEL',
+                type: 'level',
+                defaultValue: 'info',
+                restartRequired: false,
+              },
+              value: 'info',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'mail.restricted',
+                group: 'Missbrauchsschutz',
+                envName: 'FORM_MAIL_RESTRICTED',
+                type: 'boolean',
+                defaultValue: 'false',
+                restartRequired: false,
+              },
+              value: 'false',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'webhook.perForm',
+                group: 'Webhook-Limits',
+                envName: 'FORM_WEBHOOK_MAX_PER_FORM',
+                type: 'integer',
+                defaultValue: '5',
+                minimum: 0,
+                maximum: 10000,
                 restartRequired: false,
               },
               value: '5',

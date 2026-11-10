@@ -14,6 +14,7 @@
   import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import Select from '$lib/components/admin/Select.svelte';
   import { rightHint, rightLabel, rightsText } from '$lib/admin/rights';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import { Checkbox } from '$lib/components/ui/checkbox';
@@ -100,19 +101,17 @@
 <div class="flex w-full min-w-0 flex-col gap-6">
   <CustomerHeader {tenant} current="members" />
   <Panel title={m.title} description={m.intro}>
-    {#snippet actions()}
-      {#if candidates.length > 0}
-        <div class="flex flex-wrap items-center gap-2">
-          <Select id="member-add" aria-label={m.addPick} bind:value={addId} class="w-56">
-            <option value="">{m.addPick}</option>
-            {#each candidates as x (x.id)}<option value={x.id}>{x.username}</option>{/each}
-          </Select>
-          <Button type="button" disabled={busy || !addId} onclick={() => void addMember()}
-            >{m.add}</Button
-          >
-        </div>
-      {/if}
-    {/snippet}
+    {#if loaded && candidates.length > 0}
+      <div class="border-border mb-4 flex flex-wrap items-center gap-2 border-b pb-4">
+        <Select id="member-add" aria-label={m.addPick} bind:value={addId} class="w-56">
+          <option value="">{m.addPick}</option>
+          {#each candidates as x (x.id)}<option value={x.id}>{x.username}</option>{/each}
+        </Select>
+        <Button type="button" disabled={busy || !addId} onclick={() => void addMember()}
+          >{m.add}</Button
+        >
+      </div>
+    {/if}
     {#if !loaded}
       <div aria-busy="true" class="flex flex-col gap-3">
         <span class="sr-only" role="status">{t.admin.loading}</span>
@@ -129,6 +128,9 @@
         {/snippet}
       </EmptyState>
     {:else}
+      <p class="text-muted-foreground m-0 mb-1 text-sm font-medium">
+        {members.length === 1 ? m.countOne : m.count.replace('{n}', String(members.length))}
+      </p>
       <ul class="divide-border -my-1 flex list-none flex-col divide-y p-0">
         {#each members as x (x.accountId)}
           {@const own = x.accountId === session.me?.id}
@@ -138,7 +140,12 @@
           <li class="py-4">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               <h3 class="m-0 text-base font-semibold">{x.username}</h3>
-              {#if own}<StatusChip tone="idle" label={m.you} />{/if}
+              {#if own}<StatusChip tone="idle" label={m.you} /><span
+                  class="text-muted-foreground inline-flex"
+                  title={m.ownLocked}
+                  ><NavIcon name="locked" size={14} /><span class="sr-only">{m.ownLocked}</span
+                  ></span
+                >{/if}
               {#if x.inherited.length > 0}
                 <span class="text-muted-foreground text-xs"
                   >{m.inherited.replace('{list}', rightsText(x.inherited))}</span
@@ -162,9 +169,7 @@
                 </label>
               {/each}
             </fieldset>
-            {#if own}
-              <p class="text-muted-foreground mt-2 mb-0 text-xs">{m.ownLocked}</p>
-            {:else}
+            {#if !own}
               <div class="mt-3">
                 <Button
                   type="button"

@@ -4,7 +4,13 @@
   import type { Statistics } from '$lib/api/admin';
   import KpiTile from './overview/KpiTile.svelte';
   import CardHeader from '$lib/components/admin/CardHeader.svelte';
-  import { conversionSeries, conversionWeeks, weekOverWeek } from '$lib/stats/series';
+  import {
+    conversionSeries,
+    conversionWeeks,
+    denseDays,
+    periodLength,
+    weekOverWeek,
+  } from '$lib/stats/series';
   import { countDelta, formatPercent, pointsDelta } from '$lib/stats/delta';
 
   let {
@@ -16,15 +22,18 @@
   const ui = t.admin.statisticsPage;
   const metrics = ['visits', 'begins', 'submits', 'abandons'] as const;
   const conversion = $derived(stats.visits === 0 ? null : stats.submits / stats.visits);
-  const visitsSeries = $derived(stats.days.map((d) => d.visits));
-  const submitsSeries = $derived(stats.days.map((d) => d.submits));
+  const rows = $derived(denseDays(stats));
+  // The label follows the range the server actually returned, never the requested value.
+  const shown = $derived(periodLength(stats) ?? days);
+  const visitsSeries = $derived(rows.map((d) => d.visits));
+  const submitsSeries = $derived(rows.map((d) => d.submits));
   const convSeries = $derived(conversionSeries(visitsSeries, submitsSeries));
 </script>
 
 <CardHeader
   class="mb-4"
   title={ui.title}
-  description={`${t.admin.stats.range.replace('{n}', String(days))} · ${ui.period.replace('{period}', formatPeriod(stats.from, stats.to))}`}
+  description={`${t.admin.stats.range.replace('{n}', String(shown))} · ${formatPeriod(stats.from, stats.to)} · ${ui.scope}`}
 >
   {#snippet actions()}
     {#if onperiod}
@@ -39,15 +48,11 @@
         {/each}
       </div>
     {/if}
-    <span
-      class="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-sm leading-[18px] font-medium"
-      >{ui.scope}</span
-    >
   {/snippet}
 </CardHeader>
 <div class="grid grid-cols-2 gap-4 sm:grid-cols-5" role="group" aria-label={t.admin.stats.total}>
   {#each metrics as metric, n (metric)}
-    {@const series = stats.days.map((d) => d[metric])}
+    {@const series = rows.map((d) => d[metric])}
     <KpiTile
       index={n}
       label={t.admin.stats[metric]}

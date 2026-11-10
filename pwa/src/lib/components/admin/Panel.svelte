@@ -9,6 +9,7 @@
     description?: string;
     /** Heading level of the title (default 2). */
     level?: 2 | 3;
+    hint?: string;
     actions?: Snippet;
     children?: Snippet;
     /** Remove the body padding, e.g. for tables that run edge to edge. */
@@ -20,6 +21,7 @@
     title,
     description,
     level = 2,
+    hint,
     actions,
     children,
     flush = false,
@@ -37,7 +39,7 @@
   )}
 >
   {#if title || actions}
-    <CardHeader {title} {description} {level} {actions} class="px-(--card-spacing)" />
+    <CardHeader {title} {description} {level} {hint} {actions} class="px-(--card-spacing)" />
   {/if}
   <div class={cn(!flush && 'px-(--card-spacing)')}>
     {@render children?.()}

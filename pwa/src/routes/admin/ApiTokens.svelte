@@ -248,7 +248,12 @@
         {/each}
       </ul>
     {:else}
-      <EmptyState compact title={t.formKit.tokens.noGrants} icon="connections" />
+      <EmptyState
+        compact
+        title={t.formKit.tokens.noGrants}
+        description={t.formKit.tokens.noGrantsHint}
+        icon="tokens"
+      />
     {/if}
   </Panel>
 </div>

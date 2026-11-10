@@ -97,7 +97,7 @@
   {/if}
   {#if loading}<p role="status" class="text-muted-foreground text-sm">{t.admin.loading}</p>
   {:else if items.length === 0}
-    <EmptyState title={text.empty} description={text.emptyHint} icon="connections" />
+    <EmptyState title={text.empty} description={text.emptyHint} icon="webhook" />
   {:else}
     <ul class="divide-border m-0 list-none divide-y p-0">
       {#each items as hook (hook.id)}

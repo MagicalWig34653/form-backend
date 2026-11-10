@@ -53,10 +53,10 @@ test('Einstellungen: ENV-Sperre, Revision, CSRF und Konflikt', async ({ page }) 
     });
   });
   await page.goto('/settings');
-  await expect(page.getByLabel('mail.allowedNets')).toBeDisabled();
-  await page.getByLabel('mcp.requestsPerMinute').fill('90');
+  await expect(page.getByLabel('Erlaubte Netze für Mailserver')).toBeDisabled();
+  await page.getByLabel('Anfragen je MCP-Token').fill('90');
   await page.getByRole('button', { name: 'Speichern' }).click();
   await expect(page.getByRole('alert')).toContainText('zwischenzeitlich');
   await page.getByRole('button', { name: 'Neu laden' }).click();
-  await expect(page.getByLabel('mcp.requestsPerMinute')).toHaveValue('60');
+  await expect(page.getByLabel('Anfragen je MCP-Token')).toHaveValue('60');
 });

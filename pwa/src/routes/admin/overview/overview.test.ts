@@ -87,8 +87,8 @@ it('AttentionList names the form and opens the right tab', async () => {
     tenant: 't',
     items: [{ id: 'n', tone: 'warn', kind: 'noMail', formId: 'f', formName: 'Kontakt' }],
   });
-  expect(screen.getByText('Kontakt: Keine Mail-Verbindung eingerichtet.')).toBeTruthy();
-  await fireEvent.click(screen.getByRole('button', { name: /Mail einrichten/ }));
+  expect(screen.getByText('Kontakt: Kein Versandweg für Mails gewählt.')).toBeTruthy();
+  await fireEvent.click(screen.getByRole('button', { name: /Versandweg wählen/ }));
   expect(mocks.navigate).toHaveBeenCalledWith('/t/t/f/f/mail');
 });
 it('AttentionList says so when there is nothing to report', () => {
@@ -106,7 +106,7 @@ it('SetupProgress reports progress and opens the next step', async () => {
     ],
   });
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('33');
-  await fireEvent.click(screen.getByRole('button', { name: /Nächsten Schritt öffnen/ }));
+  await fireEvent.click(screen.getByRole('button', { name: /Versandweg wählen/ }));
   expect(mocks.navigate).toHaveBeenCalledWith('/t/t/f/f/mail');
 });
 

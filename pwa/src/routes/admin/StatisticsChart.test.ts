@@ -77,7 +77,12 @@ describe('StatisticsKpis', () => {
   it('shows the German period, the total conversion and the scope', () => {
     render(StatisticsKpis, { stats, days: 30 });
     expect(screen.getByText('15 %', { exact: true })).toBeTruthy();
-    expect(screen.getByText('Produktion · UTC')).toBeTruthy();
+    expect(screen.getByText(/Produktion · UTC/)).toBeTruthy();
+    expect(screen.getByText(/01\.10\.–30\.10\.2026/)).toBeTruthy();
+  });
+  it('names the period the server returned, not the requested one', () => {
+    render(StatisticsKpis, { stats, days: 14 });
+    expect(screen.getByText(/Letzte 30 Tage/)).toBeTruthy();
     expect(screen.getByText(/01\.10\.–30\.10\.2026/)).toBeTruthy();
   });
   it('does not invent a conversion without visits', () => {
@@ -106,5 +111,17 @@ describe('StatisticsChart caption', () => {
   it('labels the chart', () => {
     render(StatisticsChart, { stats });
     expect(screen.getByText('Zeitreihe der erfassten Ereignisse')).toBeTruthy();
+  });
+  it('lists the series in KPI order with the period total, not the last day', () => {
+    render(StatisticsChart, { stats });
+    const items = within(screen.getByRole('list', { name: 'Legende mit Summe im Zeitraum' }))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent?.replace(/\s+/g, ' ').trim());
+    expect(items).toEqual(['Besuche 20', 'Beginn 8', 'Absenden 3', 'Abbruch 4']);
+  });
+  it('keeps the data table collapsed by default', () => {
+    const { container } = render(StatisticsChart, { stats });
+    const details = container.querySelector('details.group') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
   });
 });

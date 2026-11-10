@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from '$lib/utils';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   /**
    * The one header of every card and section: title, optional one-line description and actions
@@ -12,23 +13,36 @@
     /** Heading level of the title (default 2). */
     level?: 2 | 3;
     id?: string;
+    /** Explanation behind an (i) right after the title, on every screen size. */
+    hint?: string;
     actions?: Snippet;
     class?: string;
   }
-  let { title, description, level = 2, id, actions, class: className }: Props = $props();
+  let { title, description, level = 2, id, hint, actions, class: className }: Props = $props();
   const heading = $derived(`h${level}`);
 </script>
 
 <header
-  class={cn('flex flex-wrap items-start justify-between gap-x-4 gap-y-2', className)}
+  class={cn(
+    'flex flex-wrap justify-between gap-x-4 gap-y-2',
+    description ? 'items-start' : 'items-center',
+    className,
+  )}
   data-slot="card-header"
 >
-  <div class="min-w-0">
-    {#if title}<svelte:element
-        this={heading}
-        {id}
-        class="m-0 text-xl leading-snug font-semibold tracking-tight">{title}</svelte:element
-      >{/if}
+  <div class="min-w-0 flex-1 basis-72">
+    {#if title}<div class="flex items-center gap-1">
+        <svelte:element
+          this={heading}
+          {id}
+          class="m-0 text-xl leading-snug font-semibold tracking-tight">{title}</svelte:element
+        >{#if hint}<span
+            class="text-muted-foreground inline-flex size-6 shrink-0 items-center justify-center"
+            title={hint}
+            role="img"
+            aria-label={hint}><NavIcon name="info" size={14} /></span
+          >{/if}
+      </div>{/if}
     {#if description}<p class="text-muted-foreground m-0 mt-0.5 text-sm leading-5">
         {description}
       </p>{/if}

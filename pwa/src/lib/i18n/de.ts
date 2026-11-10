@@ -8,7 +8,7 @@ export const de = {
   },
   recovery: {
     title: 'Wiederherstellungscode sichern',
-    save: 'Sichern Sie Ihren Wiederherstellungscode.',
+    save: 'Damit kommen Sie ohne Passkey wieder in Ihr Konto und an Ihre Einsendungen.',
     warning:
       'Er wird nur jetzt angezeigt. Bewahren Sie ihn getrennt von diesem Gerät auf. Ohne einen nutzbaren Datenzugang und ohne diesen Code können geschützte Daten verloren sein.',
     download: 'Als Datei speichern',
@@ -118,8 +118,8 @@ export const de = {
     attentionPartial: 'Weitere Hinweise folgen, sobald alle Daten geladen sind.',
     locked: 'Der Zugriff auf Einsendungen ist in diesem Browser gesperrt.',
     lockedAction: 'Zugriff freigeben',
-    noMail: '{form}: Keine Mail-Verbindung eingerichtet.',
-    noMailAction: 'Mail einrichten',
+    noMail: '{form}: Kein Versandweg für Mails gewählt.',
+    noMailAction: 'Versandweg wählen',
     unpublished: '{form}: Noch nicht veröffentlicht, nimmt keine Einsendungen an.',
     unpublishedAction: 'Veröffentlichen',
     inactive: '{form}: Ist ausgeschaltet und nimmt keine Einsendungen an.',
@@ -131,10 +131,18 @@ export const de = {
     setupProgress: 'Einrichtungsfortschritt',
     setupNext: 'Nächsten Schritt öffnen',
     setupNextHint: 'Als Nächstes: {step} ({form})',
+    setupNextSteps: {
+      form: 'Formular anlegen',
+      mail: 'Versandweg wählen',
+      published: 'Veröffentlichen',
+      active: 'Einschalten',
+      traffic: 'Einbindung prüfen',
+    },
     setupComplete: 'Die Einrichtung ist abgeschlossen.',
+    setupFormCount: '{done} von {total} Formularen',
     setupSteps: {
       form: 'Formular angelegt',
-      mail: 'Mail verbunden',
+      mail: 'Versandweg gewählt',
       published: 'Veröffentlicht',
       active: 'Eingeschaltet',
       traffic: 'Erste Besuche oder Einsendungen',
@@ -154,6 +162,7 @@ export const de = {
     formsPanel: 'Formulare',
     activity: 'Aktivität (14 Tage)',
     activityNone: 'Keine Daten',
+    activityUnit: 'Einsendungen (14 T.)',
     status: {
       live: 'Live',
       inactive: 'Ausgeschaltet',
@@ -190,7 +199,7 @@ export const de = {
         text: 'PHP 8.2 oder neuer mit den Erweiterungen `sodium`, `curl`, `json` und `mbstring`.',
       },
       {
-        title: 'Zugangsdaten ausstellen',
+        title: 'Zugangsdatei ausstellen',
         text: 'Speichern Sie die Datei als `credentials.json` außerhalb des Web-Verzeichnisses und beschränken Sie den Zugriff mit `chmod 600`.',
       },
       {
@@ -212,7 +221,7 @@ export const de = {
     retry:
       'Wiederholungen sind sicher: Bei einem Transportfehler dieselbe Anfrage mit demselben Idempotenzschlüssel erneut senden.',
     docs: 'Vollständige Dokumentation: `sdk/php/README.md` im Repository.',
-    code: `<?php
+    codeHead: `<?php
 require __DIR__ . '/vendor/autoload.php';
 
 use FormBackend\\Client;
@@ -223,16 +232,20 @@ use FormBackend\\Exception\\TransportException;
 $client = new Client('https://admin.example.org', Credentials::fromFile('/etc/myapp/credentials.json'));
 
 try {
-    $submission = $client->submit([
-        'name'      => $_POST['name'] ?? '',
-        'nachricht' => $_POST['nachricht'] ?? '',
-    ]);
+    $submission = $client->submit([`,
+    codeFoot: `    ]);
     echo 'Danke, Referenz: ', $submission->id;
 } catch (RejectedException $e) {
     // Der Server hat abgelehnt: $e->status, $e->errorCode
 } catch (TransportException $e) {
     // Keine Antwort: dieselbe Anfrage mit demselben Schlüssel wiederholen.
 }`,
+    codePlaceholder:
+      '        // Dieses Formular hat noch keine Felder. Tragen Sie hier die Feldnamen ein, z. B.:',
+    codePlaceholderField: 'feldname',
+    fieldsNote: 'Das Beispiel verwendet die Feldnamen dieses Formulars aus dem Entwurf.',
+    placeholderNote:
+      'Dieses Formular hat noch keine Felder; das Beispiel zeigt einen Platzhalter für den Feldnamen.',
   },
   formWork: {
     title: 'Formular',
@@ -278,6 +291,9 @@ try {
     orderHint: 'Die Reihenfolge wird innerhalb der jeweiligen Ansichtssektion geändert.',
     routeHint: 'Wirkt sofort im Betrieb.',
     routeTitle: 'Versandweg',
+    routeAssigned: 'Versandweg: {name}',
+    routeAssignedShort: 'Versandweg zugewiesen',
+    routeNone: 'Kein Versandweg gewählt',
     behavior: 'Verhalten',
     toConnections: 'Verbindungen öffnen',
     insertInto: 'Einfügen in:',
@@ -285,6 +301,8 @@ try {
     contactAdmin: 'Wenden Sie sich für die Zuweisung an die berechtigte Administration.',
     assignAdmin: 'Legen Sie unter System > Verbindungen einen Versandweg an und weisen Sie ihn zu.',
     saveRoute: 'Versandweg zuweisen',
+    routePending:
+      'Ausgewählt, aber noch nicht zugewiesen. Mit „Versandweg zuweisen“ übernehmen Sie die Auswahl.',
     acceptedHint:
       'Vom Mailserver angenommen bedeutet nicht zugestellt. Wiederholungen erfolgen im Einsendungsdetail.',
     insert: 'Feld in Vorlage einfügen',
@@ -304,16 +322,16 @@ try {
       'Die verbindliche Prüfung erfolgt beim Veröffentlichen auf dem Server. Ein Versionsvergleich ist noch nicht verfügbar.',
     sdk: 'PHP einbinden',
     sdkIntro:
-      'Stellen Sie die Einrichtungsdatei bewusst aus und übertragen Sie sie sicher an Ihre PHP-Anwendung.',
-    issue: 'Einrichtungsdatei ausstellen',
-    file: 'Einrichtungsdatei',
+      'Stellen Sie die Zugangsdatei bewusst aus und übertragen Sie sie sicher an Ihre PHP-Anwendung.',
+    issue: 'Zugangsdatei ausstellen',
+    file: 'Zugangsdatei',
     once: 'Diese Datei wird nur jetzt angezeigt. Sie ermöglicht die Anbindung Ihres Formulars. Bewahren Sie sie sicher auf.',
-    download: 'Einrichtungsdatei herunterladen',
+    download: 'Zugangsdatei herunterladen',
     forget: 'Datei ausblenden',
     copyError: 'Kopieren fehlgeschlagen. Verwenden Sie den Download.',
     needsRelease: 'Veröffentlichen Sie zuerst eine Formularversion.',
-    notConfigured: 'In dieser Ansicht wurde noch keine Einrichtungsdatei ausgestellt.',
-    ready: 'Einrichtungsdatei ausgestellt',
+    notConfigured: 'In dieser Ansicht wurde noch keine Zugangsdatei ausgestellt.',
+    ready: 'Zugangsdatei ausgestellt',
     domains: 'Domainzuordnung',
     domainsPending:
       'Die Domainverwaltung ist in dieser Oberfläche noch nicht verfügbar. DNS, Proxy und TLS werden extern eingerichtet. Bestehende Zuordnungen bleiben an ihre Version gebunden.',
@@ -460,6 +478,13 @@ try {
     pulseLive: 'läuft',
   },
   status: { draft: 'Entwurf', live: 'Live', paused: 'Pausiert' },
+  saveStatus: {
+    idle: 'Keine Änderungen',
+    saving: 'Speichert …',
+    saved: 'Gespeichert',
+    dirty: 'Nicht gespeichert',
+    error: 'Speichern fehlgeschlagen',
+  },
   saveBar: {
     label: 'Änderungen speichern',
     unsaved: 'Ungespeicherte Änderungen',
@@ -478,6 +503,12 @@ try {
     presetDays: '{n} Tage',
     presetYear: '1 Jahr',
     hint: 'Gehaltene Einsendungen (Löschschutz) bleiben erhalten. Eine Änderung gilt auch für vorhandene Einsendungen.',
+    shortenWarn:
+      'Mit dem Speichern werden vorhandene Einsendungen gelöscht, die älter als {n} Tage sind.',
+    confirmTitle: 'Aufbewahrung verkürzen',
+    confirmBody:
+      'Vorhandene Einsendungen, die älter als {n} Tage sind, werden gelöscht. Geschützte Einsendungen bleiben erhalten.',
+    confirmLabel: 'Speichern und löschen',
     current: 'Aktuell: Löschung nach {n} Tagen',
     currentOff: 'Aktuell: keine automatische Löschung',
     toEntries: 'Einsendungen verwalten',
@@ -514,7 +545,8 @@ try {
   },
   directory: {
     title: 'Formulare',
-    intro: 'Alle Formulare der Kunden, die Sie sehen dürfen.',
+    intro:
+      'Alle Formulare der Kunden, die Sie sehen dürfen. Neue Formulare legen Sie beim jeweiligen Kunden an.',
     search: 'Formulare suchen',
     searchPlaceholder: 'Name oder Kunde …',
     customer: 'Kunde',
@@ -551,6 +583,9 @@ try {
     lockAccountTitle: 'Konto sperren',
     lockAccountBody: 'Das Konto wird gesperrt, seine Sitzungen und Tokens werden widerrufen.',
     lockAccount: 'Sperren',
+    denyMcpTitle: 'MCP sperren',
+    denyMcpBody: 'Das Konto kann MCP nicht mehr nutzen. Seine MCP-Tokens werden widerrufen.',
+    denyMcp: 'Sperren',
     removePasskeyTitle: 'Passkey entfernen',
     removePasskey: 'Entfernen',
     releaseHoldTitle: 'Löschschutz aufheben',
@@ -687,8 +722,7 @@ try {
     },
     settings: {
       title: 'Einstellungen',
-      precedence:
-        'Systemweite Werte. Es gilt der erste vorhandene Wert: ENV, dann Datenbank, dann Standard. Bootstrap-Werte setzen Sie nur über ENV.',
+      precedence: 'Systemweite Werte. Es gilt ENV, sonst die Datenbank, sonst der Standard.',
       source: 'Quelle',
       locked: 'Durch ENV gesperrt',
       restart: 'Neustart nötig',
@@ -760,6 +794,15 @@ try {
       lastOne: 'Der letzte Passkey kann nicht entfernt werden.',
       lastOneLabel: 'Kann nicht entfernt werden (letzter Passkey)',
       unlocksKeys: 'entsperrt Datenschlüssel',
+      passkeyLine: '{label} · angelegt {date}',
+      unlocksLong: 'kann Einsendungen entsperren',
+      addPasskey: 'Passkey hinzufügen',
+      addDefaultLabel: 'Passkey vom {date}',
+      added: 'Der Passkey wurde hinzugefügt.',
+      addCancelled: 'Das Hinzufügen wurde abgebrochen.',
+      addDuplicate: 'Dieses Gerät hat bereits einen Passkey für dieses Konto.',
+      addUnsupported: 'Dieser Browser unterstützt keine Passkeys.',
+      addFailed: 'Der Passkey konnte nicht hinzugefügt werden.',
       removeWarn:
         'Dieser Passkey entsperrt Ihre Datenschlüssel. Ohne einen weiteren solchen Passkey brauchen Sie den Recovery-Code.',
       create: 'Neues Konto anlegen',
@@ -793,6 +836,8 @@ try {
       noneHint:
         'Mitglieder sehen und bearbeiten die Formulare dieses Kunden mit den Rechten, die Sie ihnen geben. Konten legt die Systemadministration unter System an.',
       ownLocked: 'Ihre eigenen Rechte können Sie nicht ändern.',
+      count: '{n} Mitglieder',
+      countOne: '1 Mitglied',
     },
     loading: 'Wird geladen …',
     retry: 'Erneut versuchen',
@@ -900,16 +945,17 @@ try {
       keyHint:
         'Mit Alt und Pfeil nach oben oder unten verschieben Sie das Feld der fokussierten Zeile.',
       notes: 'Hinweise zu Feldern und Bedienung',
+      menuLabel: 'Aktionen für Feld {label}',
       sensitiveHint: 'Alle Felder werden verschlüsselt gespeichert.',
     },
     mail: {
       title: 'Mail-Versand',
       templateTitle: 'Mail-Vorlage',
-      intro:
-        'Gilt erst nach der Veröffentlichung. Mail an das Team und Bestätigung an die einsendende Person bei jedem Eingang; Feldwerte werden nur im Moment des Eingangs entschlüsselt.',
+      intro: 'Gilt nach der Veröffentlichung.',
       templateDetails: 'Empfänger und Inhalt',
       connection: 'Versandverbindung',
-      noConnection: 'Keine Verbindung ausgewählt',
+      noConnection: 'Versandweg wählen',
+      missing: '{n} Angaben unvollständig',
       noConnections:
         'Diesem Kunden ist noch keine Verbindung zugewiesen. Ein Systemadministrator kann sie unter „Verbindungen“ zuweisen.',
       connectionSaved: 'Die Verbindung wurde gespeichert.',
@@ -929,7 +975,7 @@ try {
       formatHtml: 'HTML',
       none: '— keines —',
       saveHint:
-        'Die Mail-Konfiguration gehört zur Version; sie gilt erst nach dem Veröffentlichen.',
+        'Änderungen werden im Entwurf gespeichert und gelten erst nach dem Veröffentlichen. Feldwerte werden nur im Moment des Eingangs entschlüsselt.',
       problems: {
         address: 'Bitte eine gültige Adresse eingeben.',
         recipients: 'Bitte 1 bis 20 gültige Adressen angeben.',
@@ -1076,6 +1122,7 @@ try {
       scope: 'Produktion · UTC',
       empty: 'Keine erfassten Ereignisse im Zeitraum.',
       chart: 'Zeitreihe der erfassten Ereignisse',
+      legend: 'Legende mit Summe im Zeitraum',
       table: 'Datentabelle anzeigen',
       period: '{period} (UTC)',
       periodSwitch: 'Zeitraum der Statistik',
@@ -1323,7 +1370,7 @@ try {
     checksOpenOne: '1 Punkt offen, Veröffentlichen trotzdem möglich.',
     checksOpen: '{n} Punkte offen, Veröffentlichen trotzdem möglich.',
     checksClear: 'Keine offenen Punkte.',
-    sdkTitle: 'Einrichtungsdatei',
+    sdkTitle: 'Zugangsdatei',
     domainsTitle: 'Domainzuordnung',
     titlePanel: 'Formulartitel',
     editorFieldsHint: 'Felder und ihre Reihenfolge im Entwurf.',
@@ -1422,6 +1469,7 @@ try {
         actionDone: 'Importläufe ansehen',
       },
     },
+    completeLead: 'Stand der Erstinstallation dieses Systems.',
     complete: {
       title: 'Die Einrichtung ist abgeschlossen',
       body: 'Ihr Formular-Backend ist eingerichtet. Ab jetzt arbeiten Sie in der Übersicht.',
@@ -1516,8 +1564,16 @@ try {
     report: 'Ergebnis der Bereinigung',
     limit:
       'Je Datenart werden höchstens 1000 Einträge entfernt. Bei 1000 Treffern erneut ausführen.',
-    settings:
-      'Empfänger, Absender, Verbindung, Schwelle und Drosselung stellen Sie in den Systemeinstellungen ein.',
+    settingsPrefix:
+      'Empfänger, Absender, Verbindung, Schwelle, Intervall und Aufbewahrung der Betriebsmeldungen stellen Sie in den',
+    settingsLink: 'Systemeinstellungen unter „Betrieb und Alarm“',
+    settingsSuffix: 'ein.',
+    eventsTitle: 'Ereignisse ({n})',
+    cleanupNow: 'Jetzt bereinigen',
+    cleanupConfirmTitle: 'Abgelaufene Einträge bereinigen',
+    cleanupConfirmBody:
+      'Abgelaufene Ereignisse, Zustellungen, OAuth-Daten und Sperren werden endgültig entfernt, je Datenart höchstens 1000 Einträge.',
+    removed: '{n} Einträge entfernt',
     events: {
       pending: 'Ausstehend',
       sending: 'Versand begonnen',
@@ -1569,6 +1625,15 @@ try {
     noAccounts: 'Noch keine Konten',
     noAccountsHint: 'Legen Sie ein Konto an. Es erhält einen Einmal-Link zur Einrichtung.',
     mcpOff: 'MCP gesperrt',
+    mcpOn: 'MCP erlaubt',
+    colAccount: 'Konto',
+    colStatus: 'Status',
+    colMcp: 'MCP',
+    colCustomers: 'Kunden',
+    colActions: 'Aktionen',
+    allCustomers: 'Alle Kunden (Systemrecht)',
+    noCustomers: 'Keine Kunden',
+    menuLabel: 'Aktionen für Konto {name}',
     lock: 'Konto sperren',
     unlock: 'Konto entsperren',
     allowMcp: 'MCP erlauben',
@@ -1585,6 +1650,7 @@ try {
     detailsTitle: 'Details zu Secret und Blocklisten',
     details:
       'Das Secret wird verschlüsselt gespeichert und gilt sofort; ein leeres Secret-Feld behält den bisherigen Wert. Blocklisten pflegen Sie unter Systemeinstellungen → Missbrauchsschutz (User-Agent-Muster sind Textausschnitte, Hashes sind SHA-256).',
+    saveHint: 'Gespeichert wird im Entwurf; wirksam wird es mit dem Veröffentlichen.',
     siteKey: 'Turnstile Site-Key (leer: deaktiviert)',
     secret: 'Turnstile Secret ersetzen',
     closed: 'Bei Dienstausfall ablehnen (Standard: annehmen und markieren)',
@@ -1618,7 +1684,9 @@ try {
     tokens: {
       newToken: 'Neues Token',
       scopes: 'Berechtigungen',
-      noGrants: 'Keine verbundenen Clients.',
+      noGrants: 'Noch keine verbundenen Clients',
+      noGrantsHint:
+        'MCP-Clients erscheinen hier, sobald sie sich über OAuth mit Ihrem Konto verbinden.',
     },
     stepDone: 'erledigt',
     stepCurrent: 'aktueller Schritt',
@@ -1644,6 +1712,165 @@ try {
       dirty: 'Ungespeicherte Änderungen',
       count: '{n} Einstellungen',
       precedenceChain: 'ENV, dann Datenbank, dann Standard',
+      noEnv: 'keine ENV-Variable',
+      envLine: 'ENV: {env}',
+      defaultLine: 'Standard: {value}',
+      emptyValue: 'leer',
+      lockedNote: 'Über ENV gesetzt, nur in der Umgebung änderbar.',
+      discard: 'Verwerfen',
+      resetField: 'Auf Standard',
+      resetFieldLabel: '{name} auf Standard zurücksetzen',
+      jumpTo: 'Springen zu',
+      groupTitles: {
+        Limits: 'Betrieb und Alarm',
+        Hosts: 'Adressen',
+        Speicher: 'Dateien',
+      } as Record<string, string>,
+      groupIdle: 'Keine Änderungen',
+      autoHint: 'Änderungen gelten erst nach „Speichern“ in dieser Karte.',
+      on: 'An',
+      off: 'Aus',
+      units: {
+        seconds: 'Sekunden',
+        days: 'Tage',
+        perMinute: 'pro Minute',
+        perHour: 'pro Stunde',
+        count: 'Stück',
+      },
+      keys: {
+        'ops.threshold': {
+          title: 'Alarmschwelle (Priorität)',
+          hint: 'Ab dieser Priorität wird ein Betriebsalarm per Mail versendet.',
+        },
+        'ops.intervalSeconds': {
+          title: 'Alarmintervall',
+          hint: 'Mindestabstand zwischen zwei Alarmmails.',
+          unit: 'seconds',
+        },
+        'ops.retentionDays': {
+          title: 'Aufbewahrung der Betriebsereignisse',
+          hint: 'Danach werden Ereignisse gelöscht.',
+          unit: 'days',
+        },
+        'ops.recipient': { title: 'Alarmempfänger', hint: 'Mailadresse für Betriebsalarme.' },
+        'ops.sender': { title: 'Alarmabsender', hint: 'Absenderadresse der Alarmmails.' },
+        'ops.connection': {
+          title: 'Alarm-Verbindung',
+          hint: 'UUID der Verbindung, über die Alarme versendet werden.',
+        },
+        'abuse.blockedNets': {
+          title: 'Gesperrte Netze',
+          hint: 'Kommagetrennte Netze (CIDR), deren Einsendungen abgelehnt werden.',
+        },
+        'abuse.uaPatterns': {
+          title: 'User-Agent-Muster',
+          hint: 'JSON-Liste von Textteilen; passende Browserkennungen werden abgelehnt.',
+        },
+        'abuse.hashes': {
+          title: 'Gesperrte Hashes',
+          hint: 'JSON-Liste von SHA-256-Werten (64 Hex-Zeichen).',
+        },
+        'abuse.threshold': {
+          title: 'Schwelle für Sperren',
+          hint: 'Auffällige Anfragen im Zeitfenster, ab denen gesperrt wird.',
+          unit: 'count',
+        },
+        'abuse.windowSeconds': {
+          title: 'Zeitfenster',
+          hint: 'Zeitraum, in dem auffällige Anfragen gezählt werden.',
+          unit: 'seconds',
+        },
+        'abuse.banSeconds': {
+          title: 'Sperrdauer',
+          hint: 'So lange bleibt eine Sperre aktiv.',
+          unit: 'seconds',
+        },
+        'mail.restricted': {
+          title: 'Empfänger beschränken',
+          hint: 'Mails gehen nur an die erlaubten Empfänger.',
+        },
+        'mail.allowedRecipients': {
+          title: 'Erlaubte Empfänger',
+          hint: 'JSON-Liste von Mailadressen.',
+        },
+        'setup.step': {
+          title: 'Aktueller Einrichtungsschritt',
+          hint: 'Wird von der Einrichtung gesetzt.',
+        },
+        'setup.mailPending': {
+          title: 'Mail-Einrichtung offen',
+          hint: 'Wird von der Einrichtung gesetzt.',
+        },
+        'setup.completed': {
+          title: 'Einrichtung abgeschlossen',
+          hint: 'Wird beim Abschluss der Einrichtung gesetzt.',
+        },
+        'migration.enabled': {
+          title: 'Umstieg aktiv',
+          hint: 'Schaltet den Umstieg aus dem Altsystem frei.',
+        },
+        'migration.allowedNets': {
+          title: 'Erlaubte Netze für den Umstieg',
+          hint: 'Kommagetrennte private Netze (CIDR), auf die der Umstieg zugreifen darf.',
+        },
+        'mail.allowedNets': {
+          title: 'Erlaubte Netze für Mailserver',
+          hint: 'Kommagetrennte Netze (CIDR), die Mailverbindungen erreichen dürfen.',
+        },
+        'log.level': { title: 'Log-Stufe', hint: 'Detailgrad der Serverprotokolle.' },
+        'sdk.directory': { title: 'SDK-Verzeichnis', hint: 'Pfad der ausgelieferten SDK-Dateien.' },
+        'webhook.perForm': {
+          title: 'Webhooks je Formular',
+          hint: 'Höchstzahl je Formular.',
+          unit: 'count',
+        },
+        'webhook.perCustomer': {
+          title: 'Webhooks je Kunde',
+          hint: 'Höchstzahl je Kunde.',
+          unit: 'count',
+        },
+        'webhook.backlog': {
+          title: 'Webhook-Warteschlange je Kunde',
+          hint: 'Höchstzahl wartender Zustellungen je Kunde.',
+          unit: 'count',
+        },
+        'mcp.requestsPerMinute': {
+          title: 'Anfragen je MCP-Token',
+          hint: 'Höchstzahl der Anfragen je Token.',
+          unit: 'perMinute',
+        },
+        'ingest.requestsPerMinute': {
+          title: 'Einsendungen je Absender',
+          hint: 'Höchstzahl der Anfragen je Absender an die Einsendeschnittstelle.',
+          unit: 'perMinute',
+        },
+        'oauth.authorizeBaseURL': {
+          title: 'OAuth-Autorisierungsadresse',
+          hint: 'Öffentliche Adresse (https) für die OAuth-Zustimmung.',
+        },
+        'oauth.registrationsPerHour': {
+          title: 'OAuth-Registrierungen',
+          hint: 'Höchstzahl neuer Clients.',
+          unit: 'perHour',
+        },
+        'oauth.maxUnusedClients': {
+          title: 'Unbenutzte OAuth-Clients',
+          hint: 'Höchstzahl registrierter, nie verwendeter Clients.',
+          unit: 'count',
+        },
+        'oauth.issuer': {
+          title: 'OAuth-Issuer',
+          hint: 'Adresse (https), die als Aussteller auftritt.',
+        },
+        'admin.origin': {
+          title: 'Adresse der Oberfläche',
+          hint: 'Öffentliche Adresse (https) dieser Verwaltung. Ändern Sie sie nur mit passender Domain.',
+        },
+        'admin.rpID': {
+          title: 'Passkey-Domain (RP-ID)',
+          hint: 'Domain, an die Passkeys gebunden sind; muss zur Adresse passen.',
+        },
+      } as Record<string, { title: string; hint: string; unit?: string }>,
     },
     migration: {
       description:
@@ -1683,8 +1910,7 @@ try {
         planInvalid: 'Bitte Zuordnung und zusätzliche Planangaben prüfen.',
         source: {
           title: 'Quelle prüfen',
-          description:
-            'Geben Sie den nur lesenden Zugang zum eingefrorenen Snapshot an. Private Netze müssen ausdrücklich unter migration.allowedNets freigegeben sein.',
+          description: 'Geben Sie den nur lesenden Zugang zum eingefrorenen Snapshot an.',
           host: 'Host',
           port: 'Port',
           database: 'Datenbank',

@@ -6,7 +6,6 @@
   import { t } from '$lib/i18n';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
   import FormSection from '$lib/components/admin/FormSection.svelte';
-  import Row from '$lib/components/admin/Row.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
   import ErrorState from '$lib/components/admin/ErrorState.svelte';
@@ -16,9 +15,10 @@
   import Select from '$lib/components/admin/Select.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import SaveBar from '$lib/components/admin/SaveBar.svelte';
+  import SaveStatus from '$lib/components/admin/SaveStatus.svelte';
+  import { Switch } from '$lib/components/ui/switch';
   import NavIcon from '$lib/components/shell/NavIcon.svelte';
-  import { formatClock, stamped } from '$lib/format';
+  import { formatClock } from '$lib/format';
   import SearchField from '$lib/components/admin/SearchField.svelte';
   interface Item {
     definition: {
@@ -28,8 +28,9 @@
       envName: string;
       minimum?: number;
       maximum?: number;
+      defaultValue?: string;
       restartRequired: boolean;
-      sensitive: boolean;
+      sensitive?: boolean;
     };
     value?: string;
     source: string;
@@ -64,6 +65,8 @@
   let busy = $state(false);
   let error = $state('');
   let notice = $state('');
+  type GroupState = { state: 'saving' | 'saved' | 'error'; at?: Date };
+  let groupState = $state<Record<string, GroupState>>({});
   let loadedAt = $state<Date | null>(null);
   const visible = $derived(
     (snapshot?.items ?? []).filter((x) => {
@@ -76,12 +79,18 @@
       );
     }),
   );
-  const dirty = $derived(
-    snapshot
-      ? snapshot.items.filter((x) => !x.locked && values[x.definition.key] !== (x.value ?? ''))
-          .length
-      : 0,
-  );
+  const isDirty = (x: Item): boolean => !x.locked && values[x.definition.key] !== (x.value ?? '');
+  const dirtyIn = (group: string): Item[] =>
+    (snapshot?.items ?? []).filter((x) => x.definition.group === group && isDirty(x));
+  const unitOf = (key: string): string => {
+    const unit = ui.keys[key]?.unit;
+    return unit ? ((ui.units as Record<string, string>)[unit] ?? '') : '';
+  };
+  const titleOf = (item: Item): string =>
+    ui.keys[item.definition.key]?.title ?? item.definition.key;
+  const shown = (value: string | undefined, type = ''): string =>
+    type === 'boolean' ? (value === 'true' ? ui.on : ui.off) : value ? value : ui.emptyValue;
+  const groupLabel = (g: string): string => (ui.groupTitles as Record<string, string>)[g] ?? g;
   // Known groups come first in their usual order; groups the server adds follow alphabetically.
   const groups = $derived.by(() => {
     const present = new Set((snapshot?.items ?? []).map((x) => x.definition.group));
@@ -117,21 +126,21 @@
     busy = true;
     error = '';
     notice = '';
+    groupState = {};
     const r = await http.request<Snapshot>('GET', '/settings');
     if (r.ok) accept(r.data);
     else await failure(r.error);
     busy = false;
   }
-  async function save(e: SubmitEvent) {
-    e.preventDefault();
+  async function save(group: string, e?: SubmitEvent) {
+    e?.preventDefault();
     if (!snapshot || busy) return;
-    const changed = snapshot.items.filter(
-      (x) => !x.locked && values[x.definition.key] !== (x.value ?? ''),
-    );
+    const changed = dirtyIn(group);
     if (!changed.length) return;
     busy = true;
     error = '';
     notice = '';
+    groupState[group] = { state: 'saving' };
     const r = await http.request<Snapshot>('PUT', '/settings', {
       body: {
         revision: snapshot.revision,
@@ -141,16 +150,38 @@
       },
     });
     if (r.ok) {
-      accept(r.data);
-      notice = stamped(
-        changed.some((x) => x.definition.restartRequired) ? text.savedRestart : t.saveBar.saved,
+      // Other groups keep their pending edits; only the saved group takes the server's values.
+      const pending = Object.fromEntries(
+        (snapshot.items ?? [])
+          .filter((x) => x.definition.group !== group && isDirty(x))
+          .map((x) => [x.definition.key, values[x.definition.key] ?? '']),
       );
-    } else await failure(r.error);
+      accept(r.data);
+      Object.assign(values, pending);
+      groupState[group] = { state: 'saved', at: new Date() };
+      notice = changed.some((x) => x.definition.restartRequired) ? text.savedRestart : '';
+    } else {
+      groupState[group] = { state: 'error' };
+      await failure(r.error);
+    }
     busy = false;
   }
-  function discard() {
-    if (snapshot) accept(snapshot);
+  function discard(group: string) {
+    if (!snapshot) return;
+    for (const x of snapshot.items)
+      if (x.definition.group === group) values[x.definition.key] = x.value ?? '';
+    delete groupState[group];
   }
+  function resetToDefault(item: Item) {
+    if (item.definition.defaultValue !== undefined)
+      values[item.definition.key] = item.definition.defaultValue;
+  }
+  const statusOf = (group: string): 'idle' | 'dirty' | 'saving' | 'saved' | 'error' => {
+    const g = groupState[group];
+    if (g?.state === 'saving') return 'saving';
+    if (dirtyIn(group).length) return 'dirty';
+    return g?.state ?? 'idle';
+  };
   onMount(() => void load());
 </script>
 
@@ -205,54 +236,160 @@
       </Select>
     </div>
     {#if groupCounts.length > 0}
-      <nav aria-label={text.groupsLabel} class="flex flex-wrap gap-2">
+      <nav aria-label={text.groupsLabel} class="flex flex-wrap items-center gap-2">
+        <span class="text-muted-foreground text-xs">{ui.jumpTo}</span>
         {#each groupCounts as { g, n } (g)}
           <a
             href={`#${slug(g)}`}
-            class="border-border bg-card hover:bg-muted inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium"
-            >{g}<span class="text-muted-foreground">{n}</span></a
+            class="text-brand-ink hover:bg-muted focus-visible:ring-ring inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+            >{groupLabel(g)}<span class="text-muted-foreground text-xs">{n}</span></a
           >
         {/each}
       </nav>
     {/if}
     <p class="sr-only" role="status">{ui.count.replace('{n}', String(visible.length))}</p>
-    <form id="settings-form" onsubmit={save} class="flex flex-col gap-5" aria-busy={busy}>
+    <div class="flex flex-col gap-5" aria-busy={busy}>
       {#each groups as group, index (group)}
         {@const items = visible.filter((x) => x.definition.group === group)}
+        {@const pending = dirtyIn(group)}
         {#if items.length}
-          <FormSection title={group} {index} id={slug(group)}>
-            <div class="grid gap-x-6 gap-y-6 md:grid-cols-2">
-              {#each items as item (item.definition.key)}
-                {@const source = sourceOf(item)}
-                <div data-setting={item.definition.key} class="flex flex-col gap-2">
-                  <Row
-                    id={item.definition.key}
-                    label={item.definition.key}
-                    hint={`${ui.envName}: ${item.definition.envName}${item.definition.minimum !== undefined ? ` · ${ui.range}: ${item.definition.minimum}–${item.definition.maximum}` : ''}`}
+          <form id={`settings-${slug(group)}`} onsubmit={(e) => void save(group, e)}>
+            <FormSection
+              title={groupLabel(group)}
+              {index}
+              id={slug(group)}
+              hint={ui.autoHint}
+              class="scroll-mt-20"
+            >
+              {#snippet actions()}
+                <SaveStatus
+                  state={statusOf(group)}
+                  at={groupState[group]?.at ?? null}
+                  idle={ui.groupIdle}
+                  error={error && groupState[group]?.state === 'error' ? error : ''}
+                />
+              {/snippet}
+              <ul class="divide-border -my-2 flex list-none flex-col divide-y p-0">
+                {#each items as item (item.definition.key)}
+                  {@const source = sourceOf(item)}
+                  {@const key = item.definition.key}
+                  {@const def = item.definition.defaultValue}
+                  <li
+                    data-setting={key}
+                    class="grid items-start gap-x-8 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,19rem)]"
                   >
-                    <Input
-                      id={item.definition.key}
-                      type={item.definition.sensitive ? 'password' : 'text'}
-                      bind:value={values[item.definition.key]}
-                      disabled={busy || item.locked}
-                      inputmode={item.definition.type === 'integer' ? 'numeric' : 'text'}
-                      class="font-mono"
-                    />
-                  </Row>
-                  <p class="flex flex-wrap items-center gap-2">
-                    <span class="text-muted-foreground text-xs">{text.source}:</span>
-                    <StatusChip tone={tones[source]} label={ui.sources[source]} />
-                    <span class="sr-only">{ui.sourceLong[source]}</span>
-                    {#if item.locked}<StatusChip tone="idle" label={text.locked} />{/if}
-                    {#if item.definition.restartRequired}<StatusChip
-                        tone="warn"
-                        label={text.restart}
-                      />{/if}
-                  </p>
+                    <div class="min-w-0">
+                      <label for={key} class="text-sm leading-5 font-medium">{titleOf(item)}</label>
+                      {#if ui.keys[key]?.hint}<p
+                          id={`${key}-hint`}
+                          class="text-muted-foreground m-0 mt-0.5 text-sm leading-5"
+                        >
+                          {ui.keys[key]?.hint}
+                        </p>{/if}
+                      <p
+                        class="text-muted-foreground m-0 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5"
+                      >
+                        <span class="font-mono">{key}</span>
+                        <span aria-hidden="true">·</span>
+                        <span
+                          >{item.definition.envName
+                            ? ui.envLine.replace('{env}', item.definition.envName)
+                            : ui.noEnv}</span
+                        >
+                        {#if def !== undefined}<span aria-hidden="true">·</span><span
+                            >{ui.defaultLine.replace(
+                              '{value}',
+                              shown(def, item.definition.type),
+                            )}</span
+                          >{/if}
+                        {#if item.definition.minimum !== undefined}<span aria-hidden="true">·</span
+                          ><span
+                            >{ui.range}: {item.definition.minimum}–{item.definition.maximum}</span
+                          >{/if}
+                        <StatusChip tone={tones[source]} label={ui.sources[source]} />
+                        <span class="sr-only">{text.source}: {ui.sourceLong[source]}</span>
+                        {#if item.definition.restartRequired}<StatusChip
+                            tone="warn"
+                            label={text.restart}
+                          />{/if}
+                      </p>
+                    </div>
+                    <div class="flex min-w-0 flex-col gap-1.5">
+                      {#if item.definition.type === 'boolean'}
+                        <label class="flex min-h-10 items-center gap-3 text-sm">
+                          <Switch
+                            id={key}
+                            checked={values[key] === 'true'}
+                            onchange={(e) =>
+                              (values[key] = e.currentTarget.checked ? 'true' : 'false')}
+                            disabled={busy || item.locked}
+                            aria-describedby={ui.keys[key]?.hint ? `${key}-hint` : undefined}
+                          />
+                          {values[key] === 'true' ? ui.on : ui.off}
+                        </label>
+                      {:else if item.definition.type === 'level'}
+                        <Select
+                          id={key}
+                          bind:value={values[key]}
+                          disabled={busy || item.locked}
+                          aria-describedby={ui.keys[key]?.hint ? `${key}-hint` : undefined}
+                        >
+                          {#each ['trace', 'debug', 'info', 'notice', 'warning', 'error', 'critical'] as level (level)}<option
+                              value={level}>{level}</option
+                            >{/each}
+                        </Select>
+                      {:else}
+                        <div class="flex items-center gap-2">
+                          <Input
+                            id={key}
+                            type={item.definition.sensitive ? 'password' : 'text'}
+                            bind:value={values[key]}
+                            disabled={busy || item.locked}
+                            readonly={item.locked}
+                            inputmode={item.definition.type === 'integer' ? 'numeric' : 'text'}
+                            aria-describedby={ui.keys[key]?.hint ? `${key}-hint` : undefined}
+                            class="min-w-0 flex-1 font-mono"
+                          />
+                          {#if unitOf(key)}<span class="text-muted-foreground shrink-0 text-sm"
+                              >{unitOf(key)}</span
+                            >{/if}
+                        </div>
+                      {/if}
+                      {#if item.locked}
+                        <p class="text-muted-foreground m-0 flex items-start gap-1.5 text-xs">
+                          <span class="mt-0.5 shrink-0"><NavIcon name="locked" size={13} /></span
+                          >{text.locked}. {ui.lockedNote}
+                        </p>
+                      {:else if def !== undefined && values[key] !== def}
+                        <div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            class="-ml-2.5"
+                            disabled={busy}
+                            aria-label={ui.resetFieldLabel.replace('{name}', titleOf(item))}
+                            onclick={() => resetToDefault(item)}>{ui.resetField}</Button
+                          >
+                        </div>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+              {#if pending.length > 0}
+                <div class="border-border flex flex-wrap items-center gap-2 border-t pt-4">
+                  <Button type="submit" disabled={busy || pending.length === 0}>{text.save}</Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy || pending.length === 0}
+                    onclick={() => discard(group)}>{ui.discard}</Button
+                  >
                 </div>
-              {/each}
-            </div>
-          </FormSection>
+              {/if}
+            </FormSection>
+          </form>
         {/if}
       {/each}
       {#if !snapshot.items.length}
@@ -278,7 +415,7 @@
           </ul>
         </details>
       {/if}
-    </form>
-    <SaveBar dirty={dirty > 0} {busy} form="settings-form" ondiscard={discard} status={notice} />
+    </div>
+    {#if notice}<Banner tone="info">{notice}</Banner>{/if}
   {/if}
 </div>
