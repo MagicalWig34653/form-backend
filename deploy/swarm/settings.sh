@@ -22,6 +22,8 @@
 # Es wird nichts ausgerollt, solange man es nicht im Menü ("Jetzt anwenden") bestätigt; --set/--unset rollen nie aus.
 # shellcheck disable=SC2016  # $ und Backtick stehen absichtlich in einfachen Anführungszeichen
 set -euo pipefail
+# Das Menü bearbeitet nur die Konfiguration: keine Registry-Abfrage für den Image-Tag (die macht update.sh/setup.sh).
+export FORM_TAG_LOOKUP=0
 
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
   echo "settings.sh braucht Bash 4.4 oder neuer (gefunden: ${BASH_VERSION}). macOS liefert Bash 3.2; auf dem Server (Linux) ist Bash 5 üblich." >&2

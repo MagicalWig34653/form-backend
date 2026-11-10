@@ -499,6 +499,39 @@ initialize() {
     ask_optional FORM_PUBLISH_BIND "$(field_label FORM_PUBLISH_BIND)"
   fi
   finalize_config
+  [[ "$ACTION" != update && "$ACTION" != setup ]] || resolve_newest_tag
+}
+# Neuestes Image automatisch wählen (wie weather/update.sh): Der Tag `latest` bzw. ein früher gespeicherter Commit-Tag wird durch den
+# Commit-Tag (40 Hexzeichen) ersetzt, dessen Digest dem von `latest` entspricht; gespeichert wird dieser Tag in FORM_IMAGE_TAG.
+# Nicht bei --tag/--image, nicht bei FORM_IMAGE/FORM_IMAGE_TAG aus der Umgebung, nicht bei eigenem Tag. Schlägt die Abfrage fehl
+# (offline, privates Paket), bleibt der Tag und der Lauf zieht trotzdem das neueste `latest`. FORM_TAG_LOOKUP=0 schaltet sie ab.
+resolve_newest_tag() {
+  local key repo token accept digest current t d n=0 tags
+  [[ "${FORM_TAG_LOOKUP:-1}" != 0 && -z "$TAG_ARG" && -z "$IMAGE_ARG" && "${EXPLICIT_IMAGE:-0}" == 0 ]] || return 0
+  for key in "${ENV_KEYS[@]}"; do [[ "$key" != FORM_IMAGE_TAG ]] || return 0; done
+  [[ "$FORM_IMAGE_TAG" == latest || "$FORM_IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || return 0
+  [[ "$FORM_IMAGE_REPOSITORY" == ghcr.io/* && -z "$SAVED_FORM_IMAGE" ]] || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  repo=${FORM_IMAGE_REPOSITORY#ghcr.io/}
+  accept='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+  token=$(curl -fsS --connect-timeout 5 --max-time 15 "https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" 2>/dev/null | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p') || true
+  digest_of() { curl -fsSI --connect-timeout 5 --max-time 15 -H "Authorization: Bearer $token" -H "Accept: $accept" "https://ghcr.io/v2/${repo}/manifests/$1" 2>/dev/null | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p' | head -n 1; }
+  if [[ -z "$token" ]] || ! digest=$(digest_of latest) || [[ -z "$digest" ]]; then
+    say "Hinweis: Registry nicht abfragbar; es bleibt bei dem Tag $FORM_IMAGE_TAG (das neueste Image dazu wird gezogen)."; return 0
+  fi
+  current=$FORM_IMAGE_TAG
+  # Kandidaten: die letzten Commits des Repositories (neueste zuerst, GitHub-API). Meist trifft schon der erste oder zweite.
+  tags=$(curl -fsS --connect-timeout 5 --max-time 20 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${repo}/commits?per_page=30" 2>/dev/null | grep -E '^ {4}"sha": *"[0-9a-f]{40}"' | grep -o '[0-9a-f]\{40\}') || true
+  for t in $tags; do
+    n=$((n + 1)); [[ "$n" -le 30 ]] || break
+    d=$(digest_of "$t" || true)
+    if [[ -n "$d" && "$d" == "$digest" ]]; then
+      FORM_IMAGE_TAG=$t; FORM_IMAGE="${FORM_IMAGE_REPOSITORY}:${t}"
+      if [[ "$t" == "$current" ]]; then say "Image-Tag unverändert (bereits aktuell): ${t:0:12}"; else say "Neuester Image-Tag: ${t:0:12} (vorher ${current:0:12}), wird in FORM_IMAGE_TAG gespeichert."; fi
+      return 0
+    fi
+  done
+  say "Hinweis: kein Commit-Tag zum Digest von latest gefunden; es bleibt bei dem Tag $FORM_IMAGE_TAG."
 }
 # Abgeleitete Werte, Quellen und Validierung; auch aus dem Setup-Menü (Unterschale) für Prüfung/Trockenlauf genutzt.
 finalize_config() {
