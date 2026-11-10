@@ -1,21 +1,19 @@
 import { onMount } from 'svelte';
 import { router } from '$lib/router.svelte';
 import { matchRoute } from '$lib/routes';
+import { areaOf } from '$lib/area';
 import { session } from '$lib/session.svelte';
 import { accountItem, buildNav } from './nav';
-import { formContext } from '$lib/formContext.svelte';
 import { shellState } from './shell-state.svelte';
 
 /** Reactive navigation model for the current route; call during component initialisation. */
 export function useNav() {
   onMount(() => void shellState.loadOpsAccess(session.me?.id ?? 'anonymous'));
   const route = $derived(matchRoute(router.path));
-  // Customer in focus: the route's, else the last one used, else the only one. With several customers and
-  // none chosen the form entries lead to the customer list (see nav.ts needPath).
+  const area = $derived(areaOf(route));
+  // Customer in focus: the area's, else the only one of the session (never a remembered one).
   const tenant = $derived.by(() => {
-    if ('tenant' in route) return route.tenant;
-    const last = formContext.last?.tenant;
-    if (last && session.tenants.some((x) => x.id === last)) return last;
+    if (area.kind !== 'all') return area.tenant;
     return session.tenants.length === 1 ? session.tenants[0]?.id : undefined;
   });
   const manageTenant = $derived(
@@ -26,16 +24,17 @@ export function useNav() {
   const groups = $derived(
     buildNav({
       route,
-      tenant,
       manageTenant,
       systemAdministrator: session.me?.systemAdministrator === true,
       opsVisible: shellState.opsVisible,
-      lastForm: formContext.last,
     }),
   );
   return {
     get route() {
       return route;
+    },
+    get area() {
+      return area;
     },
     get tenant() {
       return tenant;

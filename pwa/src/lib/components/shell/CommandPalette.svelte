@@ -4,7 +4,7 @@
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
   import type { FormListItem } from '$lib/api/admin';
-  import { formPath, tenantPath } from '$lib/routes';
+  import { formPath, OVERVIEW_PATH, tenantPath } from '$lib/routes';
   import { router } from '$lib/router.svelte';
   import { session } from '$lib/session.svelte';
   import { theme } from '$lib/theme.svelte';
@@ -87,6 +87,15 @@
         href: formPath(tenant as string, form.id, 'entries'),
       });
     }
+    list.push({
+      id: 'area-all',
+      group: 'customers',
+      label: t.area.paletteAll,
+      hint: t.area.label,
+      icon: 'dashboard',
+      keywords: 'bereich gesamt alle dashboard',
+      href: OVERVIEW_PATH,
+    });
     for (const customer of session.tenants)
       list.push({
         id: `customer-${customer.id}`,

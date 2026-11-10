@@ -67,7 +67,7 @@
 </script>
 
 <AuthShell title={t.setup.title} description={t.setup.description} intro={t.shell.setupIntro}>
-  <div class="min-h-6">
+  <div class="empty:hidden">
     {#if message}
       <p
         role="alert"

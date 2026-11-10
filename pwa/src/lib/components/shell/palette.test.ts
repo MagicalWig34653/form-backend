@@ -42,7 +42,6 @@ it('arrow stepping wraps and handles empty lists', () => {
 
 const ctx = (route: Route) => ({
   route,
-  tenant: 'tenant' in route ? route.tenant : undefined,
   manageTenant: undefined,
   systemAdministrator: false,
   opsVisible: false,
@@ -65,34 +64,47 @@ it('nav model groups pages and only offers rights-based entries when allowed', (
   expect(fullIds).toEqual(expect.arrayContaining(['ops', 'connections', 'members']));
 });
 
-it('entries link follows the current form, otherwise explains itself', () => {
-  const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
-  const form = 'bbbbbbbb-1111-4111-8111-111111111111';
+const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
+const form = 'bbbbbbbb-1111-4111-8111-111111111111';
+const find = (nav: ReturnType<typeof buildNav>, id: string) =>
+  nav[0]?.items.find((i) => i.id === id);
+
+it('Einsendungen and Statistik follow the area: form, customer, overall', () => {
   const onForm = buildNav(ctx({ name: 'form', tenant, form, tab: 'overview' }));
-  const entries = onForm[0]?.items.find((i) => i.id === 'entries');
-  expect(entries?.href).toBe(`/t/${tenant}/f/${form}/entries`);
-  expect(entries?.hint).toBeUndefined();
-  const off = buildNav(ctx({ name: 'forms', tenant }))[0]?.items.find((i) => i.id === 'entries');
-  expect(off?.hint).toBe('Wählen Sie zuerst ein Formular.');
+  expect(find(onForm, 'entries')?.href).toBe(`/t/${tenant}/f/${form}/entries`);
+  expect(find(onForm, 'statistics')?.href).toBe(`/t/${tenant}/f/${form}#statistics`);
+  expect(find(onForm, 'forms')?.href).toBe(`/t/${tenant}`);
+  const onTenant = buildNav(ctx({ name: 'forms', tenant }));
+  expect(find(onTenant, 'entries')?.href).toBe(`/t/${tenant}#recent-entries`);
+  expect(find(onTenant, 'statistics')?.href).toBe(`/t/${tenant}#statistics`);
+  const members = buildNav(ctx({ name: 'members', tenant }));
+  expect(find(members, 'entries')?.href).toBe(`/t/${tenant}#recent-entries`);
+  for (const route of [{ name: 'overview' }, { name: 'tenants' }, { name: 'settings' }] as const) {
+    const all = buildNav(ctx(route));
+    expect(find(all, 'entries')?.href).toBe('/overview#recent-entries');
+    expect(find(all, 'statistics')?.href).toBe('/overview#statistics');
+    expect(find(all, 'dashboard')?.href).toBe('/overview');
+    expect(find(all, 'forms')).toBeUndefined();
+    expect(find(all, 'customers')?.href).toBe('/t');
+  }
+  expect(find(onTenant, 'dashboard')).toBeUndefined();
 });
 
-it('no entry is dead: without a form or customer it leads to the list that explains the choice', () => {
-  const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
-  const form = 'bbbbbbbb-1111-4111-8111-111111111111';
-  const find = (nav: ReturnType<typeof buildNav>, id: string) =>
-    nav[0]?.items.find((i) => i.id === id);
-  const noForm = buildNav(ctx({ name: 'forms', tenant }));
-  expect(find(noForm, 'forms')?.href).toBe(`/t/${tenant}`);
-  expect(find(noForm, 'entries')?.href).toBe(`/t/${tenant}?need=entries`);
-  expect(find(noForm, 'statistics')?.href).toBe(`/t/${tenant}?need=statistics`);
-  const remembered = buildNav({ ...ctx({ name: 'forms', tenant }), lastForm: { tenant, form } });
-  expect(find(remembered, 'entries')?.href).toBe(`/t/${tenant}/f/${form}/entries`);
-  const none = buildNav(ctx({ name: 'tenants' }));
-  expect(find(none, 'forms')?.href).toBe('/t?need=customer');
-  expect(find(none, 'entries')?.href).toBe('/t?need=customer');
-  expect(find(none, 'statistics')?.href).toBe('/t?need=customer');
-  expect(find(none, 'customers')?.href).toBe('/t');
-  for (const item of none.flatMap((g) => g.items)) expect(item).not.toHaveProperty('disabled');
+it('no entry is dead or disabled and none carries a need hint', () => {
+  for (const route of [
+    { name: 'tenants' },
+    { name: 'overview' },
+    { name: 'forms', tenant },
+    { name: 'form', tenant, form, tab: 'entries' },
+  ] as Route[])
+    for (const item of buildNav(ctx(route)).flatMap((g) => g.items)) {
+      expect(item).not.toHaveProperty('disabled');
+      expect(item.href).not.toContain('need=');
+    }
+  const onEntries = buildNav(ctx({ name: 'form', tenant, form, tab: 'entries' }));
+  expect(find(onEntries, 'entries')?.active).toBe(true);
+  expect(find(onEntries, 'forms')?.active).toBe(false);
+  expect(find(buildNav(ctx({ name: 'overview' })), 'dashboard')?.active).toBe(true);
 });
 
 it('breadcrumbs end on the current page', () => {
@@ -101,4 +113,5 @@ it('breadcrumbs end on the current page', () => {
   expect(trail.map((c) => c.label)).toEqual(['Kunde A', 'Formulare', 'Formular', 'Einsendungen']);
   expect(trail.at(-1)?.href).toBeUndefined();
   expect(crumbsFor({ name: 'notFound' }, tenants, [])).toEqual([]);
+  expect(crumbsFor({ name: 'overview' }, tenants, []).map((c) => c.label)).toEqual(['Dashboard']);
 });

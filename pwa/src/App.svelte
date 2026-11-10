@@ -14,7 +14,7 @@
     import.meta.env.VITE_DOCS_URL ?? 'https://magicalwig34653.github.io/form-backend/';
 
   $effect(() => {
-    if (router.path === '/') router.navigate('/t', true);
+    if (router.path === '/') router.navigate('/overview', true);
   });
 
   // Move focus to the page heading after client-side navigation (screen readers).

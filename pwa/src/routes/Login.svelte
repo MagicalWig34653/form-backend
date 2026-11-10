@@ -89,7 +89,7 @@
     continueLogin();
   }
   function continueLogin(): void {
-    const next = safeNext(new URLSearchParams(window.location.search).get('next')) ?? '/t';
+    const next = safeNext(new URLSearchParams(window.location.search).get('next')) ?? '/overview';
     if (next.startsWith('/oauth/authorize?')) window.location.assign(next);
     else router.navigate(next, true);
   }
@@ -104,7 +104,9 @@
     return e.message;
   }
 
+  let autoTried = false;
   async function load(): Promise<void> {
+    const params = new URLSearchParams(window.location.search);
     step = 'loading';
     message = '';
     if (new URLSearchParams(window.location.search).get('fresh') === '1') {
@@ -119,6 +121,11 @@
     }
     totpAllowed = r.data.totpAllowed ?? false;
     apply(r.data.state);
+    // Confirmation for a sensitive action: ask for the passkey right away (once); on failure the button stays.
+    if ((step as Step) === 'passkey' && !autoTried && params.get('reauth') === '1') {
+      autoTried = true;
+      void startPasskey();
+    }
   }
 
   async function startPasskey(): Promise<void> {
@@ -245,7 +252,7 @@
   {/if}
 
   {#if totpAllowed && (step === 'passkey' || step === 'password')}
-    <details class="bg-muted/60 rounded-md px-4 py-3">
+    <details class="rounded-lg border px-4 py-3">
       <summary class="min-h-6 cursor-pointer text-sm font-medium">{c.login}</summary>
       <form onsubmit={(e) => void submitTotp(e)} class="mt-3 flex flex-col gap-3">
         {#if step === 'passkey'}

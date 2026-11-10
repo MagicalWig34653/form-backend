@@ -358,7 +358,7 @@
       class="bg-card ring-1 ring-foreground/10 rounded-xl flex min-w-0 flex-col gap-3 p-5"
       aria-label={ui.hintsTitle}
     >
-      <h2 class="text-[17px] leading-[26px] font-semibold">{ui.hintsTitle}</h2>
+      <h2 class="text-xl leading-snug font-semibold tracking-tight">{ui.hintsTitle}</h2>
       <p class="text-muted-foreground text-sm">{ui.hintNets}</p>
       <a
         href="/settings"
@@ -455,7 +455,7 @@
             />
           </Row>
         </div>
-        <details class="bg-muted/60 rounded-md px-4 py-3 sm:col-span-2">
+        <details class="rounded-lg border px-4 py-3 sm:col-span-2">
           <summary class="min-h-6 cursor-pointer text-sm font-medium">{ui.advanced}</summary>
           <div class="mt-3">
             <Row
@@ -487,7 +487,7 @@
     </FormSection>
   </form>
   <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-3">
-    <summary class="min-h-6 cursor-pointer text-[17px] font-semibold"
+    <summary class="min-h-6 cursor-pointer text-lg font-semibold"
       ><h2 class="inline">Abbruch und Rückkehrplan</h2></summary
     >
     <div class="mt-3 flex flex-col gap-3 text-sm">
@@ -555,7 +555,7 @@
     </div>
   </Panel>
   <section class="flex flex-col gap-3">
-    <h2 class="text-[17px] leading-[26px] font-semibold">Fortschritt</h2>
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">Fortschritt</h2>
     <p class="text-muted-foreground text-sm">
       Letzte Aktualisierung: {updated || 'Wird geladen …'}
     </p>
@@ -592,7 +592,7 @@
         {#if job.error}<p role="alert" class="text-red-700 dark:text-destructive text-sm">
             Phase {job.phase}: {job.error}. Zugang und Schema prüfen; denselben Lauf fortsetzen.
           </p>{/if}
-        <details class="bg-muted/60 rounded-md px-4 py-2">
+        <details class="rounded-lg border px-4 py-2">
           <summary class="min-h-6 cursor-pointer text-sm font-medium"
             >Probleme ansehen und bestätigte Zähler</summary
           >

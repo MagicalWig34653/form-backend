@@ -70,7 +70,6 @@
     formContext.tenant = tenant;
     formContext.form = form;
     formContext.name = editor.detail?.name ?? '';
-    formContext.last = { tenant, form };
     return () => {
       formContext.tenant = formContext.form = formContext.name = '';
     };
@@ -226,7 +225,7 @@
         >{/if}
     {/snippet}
   </PageHeader>
-  <AccessStatus />
+  <AccessStatus showLocked={tab === 'entries'} />
   <nav aria-label={t.admin.form.tabsLabel} class="min-w-0">
     <div class="flex flex-wrap gap-1">
       {#each navigation as item (item.target)}

@@ -44,8 +44,13 @@ export function aggregate(
   return list.length === 0 ? null : sumSeries(list, count);
 }
 
+/** A form of the list, optionally with its customer (overall dashboard). */
+export type ScopedForm = FormListItem & { tenant?: string };
+
 export interface AttentionItem {
   id: string;
+  /** Customer of the form when it differs from the page's customer. */
+  tenant?: string;
   tone: 'warn' | 'info';
   kind: 'locked' | 'noMail' | 'unpublished' | 'inactive' | 'quiet';
   formId?: string;
@@ -57,7 +62,7 @@ export interface AttentionItem {
  * and not a single visit or submission in the whole period.
  */
 export function deriveAttention(
-  forms: FormListItem[],
+  forms: ScopedForm[],
   snapshots: Map<string, FormSnapshot>,
   locked: boolean,
 ): AttentionItem[] {
@@ -65,7 +70,7 @@ export function deriveAttention(
   if (locked) out.push({ id: 'locked', tone: 'warn', kind: 'locked' });
   for (const f of forms) {
     const snap = snapshots.get(f.id);
-    const base = { formId: f.id, formName: f.name };
+    const base = { formId: f.id, formName: f.name, ...(f.tenant ? { tenant: f.tenant } : {}) };
     if (!f.currentReleaseId)
       out.push({ id: `unpublished-${f.id}`, tone: 'info', kind: 'unpublished', ...base });
     else if (!f.active)

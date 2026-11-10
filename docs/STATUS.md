@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## PWA: Bereichsauswahl (10.11.2026, Worktree-Branch `worktree-agent-a9782b02214d315f9`, lokal committet, ungemergt)
+
+- Neu oben in der Seitenleiste: Auswahlfeld „Bereich“ (Gesamt, je Kunde Gruppe mit Kunde und Formularen; Combobox/Listbox, Tastatur, Escape gibt Fokus zurück, Suchfeld ab 8 Einträgen). Der Bereich ergibt sich nur aus der Route (`lib/area.ts`, `areaOf`); Auswahl navigiert. Neue Route `/overview` (Gesamt-Dashboard, auch Startseite nach Anmeldung), `/t` bleibt die Kundenliste („Kunden“).
+- „Einsendungen“/„Statistik“ folgen dem Bereich (Gesamt: `/overview#recent-entries|statistics`, Kunde: `/t/:id#…`, Formular wie bisher); „zuletzt geöffnet“-Logik und `?need=`-Hinweise der Seitenleiste entfallen. Gesamt-Dashboard: `OverviewLoader.loadMany` (MAX_PARALLEL gilt kundenübergreifend), `TenantOverview` ohne Einrichtungsfortschritt, Fehler je Kunde/Formular einzeln, keine Nullen für fehlende Daten. Formularlisten: `lib/formLists.svelte.ts` (lazy, 60 s Cache, 4 parallel).
+- Geprüft: svelte-check 0, eslint, prettier, vitest (226), Playwright komplett grün (u. a. neue `e2e/area.spec.ts`, angepasste `e2e/sidebar.spec.ts`). Offen: visuelle Abnahme; `/overview` lädt bei sehr vielen Formularen je Formular 3 Anfragen (nur erste 100 Formulare je Kunde).
+
 ## PWA-Darstellung nach thermoctl-Design (08.11.2026, Worktree-Branch `worktree-agent-a5d896957ca92f3cf`, ungemergt)
 
 - Darstellungsschicht (Tokens, Stile, UI-Bausteine, Shell, Seitenköpfe, Karten, Dashboard) von Grund auf nach thermoctl neu gebaut; Logik, API, Router, Stores, Krypto, Berechtigungen, i18n und `data-testid` unverändert. Akzent: 20 Farben mit berechnetem Kontrast, Glow in 6 Stufen (Standard aus), Darstellung-Dialog. Menüeinträge sind nie tot (Hinweis `?need=` + Fokus auf die Liste), Leerzustand „Ersten Kunden anlegen“, Systemadministrator sichtbar.

@@ -6,11 +6,8 @@ export const formContext = $state<{
   tenant: string;
   form: string;
   name: string;
-  /** Last form opened in this session (not cleared on leave); the sidebar uses it for "Einsendungen". */
-  last: { tenant: string; form: string } | undefined;
 }>({
   tenant: '',
   form: '',
   name: '',
-  last: undefined,
 });

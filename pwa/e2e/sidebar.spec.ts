@@ -59,7 +59,6 @@ async function mockApi(page: Page, tenants: boolean | State = true) {
 // Every sidebar entry must lead to its route and show its page heading, from several start pages and both layouts.
 const entries: [string, RegExp][] = [
   ['Kunden', /\/t$/],
-  ['Formulare', new RegExp(`/t/${T}$`)],
   ['Tokens / MCP', /\/api-tokens$/],
   ['Einstellungen', /\/settings$/],
   ['Einrichtung', /\/installation$/],
@@ -93,68 +92,62 @@ for (const [name, viewport] of [
   });
 }
 
-// No entry is dead: in every state each one navigates and tells the user what to choose.
-const needEntries = ['Formulare', 'Einsendungen', 'Statistik'] as const;
-
-test('no customer, administrator: every form entry leads to the customer list with a hint and a create button', async ({
+// Einsendungen and Statistik follow the area (customer/form chosen in the area menu); nothing is dead.
+test('overall area: Einsendungen and Statistik stay on the overall dashboard, no form entry', async ({
   page,
 }) => {
   await mockApi(page, 'none');
   await page.goto('/settings');
   const aside = page.locator('aside');
-  for (const name of needEntries) {
+  await expect(aside.getByRole('link', { name: 'Formulare', exact: true })).toHaveCount(0);
+  for (const [name, hash] of [
+    ['Einsendungen', 'recent-entries'],
+    ['Statistik', 'statistics'],
+  ] as const) {
     await aside.getByRole('link', { name, exact: true }).click();
-    await expect(page).toHaveURL(/\/t\?need=customer$/);
-    await expect(page.getByTestId('need-hint')).toBeVisible();
-    await expect(page.getByTestId('first-customer')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Kunde anlegen' }).first()).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/overview#${hash}$`));
+    await expect(page.getByRole('heading', { name: 'Gesamtübersicht' })).toBeVisible();
     await page.goto('/settings');
   }
   await expect(aside.locator('[aria-disabled]')).toHaveCount(0);
+  await aside.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await expect(page).toHaveURL(/\/overview$/);
+  await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
+  await expect(page).toHaveURL(/\/t$/);
+  await expect(page.getByTestId('first-customer')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Kunde anlegen' }).first()).toBeVisible();
 });
 
-test('one customer without forms: entries open the form list, Einsendungen and Statistik explain what to pick', async ({
+test('customer area: Formulare, Einsendungen and Statistik lead to the customer overview', async ({
   page,
 }) => {
   await mockApi(page, 'one-no-forms');
-  await page.goto('/settings');
+  await page.goto(`/t/${T}/members`);
   const aside = page.locator('aside');
   await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}$`));
   await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=entries$`));
-  await expect(page.getByTestId('need-hint')).toContainText('Formular');
+  await expect(page).toHaveURL(new RegExp(`/t/${T}#recent-entries$`));
   await aside.getByRole('link', { name: 'Statistik', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=statistics$`));
-  await expect(page.getByTestId('need-hint')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/t/${T}#statistics$`));
 });
 
-test('customer with a form: Einsendungen and Statistik open the last form after leaving it', async ({
+test('form area: Formulare leads back to the customer, Einsendungen and Statistik stay in the form', async ({
   page,
 }) => {
   await mockApi(page, 'one-with-forms');
-  await page.goto('/t');
-  const aside = page.locator('aside');
-  await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=entries$`));
   await page.goto(`/t/${T}/f/${F}`);
-  await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
+  const aside = page.locator('aside');
   await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}/f/${F}/entries$`));
-  await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
   await aside.getByRole('link', { name: 'Statistik', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}/f/${F}#statistics$`));
-});
-
-test('several customers and none chosen: entries lead to the customer list with a hint', async ({
-  page,
-}) => {
-  await mockApi(page, 'two');
-  await page.goto('/settings');
-  const aside = page.locator('aside');
-  await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
-  await expect(page).toHaveURL(/\/t\?need=customer$/);
-  await expect(page.getByTestId('need-hint')).toBeVisible();
+  // Leaving the form does not keep it as the area: the overall menu entries follow the route.
+  await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
+  await expect(aside.getByRole('link', { name: 'Einsendungen', exact: true })).toHaveAttribute(
+    'href',
+    '/overview#recent-entries',
+  );
 });
 
 test('breadcrumb links and the command palette also lead somewhere', async ({ page }) => {
@@ -171,8 +164,7 @@ test('breadcrumb links and the command palette also lead somewhere', async ({ pa
     .getByRole('button', { name: /Suchen/ })
     .first()
     .click();
-  await page.getByRole('dialog').getByRole('combobox').fill('Statistik');
+  await page.getByRole('dialog').getByRole('combobox').fill('Gesamt');
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(new RegExp(`/t/${T}\\?need=statistics$`));
-  await expect(page.getByTestId('need-hint')).toBeVisible();
+  await expect(page).toHaveURL('/overview');
 });

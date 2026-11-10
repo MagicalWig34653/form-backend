@@ -252,7 +252,36 @@ export const de = {
     flowPending:
       'Der Ablauf-Editor folgt später. Hier können noch keine Abläufe bearbeitet werden.',
   },
+  area: {
+    label: 'Bereich',
+    all: 'Gesamt',
+    allHint: 'Alle Kunden und Formulare',
+    customer: 'Kunde',
+    form: 'Formular',
+    listLabel: 'Bereiche',
+    search: 'Bereich suchen',
+    noMatch: 'Kein Bereich gefunden.',
+    formsLoading: 'Formulare werden geladen …',
+    formsFailed: 'Formulare dieses Kunden konnten nicht geladen werden.',
+    formsMore: 'Es werden nur die ersten Formulare angezeigt.',
+    retry: 'Erneut versuchen',
+    paletteAll: 'Gesamt (alle Kunden und Formulare)',
+    dashboard: 'Dashboard',
+    pageTitle: 'Gesamtübersicht',
+    pageIntro: 'Alle Kunden und Formulare, die Sie sehen dürfen. Nur Kennzahlen und Metadaten.',
+    problems: 'Nicht vollständig geladen',
+    problemList: 'Formulare von {customer} konnten nicht geladen werden.',
+    problemForm: '{form}: Kennzahlen oder Einsendungen nicht verfügbar.',
+    noCustomers: 'Es gibt noch keinen Kunden.',
+    noForms: 'Es gibt noch keine Formulare.',
+    scopeCustomers: '{customers} Kunden, {forms} Formulare',
+  },
   shell: {
+    keyLocked: 'Schlüssel gesperrt',
+    keyUnlocked: 'Schlüssel entsperrt',
+    keyLockedHint:
+      'Einsendungen sind in diesem Browser verschlüsselt. Öffnen Sie Ihr Konto, um den Zugriff freizugeben.',
+    keyUnlockedHint: 'Einsendungen können in diesem Browser gelesen werden.',
     workspace: 'Arbeitsbereich',
     navigation: 'Hauptnavigation',
     menu: 'Navigation öffnen',
@@ -542,6 +571,9 @@ export const de = {
       username: 'Benutzername',
       password: 'Passwort (mind. 12 Zeichen)',
       setPassword: 'Passwort für den Zugang mit Zweitfaktor setzen',
+      passwordTitle: 'Passwort',
+      passwordIntro:
+        'Ein Passwort dient nur als zusätzlicher Faktor neben dem Passkey, nie als alleinige Anmeldung.',
       savePassword: 'Passwort speichern',
       passwordSaved: 'Passwort gespeichert. Andere Sitzungen wurden beendet.',
       createBtn: 'Konto anlegen',
@@ -973,7 +1005,7 @@ export const de = {
     setupFailed:
       'Der Zugriff auf Einsendungen konnte nicht eingerichtet werden. Bitte erneut versuchen.',
     retry:
-      'Der Zugriff auf ältere Einsendungen wird später erneut aktualisiert. Bei wiederholten Fehlern bitte neu anmelden oder die Administration kontaktieren.',
+      'Der Zugriff auf ältere Einsendungen wird später erneut aktualisiert. Bei wiederholten Fehlern wenden Sie sich bitte an die Administration.',
     title: 'Wiederherstellungscode sichern',
     warning:
       'Diesen Code sicher außerhalb dieses Browsers aufbewahren. Er wird nur jetzt angezeigt und ermöglicht die Wiederherstellung des Zugriffs auf Einsendungen dieses Kunden.',
@@ -981,7 +1013,7 @@ export const de = {
     confirm: 'Code gesichert',
     wrong: 'Die Eingabe stimmt nicht mit dem angezeigten Code überein.',
     locked:
-      'Der Zugriff auf Einsendungen ist gesperrt. Bitte neu anmelden. Unterstützt dieses Gerät die automatische Freigabe nicht, öffnen Sie Konto → Sicherheit → Erweitert.',
+      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben. Unterstützt dieses Gerät das nicht, öffnen Sie Konto → Sicherheit → Erweitert.',
     updating: 'Zugriff auf Einsendungen wird aktualisiert …',
     security: 'Sicherheit',
     advanced: 'Erweitert: Zugriff auf Einsendungen',

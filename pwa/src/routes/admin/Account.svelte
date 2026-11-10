@@ -158,9 +158,9 @@
   {/if}
   <Panel title={t.access.security}>
     <div class="flex flex-col gap-4">
-      <AccessStatus />
+      <AccessStatus showLocked />
       <RecoveryStep security />
-      <details class="bg-muted/60 rounded-md px-4 py-3">
+      <details class="rounded-lg border px-4 py-3">
         <summary class="min-h-6 cursor-pointer text-sm font-medium">{t.access.advanced}</summary>
         <div class="mt-3 flex flex-col gap-4">
           {#each session.tenants as tenant (tenant.id)}
@@ -270,18 +270,18 @@
       </ul>
     {/if}
   </Panel>
-  <Panel title={a.setPassword}>
+  <Panel title={a.passwordTitle} description={a.passwordIntro}>
+    {#snippet actions()}
+      <Button
+        type="button"
+        variant="outline"
+        aria-expanded={showPassword}
+        onclick={() => {
+          showPassword = !showPassword;
+        }}>{a.setPassword}</Button
+      >
+    {/snippet}
     <div class="flex flex-col gap-4">
-      <div>
-        <Button
-          type="button"
-          variant="outline"
-          aria-expanded={showPassword}
-          onclick={() => {
-            showPassword = !showPassword;
-          }}>{a.setPassword}</Button
-        >
-      </div>
       {#if showPassword}
         <form onsubmit={(e) => void savePassword(e)} class="flex max-w-xl flex-col gap-3">
           <Row id="own-password" label={a.password}>

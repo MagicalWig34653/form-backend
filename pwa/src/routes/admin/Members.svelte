@@ -135,7 +135,7 @@
     </ul>
   {/if}
   {#if session.me?.systemAdministrator}
-    <h2 class="text-[17px] font-semibold">{c.accounts}</h2>
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">{c.accounts}</h2>
     <ul class="flex flex-col gap-3">
       {#each accounts as x (x.id)}
         <li class="bg-card ring-1 ring-foreground/10 rounded-xl px-5 py-4">

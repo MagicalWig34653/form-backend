@@ -1,4 +1,6 @@
 <script lang="ts">
+  /** The "locked" notice is shown only where it matters (account page); elsewhere the top bar chip says it. */
+  let { showLocked = false }: { showLocked?: boolean } = $props();
   import { t } from '$lib/i18n';
   import { keyring } from '$lib/crypto/keyring.svelte';
   import { accessAutomation } from '$lib/crypto/automation.svelte';
@@ -25,7 +27,7 @@
     aria-label={t.access.title}
     class="bg-amber-500/10 ring-1 ring-amber-500/50 rounded-xl space-y-3 p-5"
   >
-    <h2 class="text-[17px] font-semibold">{t.access.title}</h2>
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">{t.access.title}</h2>
     <p>{t.access.warning}</p>
     <p
       class="bg-muted/60 rounded-md px-3 py-2 font-mono break-all select-all"
@@ -46,7 +48,7 @@
         {t.access.wrong}
       </p>{/if}
   </section>
-{:else if !keyring.unlocked}
+{:else if showLocked && !keyring.unlocked}
   <Banner tone="warn">{t.access.locked}</Banner>
 {/if}
 {#if accessAutomation.busy}

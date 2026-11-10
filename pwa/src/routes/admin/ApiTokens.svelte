@@ -235,7 +235,7 @@
   {/if}
 
   <section class="flex flex-col gap-3">
-    <h2 class="text-[17px] font-semibold">{oauthText.title}</h2>
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">{oauthText.title}</h2>
     {#if grants.length}
       <ul class="flex flex-col gap-3">
         {#each grants as grant (grant.id)}

@@ -6,7 +6,7 @@
 
 <h3
   data-slot="card-title"
-  class={cn('text-[17px] leading-snug font-semibold', className)}
+  class={cn('text-xl leading-snug font-semibold tracking-tight', className)}
   {...rest}
 >
   {@render children?.()}

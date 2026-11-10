@@ -9,7 +9,7 @@
 </script>
 
 <!-- The message carries its own live role; a wrapper with aria-live would announce twice. -->
-<div class="min-h-6">
+<div class="empty:hidden">
   {#if message}
     <p
       role={kind === 'error' ? 'alert' : 'status'}

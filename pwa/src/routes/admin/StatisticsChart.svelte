@@ -81,7 +81,7 @@
 
 <header class="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
   <div>
-    <h2 class="text-[17px] leading-[26px] font-semibold tracking-tight">
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">
       {ui.title}
     </h2>
     <p class="text-muted-foreground text-sm leading-[18px]">

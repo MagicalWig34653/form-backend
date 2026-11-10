@@ -1,6 +1,5 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import type { FormListItem } from '$lib/api/admin';
   import type { OverviewLoader } from '$lib/stats/loader.svelte';
   import {
     aggregate,
@@ -8,6 +7,7 @@
     deriveAttention,
     emptySnapshot,
     setupSteps,
+    type ScopedForm,
   } from '$lib/stats/overview';
   import {
     conversion,
@@ -24,16 +24,32 @@
   import RecentEntries, { type RecentRow } from './RecentEntries.svelte';
 
   interface Props {
-    tenant: string;
-    forms: FormListItem[];
+    /** Customer of all forms; omitted on the overall dashboard where each form carries its own. */
+    tenant?: string;
+    forms: ScopedForm[];
     loader: OverviewLoader;
     /** Access to submissions is locked in this browser. */
     locked?: boolean;
     /** More forms exist than are loaded. */
     moreForms?: boolean;
     onreload?: () => void;
+    /** Customer-wide setup progress; not meaningful over several customers. */
+    showSetup?: boolean;
+    recentLimit?: number;
+    /** Target of "Alle ansehen" instead of the single form's entries. */
+    allHref?: string;
   }
-  let { tenant, forms, loader, locked = false, moreForms = false, onreload }: Props = $props();
+  let {
+    tenant = '',
+    forms,
+    loader,
+    locked = false,
+    moreForms = false,
+    onreload,
+    showSetup = true,
+    recentLimit = 6,
+    allHref,
+  }: Props = $props();
 
   const ui = t.overview;
   const snaps = $derived(forms.map((f) => loader.snapshots.get(f.id) ?? emptySnapshot()));
@@ -117,10 +133,11 @@
     forms
       .flatMap((f) => (loader.snapshots.get(f.id)?.entries ?? []).map((e) => ({ f, e })))
       .sort((a, b) => Date.parse(b.e.receivedAt ?? '') - Date.parse(a.e.receivedAt ?? '') || 0)
-      .slice(0, 6)
+      .slice(0, recentLimit)
       .map(({ f, e }) => ({
         id: e.id,
         formId: f.id,
+        ...(f.tenant ? { tenant: f.tenant } : {}),
         formName: byId.get(f.id)?.name ?? f.name,
         receivedAt: e.receivedAt,
         state: e.state,
@@ -153,7 +170,7 @@
       >{/if}
   </div>
 
-  <div class="tile-grid" data-testid="kpi-grid">
+  <div class="tile-grid scroll-mt-20" data-testid="kpi-grid" id="statistics">
     <div data-w="3">
       <KpiTile
         index={0}
@@ -204,16 +221,18 @@
   </div>
 
   <div class="tile-grid">
-    <div data-w="6">
+    <div data-w={showSetup ? '6' : undefined}>
       <AttentionList
         {tenant}
         items={attention}
         partial={anyLoading || detailState.status === 'error'}
       />
     </div>
-    <div data-w="6">
-      <SetupProgress {tenant} {steps} loading={anyLoading && detailState.status === 'loading'} />
-    </div>
+    {#if showSetup}
+      <div data-w="6">
+        <SetupProgress {tenant} {steps} loading={anyLoading && detailState.status === 'loading'} />
+      </div>
+    {/if}
   </div>
 
   <div>
@@ -221,7 +240,8 @@
       {tenant}
       rows={recent}
       status={recentStatus}
-      allFormId={forms.length === 1 ? forms[0]?.id : undefined}
+      {allHref}
+      allFormId={!allHref && forms.length === 1 ? forms[0]?.id : undefined}
     />
   </div>
 </div>

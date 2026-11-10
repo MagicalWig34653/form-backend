@@ -3,6 +3,8 @@
   import { session } from '$lib/session.svelte';
   import { Button } from '$lib/components/ui/button';
   import Breadcrumb from '$lib/components/admin/Breadcrumb.svelte';
+  import { keyring } from '$lib/crypto/keyring.svelte';
+  import { router } from '$lib/router.svelte';
   import AppearanceMenu from './AppearanceMenu.svelte';
   import NavIcon from './NavIcon.svelte';
   import { crumbsFor } from './nav';
@@ -12,7 +14,7 @@
   const nav = useNav();
   // Wie im thermoctl-Design beginnt der Pfad mit dem Namen der Anwendung.
   const crumbs = $derived([
-    { label: t.app.name, href: '/t' },
+    { label: t.app.name, href: '/overview' },
     ...crumbsFor(
       nav.route,
       session.tenants,
@@ -46,6 +48,19 @@
       aria-label={t.palette.open}
       aria-haspopup="dialog"
       onclick={() => (shellState.paletteOpen = true)}><NavIcon name="search" size={18} /></Button
+    >
+    <a
+      href="/account"
+      onclick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        router.navigate('/account');
+      }}
+      title={keyring.unlocked ? t.shell.keyUnlockedHint : t.shell.keyLockedHint}
+      class={`flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium ${keyring.unlocked ? 'text-muted-foreground' : 'border-amber-500/50 bg-amber-500/10'}`}
+      ><NavIcon name={keyring.unlocked ? 'unlocked' : 'locked'} size={15} /><span
+        class="max-sm:sr-only">{keyring.unlocked ? t.shell.keyUnlocked : t.shell.keyLocked}</span
+      ></a
     >
     <AppearanceMenu />
   </div>

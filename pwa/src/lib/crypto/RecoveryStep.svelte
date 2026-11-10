@@ -67,10 +67,7 @@
   }
 </script>
 
-<section
-  class="bg-muted/60 border-border flex flex-col gap-4 rounded-xl border p-5"
-  aria-label={c.title}
->
+<section class="border-border flex flex-col gap-4 rounded-lg border p-4" aria-label={c.title}>
   <h2 class="text-base font-semibold">{c.title}</h2>
   {#if keyring.recoveryCode}
     <p class="text-sm">{c.save}</p>

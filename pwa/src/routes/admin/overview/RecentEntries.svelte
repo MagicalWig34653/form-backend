@@ -2,6 +2,7 @@
   export interface RecentRow {
     id: string;
     formId: string;
+    tenant?: string;
     formName: string;
     receivedAt: string | null;
     state: string;
@@ -19,15 +20,17 @@
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
 
   interface Props {
-    tenant: string;
+    tenant?: string;
     rows: RecentRow[];
     status: 'loading' | 'ready' | 'unavailable';
     /** Reference time for relative stamps (injectable for tests). */
     now?: number;
     /** Link target for "Alle ansehen" (first form's entries); omitted when unknown. */
     allFormId?: string;
+    /** Link target for "Alle ansehen" when it is not a single form's entries. */
+    allHref?: string;
   }
-  let { tenant, rows, status, now = Date.now(), allFormId }: Props = $props();
+  let { tenant = '', rows, status, now = Date.now(), allFormId, allHref }: Props = $props();
   const ui = t.overview;
   const absolute = (iso: string | null): string => {
     const ms = iso ? Date.parse(iso) : NaN;
@@ -35,17 +38,19 @@
       ? ''
       : new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(ms);
   };
-  const go = (row: RecentRow): void => router.navigate(formPath(tenant, row.formId, 'entries'));
+  const target = (row: RecentRow): string => formPath(row.tenant ?? tenant, row.formId, 'entries');
+  const go = (row: RecentRow): void => router.navigate(target(row));
 </script>
 
 <Panel title={ui.recent} description={ui.recentIntro} id="recent-entries">
   {#snippet actions()}
-    {#if allFormId}<a
+    {#if allFormId || allHref}
+      {@const all = allHref ?? formPath(tenant, allFormId ?? '', 'entries')}<a
         class="text-brand-ink rounded-md px-1 text-sm font-medium underline underline-offset-4"
-        href={formPath(tenant, allFormId, 'entries')}
+        href={all}
         onclick={(e) => {
           e.preventDefault();
-          router.navigate(formPath(tenant, allFormId, 'entries'));
+          router.navigate(all);
         }}>{ui.recentAll}</a
       >{/if}
   {/snippet}
@@ -73,7 +78,7 @@
             {#if row.held}<StatusChip tone="info" label={ui.protectedEntry} />{/if}
             <a
               class="text-brand-ink ml-auto rounded-md px-1 text-sm font-medium underline underline-offset-4"
-              href={formPath(tenant, row.formId, 'entries')}
+              href={target(row)}
               aria-label={ui.openEntry
                 .replace('{form}', row.formName)
                 .replace('{time}', when ?? '–')}

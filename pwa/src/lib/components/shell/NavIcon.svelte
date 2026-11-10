@@ -6,6 +6,7 @@
   import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
   import Building from '@lucide/svelte/icons/building';
   import ChartColumn from '@lucide/svelte/icons/chart-column';
+  import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
@@ -17,7 +18,11 @@
   import Hammer from '@lucide/svelte/icons/hammer';
   import Inbox from '@lucide/svelte/icons/inbox';
   import Info from '@lucide/svelte/icons/info';
+  import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
   import LogOut from '@lucide/svelte/icons/log-out';
+  import KeyRound from '@lucide/svelte/icons/key-round';
+  import Lock from '@lucide/svelte/icons/lock';
+  import LockOpen from '@lucide/svelte/icons/lock-open';
   import Menu from '@lucide/svelte/icons/menu';
   import Palette from '@lucide/svelte/icons/palette';
   import PanelLeft from '@lucide/svelte/icons/panel-left';
@@ -34,6 +39,8 @@
 
   let { name, size = 18 }: { name: string; size?: number } = $props();
   const icons: Record<string, Component<{ size?: number; 'aria-hidden'?: 'true' }>> = {
+    dashboard: LayoutDashboard,
+    updown: ChevronsUpDown,
     customers: Building,
     forms: FileText,
     entries: Inbox,
@@ -64,6 +71,9 @@
     submits: Send,
     abandons: CircleX,
     conversion: Percent,
+    key: KeyRound,
+    locked: Lock,
+    unlocked: LockOpen,
   };
   const Icon = $derived(icons[name] ?? FileText);
 </script>

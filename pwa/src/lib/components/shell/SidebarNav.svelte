@@ -3,6 +3,7 @@
   import NavIcon from './NavIcon.svelte';
   import Logo from './Logo.svelte';
   import HelpDialog from './HelpDialog.svelte';
+  import AreaSelect from './AreaSelect.svelte';
   import { t } from '$lib/i18n';
   import { cn } from '$lib/utils';
   import { session } from '$lib/session.svelte';
@@ -35,10 +36,19 @@
     target.focus();
   }
 
+  // The target page may still be loading: wait briefly for the element, then scroll to it.
+  function scrollToWhenPresent(id: string, tries = 40): void {
+    void tick().then(() => {
+      const el = document.getElementById(id);
+      if (el) setTimeout(() => el.scrollIntoView?.({ block: 'start' }), 50);
+      else if (tries > 0) setTimeout(() => scrollToWhenPresent(id, tries - 1), 50);
+    });
+  }
+
   function navigate(event: MouseEvent, href: string) {
     if (!followLink(event, href)) return;
-    if (href.endsWith('#statistics'))
-      void tick().then(() => document.getElementById('statistics')?.scrollIntoView());
+    const hash = href.split('#')[1];
+    if (hash) scrollToWhenPresent(hash);
     onnavigate();
   }
   const link =
@@ -63,13 +73,14 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <a
-    href="/t"
-    onclick={(e) => navigate(e, '/t')}
+    href="/overview"
+    onclick={(e) => navigate(e, '/overview')}
     class="hover:border-border hover:bg-muted mb-3 flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-2"
   >
     <Logo />
     <strong class="text-[15px] tracking-tight">{t.app.name}</strong>
   </a>
+  <AreaSelect {onnavigate} />
   <button
     type="button"
     onclick={() => {

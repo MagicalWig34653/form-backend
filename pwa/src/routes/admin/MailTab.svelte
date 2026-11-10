@@ -141,7 +141,7 @@
   });
 </script>
 
-<h2 class="text-[17px] font-semibold">{t.formWork.mail}</h2>
+<h2 class="text-xl leading-snug font-semibold tracking-tight">{t.formWork.mail}</h2>
 <p class="text-muted-foreground max-w-prose text-sm">{t.admin.mail.intro}</p>
 
 <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.routeHint}</p>
@@ -423,7 +423,7 @@
   </form>
 </DraftGate>
 
-<h2 class="mt-8 text-[17px] font-semibold">{t.admin.mail.deliveries}</h2>
+<h2 class="mt-8 text-xl leading-snug font-semibold tracking-tight">{t.admin.mail.deliveries}</h2>
 <p class="text-muted-foreground text-sm">{t.formWork.acceptedHint}</p>
 {#if deliveryError}<Notice message={deliveryError} />
   <div>

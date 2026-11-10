@@ -231,26 +231,25 @@
   <div class="flex flex-col gap-4 pt-2">
     <DraftGate {editor}>
       {#if slow}<p role="status">{t.formWork.slow}</p>{/if}
-      <form
-        onsubmit={(event) => void saveTitle(event)}
-        class="border-border flex max-w-xl flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end"
-      >
-        <div class="min-w-0 flex-1">
-          <Row id="form-title" label={t.admin.form.title}
-            ><Input
-              id="form-title"
-              bind:value={titleText}
-              oninput={() => (titleChanged = true)}
-              disabled={editor.saving}
-              required
-              maxlength={190}
-            /></Row
-          >
-        </div>
-        <div>
-          <Button type="submit" variant="outline" disabled={editor.saving || !titleChanged}
-            >{t.admin.form.titleSave}</Button
-          >
+      <form onsubmit={(event) => void saveTitle(event)} class="border-border border-t pt-4">
+        <div class="flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
+          <div class="min-w-0 flex-1">
+            <Row id="form-title" label={t.admin.form.title}
+              ><Input
+                id="form-title"
+                bind:value={titleText}
+                oninput={() => (titleChanged = true)}
+                disabled={editor.saving}
+                required
+                maxlength={190}
+              /></Row
+            >
+          </div>
+          <div>
+            <Button type="submit" variant="outline" disabled={editor.saving || !titleChanged}
+              >{t.admin.form.titleSave}</Button
+            >
+          </div>
         </div>
       </form>
       <p class="text-muted-foreground text-sm">

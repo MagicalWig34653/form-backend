@@ -28,17 +28,24 @@ export class OverviewLoader {
     this.generation++;
   }
 
-  async load(tenant: string, forms: FormListItem[]): Promise<void> {
+  /** One customer. */
+  load(tenant: string, forms: FormListItem[]): Promise<void> {
+    return this.loadMany([{ tenant, forms }]);
+  }
+
+  /** Several customers at once (overall dashboard); the parallelism limit applies to all of them together. */
+  async loadMany(groups: { tenant: string; forms: FormListItem[] }[]): Promise<void> {
     const current = ++this.generation;
+    const all = groups.flatMap((g) => g.forms.map((f) => ({ tenant: g.tenant, id: f.id })));
     for (const id of [...this.snapshots.keys()])
-      if (!forms.some((f) => f.id === id)) this.snapshots.delete(id);
-    for (const f of forms) this.snapshots.set(f.id, emptySnapshot());
+      if (!all.some((f) => f.id === id)) this.snapshots.delete(id);
+    for (const f of all) this.snapshots.set(f.id, emptySnapshot());
     const kinds: Kind[] = ['stats', 'detail', 'entries'];
     // Statistics for every form first so the tiles fill early.
-    const tasks = kinds.flatMap((kind) => forms.map((f) => ({ kind, id: f.id })));
+    const tasks = kinds.flatMap((kind) => all.map((f) => ({ kind, ...f })));
     await mapLimited(tasks, MAX_PARALLEL, async (task) => {
       if (this.generation !== current) return;
-      const patch = await this.run(tenant, task.kind, task.id);
+      const patch = await this.run(task.tenant, task.kind, task.id);
       if (this.generation !== current) return;
       const old = this.snapshots.get(task.id);
       if (old) this.snapshots.set(task.id, { ...old, ...patch });

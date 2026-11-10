@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n';
-import { formPath, tenantPath, TABS, type Route, type Tab } from '$lib/routes';
+import { formPath, OVERVIEW_PATH, tenantPath, TABS, type Route, type Tab } from '$lib/routes';
+import { areaOf } from '$lib/area';
 import type { Crumb } from '$lib/components/admin/Breadcrumb.svelte';
 
 export interface NavItem {
@@ -8,7 +9,7 @@ export interface NavItem {
   href: string;
   icon: string;
   active: boolean;
-  /** Tooltip explaining where the entry leads when there is nothing to open yet. */
+  /** Tooltip explaining where the entry leads. */
   hint?: string;
 }
 export interface NavGroup {
@@ -18,67 +19,69 @@ export interface NavGroup {
 }
 export interface NavContext {
   route: Route;
-  /** Tenant of the route, the last used one, or the only one of the session. */
-  tenant: string | undefined;
+  /** Customer whose members page is offered; the area's customer, else the only one of the session. */
   manageTenant: string | undefined;
   systemAdministrator: boolean;
   opsVisible: boolean;
-  /** Form last opened in this session; keeps "Einsendungen"/"Statistik" usable outside a form page. */
-  lastForm?: { tenant: string; form: string } | undefined;
 }
 
 /** What the user has to choose first; the target page shows a matching hint (see NeedHint). */
 export type Need = 'customer' | 'entries' | 'statistics';
 export const needPath = (path: string, need: Need): string => `${path}?need=${need}`;
 
-/** Navigation model shared by the sidebar and the command palette. */
+/**
+ * Navigation model shared by the sidebar and the command palette. "Einsendungen" and "Statistik"
+ * follow the area derived from the route (area.ts): overall, one customer or one form.
+ */
 export function buildNav(c: NavContext): NavGroup[] {
   const { route } = c;
-  // An entry never dead-ends: without a customer or form it leads to the list that explains what to choose.
-  const forms = c.tenant ? tenantPath(c.tenant) : needPath('/t', 'customer');
+  const area = areaOf(route);
+  const base = area.kind === 'all' ? OVERVIEW_PATH : tenantPath(area.tenant);
   const onForm = route.name === 'form';
-  const target = onForm
-    ? { tenant: route.tenant, form: route.form }
-    : c.lastForm && c.lastForm.tenant === c.tenant
-      ? c.lastForm
-      : undefined;
-  const work: NavItem[] = [
-    {
-      id: 'customers',
-      label: t.shell.customers,
-      href: '/t',
-      icon: 'customers',
-      active: route.name === 'tenants',
-    },
-    {
+  const entriesHref =
+    area.kind === 'form' ? formPath(area.tenant, area.form, 'entries') : `${base}#recent-entries`;
+  const statisticsHref =
+    area.kind === 'form' ? `${formPath(area.tenant, area.form)}#statistics` : `${base}#statistics`;
+  const work: NavItem[] = [];
+  if (area.kind === 'all')
+    work.push({
+      id: 'dashboard',
+      label: t.area.dashboard,
+      href: OVERVIEW_PATH,
+      icon: 'dashboard',
+      active: route.name === 'overview',
+    });
+  work.push({
+    id: 'customers',
+    label: t.shell.customers,
+    href: '/t',
+    icon: 'customers',
+    active: route.name === 'tenants',
+  });
+  if (area.kind !== 'all')
+    work.push({
       id: 'forms',
       label: t.shell.forms,
-      href: forms,
+      href: tenantPath(area.tenant),
       icon: 'forms',
       active: route.name === 'forms' || (onForm && route.tab !== 'entries'),
-      ...(c.tenant ? {} : { hint: t.shell.noCustomer }),
-    },
+    });
+  work.push(
     {
       id: 'entries',
       label: t.shell.entries,
-      href: target
-        ? formPath(target.tenant, target.form, 'entries')
-        : needPath(c.tenant ? tenantPath(c.tenant) : '/t', c.tenant ? 'entries' : 'customer'),
+      href: entriesHref,
       icon: 'entries',
       active: onForm && route.tab === 'entries',
-      ...(target ? {} : { hint: c.tenant ? t.shell.chooseForm : t.shell.noCustomer }),
     },
     {
       id: 'statistics',
       label: t.shell.statistics,
-      href: target
-        ? formPath(target.tenant, target.form) + '#statistics'
-        : needPath(c.tenant ? tenantPath(c.tenant) : '/t', c.tenant ? 'statistics' : 'customer'),
+      href: statisticsHref,
       icon: 'statistics',
       active: false,
-      ...(target ? {} : { hint: c.tenant ? t.shell.chooseForm : t.shell.noCustomer }),
     },
-  ];
+  );
   const admin: NavItem[] = [];
   if (c.manageTenant)
     admin.push({
@@ -163,6 +166,8 @@ export function crumbsFor(
   switch (route.name) {
     case 'tenants':
       return [{ label: t.shell.customers }];
+    case 'overview':
+      return [{ label: t.area.dashboard }];
     case 'forms':
       return [
         { label: tenantName(route.tenant), href: tenantPath(route.tenant) },

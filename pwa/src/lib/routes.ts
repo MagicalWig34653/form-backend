@@ -4,6 +4,7 @@ export type Tab = (typeof TABS)[number];
 export type Route =
   | { name: 'login' }
   | { name: 'setup' }
+  | { name: 'overview' }
   | { name: 'tenants' }
   | { name: 'forms'; tenant: string }
   | { name: 'form'; tenant: string; form: string; tab: Tab }
@@ -23,6 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function matchRoute(path: string): Route {
   const p = path.split('/').filter((s, i) => s !== '' || i === 0);
   const seg = p.slice(1);
+  if (seg.length === 1 && seg[0] === 'overview') return { name: 'overview' };
   if (seg.length === 1 && seg[0] === 'login') return { name: 'login' };
   if (seg.length === 1 && seg[0] === 'setup') return { name: 'setup' };
   if (seg.length === 1 && seg[0] === 'connections') return { name: 'connections' };
@@ -48,6 +50,7 @@ export function matchRoute(path: string): Route {
   return { name: 'notFound' };
 }
 
+export const OVERVIEW_PATH = '/overview';
 export const tenantPath = (tenant: string) => `/t/${tenant}`;
 export const formPath = (tenant: string, form: string, tab: Tab = 'overview') =>
   `/t/${tenant}/f/${form}${tab === 'overview' ? '' : `/${tab}`}`;

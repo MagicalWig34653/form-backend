@@ -100,7 +100,7 @@
 
   function fail(e: Parameters<typeof describeError>[0]): void {
     if (needsFreshLogin(e)) {
-      needLogin = true;
+      void reauthenticate(router.path);
       return;
     }
     if (handleSessionError(e)) return;

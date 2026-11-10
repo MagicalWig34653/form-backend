@@ -367,7 +367,7 @@
   <div class="flex min-w-0 flex-col gap-5">
     <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
       <div class="min-w-0">
-        <h2 class="text-[17px] leading-[26px] font-semibold tracking-tight">
+        <h2 class="text-xl leading-snug font-semibold tracking-tight">
           {t.admin.entries.title}
         </h2>
         <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">

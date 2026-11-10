@@ -24,6 +24,7 @@
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import { keyring } from '$lib/crypto/keyring.svelte';
+  import { formLists } from '$lib/formLists.svelte';
   import { OverviewLoader } from '$lib/stats/loader.svelte';
   import { dailySeries, total } from '$lib/stats/series';
   import TenantOverview from './overview/TenantOverview.svelte';
@@ -101,6 +102,7 @@
         ? [...(items ?? []), ...r.data.items.filter((f) => !items?.some((old) => old.id === f.id))]
         : r.data.items;
       nextCursor = r.data.nextCursor;
+      formLists.set(tenant, items ?? [], nextCursor !== null);
     } else if (!handleSessionError(r.error)) {
       loadError =
         r.error.status === 403
@@ -129,6 +131,7 @@
       if (!handleSessionError(r.error)) message = describeError(r.error);
       return;
     }
+    formLists.invalidate(tenant);
     router.navigate(formPath(tenant, r.data.id));
   }
 

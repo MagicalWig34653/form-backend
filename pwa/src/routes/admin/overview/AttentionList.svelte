@@ -9,13 +9,13 @@
   import { Button } from '$lib/components/ui/button';
 
   interface Props {
-    tenant: string;
+    tenant?: string;
     items: AttentionItem[];
     loading?: boolean;
     /** Some data is still missing: hints may follow. */
     partial?: boolean;
   }
-  let { tenant, items, loading = false, partial = false }: Props = $props();
+  let { tenant = '', items, loading = false, partial = false }: Props = $props();
 
   const ui = t.overview;
   const copy: Record<AttentionItem['kind'], { text: string; action?: string; tab: Tab }> = {
@@ -28,7 +28,8 @@
   const textOf = (item: AttentionItem): string =>
     copy[item.kind].text.replace('{form}', item.formName ?? '');
   function open(item: AttentionItem): void {
-    if (item.formId) router.navigate(formPath(tenant, item.formId, copy[item.kind].tab));
+    if (item.formId)
+      router.navigate(formPath(item.tenant ?? tenant, item.formId, copy[item.kind].tab));
   }
 </script>
 

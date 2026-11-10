@@ -127,6 +127,10 @@
   grid-column: span 12;
   min-width: 0;
 }
+/* Kleine Kennzahlkacheln stehen auch auf schmalen Bildschirmen zu zweit. */
+.tile-grid > [data-w='3'] {
+  grid-column: span 6;
+}
 @container (min-width: 560px) {
   .tile-grid > [data-w='3'],
   .tile-grid > [data-w='4'],

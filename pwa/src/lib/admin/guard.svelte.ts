@@ -3,10 +3,10 @@ import { router } from '../router.svelte';
 import type { ApiError } from '../api/client';
 import { needsFreshLogin } from './describe';
 
-/** Sends the user to a fresh login and back to `returnTo`; the draft stays on the server. */
+/** Sends the user to a fresh passkey confirmation (asked for directly) and back to `returnTo`; the draft stays on the server. */
 export async function reauthenticate(returnTo: string): Promise<void> {
   await session.logout();
-  router.navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+  router.navigate(`/login?next=${encodeURIComponent(returnTo)}&reauth=1`);
 }
 
 /** Handles the failures every page shares. Returns true when the error was consumed (page must stop). */

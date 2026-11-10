@@ -162,7 +162,7 @@
   aria-labelledby="local-search-title"
 >
   <div>
-    <h2 id="local-search-title" class="text-[17px] leading-[26px] font-semibold tracking-tight">
+    <h2 id="local-search-title" class="text-xl leading-snug font-semibold tracking-tight">
       {ui.title}
     </h2>
     <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
