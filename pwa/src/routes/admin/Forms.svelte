@@ -20,7 +20,7 @@
   import NeedHint from '$lib/components/admin/NeedHint.svelte';
   import { Card } from '$lib/components/ui/card';
   import Notice from '$lib/components/admin/Notice.svelte';
-  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import CustomerHeader from '$lib/components/admin/CustomerHeader.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import { keyring } from '$lib/crypto/keyring.svelte';
@@ -144,10 +144,7 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-4">
-  <PageHeader
-    title={t.admin.forms.title}
-    description={`${session.tenants.find((c) => c.id === tenant)?.name ?? ''} · ${t.lists.formsIntro}`}
-  >
+  <CustomerHeader {tenant} current="forms" description={t.lists.formsIntro}>
     {#snippet actions()}
       {#if canCreate}<Button
           onclick={() => {
@@ -155,7 +152,7 @@
           }}>{t.lists.createForm}</Button
         >{/if}
     {/snippet}
-  </PageHeader>
+  </CustomerHeader>
   <AccessStatus />
   <NeedHint
     accepts={['entries', 'statistics']}

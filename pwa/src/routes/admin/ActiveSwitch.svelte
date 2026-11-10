@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import { adminApi } from '$lib/api';
   import { t } from '$lib/i18n';
   import { handleSessionError } from '$lib/admin/guard.svelte';
@@ -17,7 +18,17 @@
   let error = $state('');
 
   async function toggle(): Promise<void> {
-    if (busy || (active && !confirm(t.admin.form.activeConfirm))) return;
+    if (busy) return;
+    if (
+      active &&
+      !(await confirmAction({
+        title: t.confirm.pauseFormTitle,
+        description: t.confirm.pauseFormBody,
+        confirmLabel: t.confirm.pauseForm,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     error = '';
     const r = await adminApi.setFormActive(tenant, form, !active);

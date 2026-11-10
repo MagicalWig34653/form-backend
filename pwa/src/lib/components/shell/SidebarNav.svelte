@@ -8,13 +8,10 @@
   import { cn } from '$lib/utils';
   import { session } from '$lib/session.svelte';
   import { followLink, useNav } from './use-nav.svelte';
-  import { shellState } from './shell-state.svelte';
   import type { NavItem } from './nav';
 
   let { onnavigate = () => {} }: { onnavigate?: () => void } = $props();
   const nav = useNav();
-  const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.platform);
-  const shortcut = isMac ? t.palette.shortcutMac : t.palette.shortcut;
 
   let navEl = $state<HTMLElement | null>(null);
   function keydown(event: KeyboardEvent) {
@@ -52,7 +49,7 @@
     onnavigate();
   }
   const link =
-    'hover:bg-muted flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm lg:min-h-9 lg:py-1.5 focus-visible:outline-offset-[-2px]';
+    'hover:bg-muted relative flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm lg:min-h-9 lg:py-1.5 focus-visible:outline-offset-[-2px]';
 </script>
 
 {#snippet entry(item: NavItem)}
@@ -62,7 +59,11 @@
     onclick={(e) => navigate(e, item.href)}
     aria-current={item.active ? 'page' : undefined}
     title={item.hint}
-    class={cn(link, item.active && 'bg-secondary font-medium')}
+    class={cn(
+      link,
+      item.active &&
+        "bg-secondary font-medium before:bg-brand before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full before:content-['']",
+    )}
   >
     <span aria-hidden="true" class="text-muted-foreground flex w-[18px] shrink-0 justify-center"
       ><NavIcon name={item.icon} /></span
@@ -81,18 +82,6 @@
     <strong class="text-[15px] tracking-tight">{t.app.name}</strong>
   </a>
   <AreaSelect {onnavigate} />
-  <button
-    type="button"
-    onclick={() => {
-      shellState.paletteOpen = true;
-      onnavigate();
-    }}
-    aria-label={`${t.shell.search} ${shortcut}`}
-    aria-haspopup="dialog"
-    class="border-input text-muted-foreground hover:bg-muted mb-1 flex h-10 w-full items-center gap-2 rounded-lg border px-3 text-sm transition-colors"
-  >
-    <NavIcon name="search" size={16} /><span class="flex-1 text-left">{t.shell.search}</span>
-  </button>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <nav
     aria-label={t.shell.navigation}
@@ -103,7 +92,7 @@
     {#each nav.groups as group (group.id)}
       <div
         id={`nav-heading-${group.id}`}
-        class="text-muted-foreground px-2.5 pt-4 pb-1.5 text-xs font-medium"
+        class="text-muted-foreground px-2.5 pt-4 pb-1.5 text-xs font-medium tracking-wide uppercase"
       >
         {group.label}
       </div>

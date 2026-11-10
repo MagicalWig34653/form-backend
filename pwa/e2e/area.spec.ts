@@ -269,7 +269,7 @@ test.describe('mobil', () => {
     await expect(page.getByRole('option', { name: 'Kunde B', exact: true })).toBeVisible();
     await page.getByRole('option', { name: 'Kunde B', exact: true }).click();
     await expect(page).toHaveURL(`/t/${B}`);
-    await expect(page.locator('#app-sidebar')).not.toBeInViewport();
+    await expect(page.getByRole('dialog', { name: 'Hauptnavigation' })).toBeHidden();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
@@ -282,6 +282,6 @@ test.describe('mobil', () => {
     await expect(listbox(page)).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(listbox(page)).toHaveCount(0);
-    await expect(page.locator('#app-sidebar')).toBeInViewport();
+    await expect(page.getByRole('dialog', { name: 'Hauptnavigation' })).toBeVisible();
   });
 });

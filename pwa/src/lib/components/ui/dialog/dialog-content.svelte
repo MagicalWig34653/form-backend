@@ -17,7 +17,9 @@
   <Dialog.Content
     data-slot="dialog-content"
     class={cn(
-      'bg-popover text-popover-foreground ring-foreground/10 fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-xl p-5 text-sm ring-1 outline-none',
+      'bg-popover text-popover-foreground ring-foreground/10 fixed z-50 flex max-h-[calc(100dvh-2rem)] flex-col gap-4 overflow-y-auto p-5 text-sm ring-1 outline-none',
+      // Phones: docked to the bottom edge like a sheet; from sm up a centred dialog.
+      'max-sm:inset-x-0 max-sm:bottom-0 max-sm:rounded-t-xl sm:top-1/2 sm:left-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
       className,
     )}
   >

@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { router } from '$lib/router.svelte';
   import { matchRoute } from '$lib/routes';
   import { session } from '$lib/session.svelte';
   import { Button } from '$lib/components/ui/button';
+  import { Sheet, SheetContent } from '$lib/components/ui/sheet';
   import Overview from './Overview.svelte';
   import Tenants from './Tenants.svelte';
   import Forms from './Forms.svelte';
+  import FormDirectory from './FormDirectory.svelte';
   import FormPage from './FormPage.svelte';
   import Connections from './Connections.svelte';
   import Account from './Account.svelte';
@@ -43,13 +45,14 @@
     });
   });
 
-  // Below 1024 px the sidebar is a drawer: closed by default, closed again on every page change and on Escape.
-  let mobile = $state(false);
+  // Below 1024 px the navigation is a sheet: closed by default, closed again on every page change.
+  // The sidebar exists once: fixed on desktop, inside the sheet below 1024 px (no duplicate ids).
+  let desktop = $state(window.matchMedia('(min-width: 1024px)').matches);
   $effect(() => {
-    const media = window.matchMedia('(max-width: 1023px)');
+    const media = window.matchMedia('(min-width: 1024px)');
     const update = () => {
-      mobile = media.matches;
-      if (!mobile) shellState.drawerOpen = false;
+      desktop = media.matches;
+      if (media.matches) shellState.drawerOpen = false;
     };
     update();
     media.addEventListener('change', update);
@@ -59,17 +62,10 @@
     void router.path;
     shellState.drawerOpen = false;
   });
-  // Opening moves focus into the drawer; closing with Escape gives it back to the menu button.
-  $effect(() => {
-    const open = shellState.drawerOpen;
-    if (open && mobile)
-      void tick().then(() =>
-        document.querySelector<HTMLElement>('#app-sidebar [data-nav-item]')?.focus(),
-      );
-  });
-  function closeDrawer(restoreFocus: boolean): void {
-    shellState.drawerOpen = false;
-    if (restoreFocus) void tick().then(() => document.getElementById('drawer-trigger')?.focus());
+  // The sheet opens on its first entry (not on the area selector) so the menu can be read from the top.
+  function focusFirstEntry(event: Event): void {
+    event.preventDefault();
+    document.querySelector<HTMLElement>('[data-slot="sheet-content"] [data-nav-item]')?.focus();
   }
 
   // Not signed in: to the login page, remembering where the user wanted to go.
@@ -78,12 +74,6 @@
       router.navigate(`/login?next=${encodeURIComponent(router.path)}`, true);
   });
 </script>
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === 'Escape' && shellState.drawerOpen) closeDrawer(true);
-  }}
-/>
 
 {#if session.status === 'loading'}
   <div class="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-7" aria-busy="true">
@@ -104,23 +94,26 @@
     </Banner>
   </div>
 {:else if session.status === 'ready'}
-  <aside
-    id="app-sidebar"
-    class="app-sidebar bg-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r px-3 py-4"
-    data-open={shellState.drawerOpen}
-    inert={mobile && !shellState.drawerOpen}
-  >
-    <SidebarNav onnavigate={() => (shellState.drawerOpen = false)} />
-  </aside>
-  {#if shellState.drawerOpen}
-    <button
-      type="button"
-      class="fixed inset-x-0 top-[60px] bottom-0 z-30 bg-black/30 lg:hidden"
-      aria-label={t.shell.close}
-      onclick={() => closeDrawer(false)}
-    ></button>
+  {#if desktop}
+    <aside
+      id="app-sidebar"
+      class="app-sidebar bg-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r px-3 py-4"
+    >
+      <SidebarNav />
+    </aside>
   {/if}
-  <div class="min-h-dvh lg:pl-64" inert={mobile && shellState.drawerOpen}>
+  <Sheet bind:open={shellState.drawerOpen}>
+    <SheetContent
+      side="left"
+      title={t.shell.navigation}
+      hideHeader
+      onOpenAutoFocus={focusFirstEntry}
+      class="bg-sidebar text-foreground px-3 py-4"
+    >
+      <SidebarNav onnavigate={() => (shellState.drawerOpen = false)} />
+    </SheetContent>
+  </Sheet>
+  <div class="min-h-dvh lg:pl-64">
     <TopBar />
     <CommandPalette />
     <div class="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8">
@@ -128,6 +121,8 @@
         <Overview />
       {:else if route.name === 'tenants'}
         <Tenants />
+      {:else if route.name === 'formDirectory'}
+        <FormDirectory />
       {:else if route.name === 'forms'}
         {#key route.tenant}<Forms tenant={route.tenant} />{/key}
       {:else if route.name === 'form'}

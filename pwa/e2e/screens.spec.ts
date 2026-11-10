@@ -197,6 +197,7 @@ async function mock(page: Page) {
 }
 const routes: [string, string][] = [
   ['gesamt', '/overview'],
+  ['formularverzeichnis', '/forms'],
   ['kunden', '/t'],
   ['formulare', `/t/${T}`],
   ['formular', `/t/${T}/f/${F}`],

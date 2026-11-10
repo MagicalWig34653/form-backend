@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import { verifyMigrationProbe } from '$lib/crypto/migrationProbe';
   import { fromBase64Url } from '$lib/crypto/packageV2';
   import { onMount } from 'svelte';
@@ -234,9 +235,11 @@
         secret,
         async (hash) => {
           if (
-            !window.confirm(
-              'Die Probe wurde lokal authentifiziert entschlüsselt. Ergebnis bestätigen und neue Testnachricht verschlüsseln?',
-            )
+            !(await confirmAction({
+              title: t.confirm.probeTitle,
+              description: t.confirm.probeBody,
+              confirmLabel: t.confirm.probe,
+            }))
           )
             throw new Error('cancelled');
           if (

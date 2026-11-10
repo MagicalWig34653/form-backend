@@ -39,6 +39,9 @@ export function useNav() {
     get tenant() {
       return tenant;
     },
+    get manageTenant() {
+      return manageTenant;
+    },
     get groups() {
       return groups;
     },

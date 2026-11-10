@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import ConfirmHost from '$lib/components/shell/ConfirmHost.svelte';
 import EntriesTab from './EntriesTab.svelte';
 
 const api = vi.hoisted(() => ({ entries: vi.fn(), retention: vi.fn(), deleteEntries: vi.fn() }));
@@ -60,11 +61,12 @@ it('requires a confirmation and keeps pending deletions visible', async () => {
     data: { deleted: [], held: [], missing: [], pending: ['e'] },
   });
   render(EntriesTab, { tenant: 't', form: 'f' });
+  render(ConfirmHost);
   await screen.findByText('Für diese Einsendung ist Ihr Datenzugang noch nicht eingerichtet.');
   await fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
-  expect(await screen.findByRole('dialog')).toBeTruthy();
+  const dialog = await screen.findByRole('alertdialog', { name: 'Einsendungen löschen' });
   expect(api.deleteEntries).not.toHaveBeenCalled();
-  await fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+  await fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));
   expect(await screen.findByText(/Gelöscht: 0.*Noch in Löschung: 1/)).toBeTruthy();
   expect(api.deleteEntries).toHaveBeenCalledWith('t', 'f', ['e']);
   expect(screen.queryByText('Noch keine Einsendungen.')).toBeNull();

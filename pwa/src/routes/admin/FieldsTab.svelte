@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction, confirmDiscard } from '$lib/confirm.svelte';
   import { t } from '$lib/i18n';
   import type { JsonObject } from '$lib/api/admin';
   import type { Editor } from '$lib/draft/editor.svelte';
@@ -117,6 +118,34 @@
     });
   }
 
+  // Live region text after a move, e.g. "E-Mail, Position 3 von 6".
+  let announcement = $state('');
+  async function moveAnnounced(id: string, direction: number): Promise<void> {
+    const before = fields.findIndex((f) => f.id === id);
+    await move(id, direction);
+    const after = fields.findIndex((f) => f.id === id);
+    const f = fields[after];
+    if (!f) return;
+    announcement =
+      after === before
+        ? t.admin.fields.moveBlocked.replace('{label}', f.label)
+        : t.admin.fields.moved
+            .replace('{label}', f.label)
+            .replace('{n}', String(after + 1))
+            .replace('{total}', String(fields.length));
+  }
+  function rowKeydown(event: KeyboardEvent, id: string): void {
+    if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+    event.preventDefault();
+    if (editor.saving || editing !== null) return;
+    const row = event.currentTarget as HTMLElement;
+    void moveAnnounced(id, event.key === 'ArrowUp' ? -1 : 1).then(() =>
+      row
+        .querySelector<HTMLElement>('[data-move-handle]:not(:disabled), button:not(:disabled)')
+        ?.focus(),
+    );
+  }
+
   function open(id: string): void {
     const f = fields.find((x) => x.id === id);
     editing = id;
@@ -215,7 +244,15 @@
       notice = t.admin.fields.usedByMail.replace('{where}', used.join(', '));
       return;
     }
-    if (!confirm(t.admin.fields.confirmRemove.replace('{name}', fieldName))) return;
+    if (
+      !(await confirmAction({
+        title: t.confirm.removeFieldTitle,
+        description: t.confirm.removeFieldBody.replace('{name}', fieldName),
+        confirmLabel: t.confirm.removeField,
+        destructive: true,
+      }))
+    )
+      return;
     notice = '';
     await editor.apply((d) => removeField(d, id));
   }
@@ -261,9 +298,16 @@
         </p>
       {:else}
         <ul class="divide-border border-border flex flex-col divide-y border-y">
-          {#each fields as f (f.id)}
-            <li class="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+          {#each fields as f, index (f.id)}
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <li
+              onkeydown={(e) => rowKeydown(e, f.id)}
+              class="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2"
+            >
               <span class="min-w-0 break-words">
+                <span class="text-muted-foreground mr-2 text-sm tabular-nums" aria-hidden="true"
+                  >{index + 1}</span
+                >
                 <span class="font-medium">{f.label}</span>
                 <span class="text-muted-foreground ml-2 text-sm"
                   >{t.admin.fields.kinds[f.kind as FieldKind] ?? f.kind}{f.required
@@ -280,21 +324,22 @@
                 <Button
                   variant="ghost"
                   disabled={editor.saving || editing !== null || !canMove(f.id, -1)}
-                  onclick={() => void move(f.id, -1)}
+                  data-move-handle
+                  onclick={() => void moveAnnounced(f.id, -1)}
                   >{t.formWork.up}<span class="sr-only"> {f.label}</span></Button
                 >
                 <Button
                   variant="ghost"
                   disabled={editor.saving || editing !== null || !canMove(f.id, 1)}
-                  onclick={() => void move(f.id, 1)}
+                  onclick={() => void moveAnnounced(f.id, 1)}
                   >{t.formWork.down}<span class="sr-only"> {f.label}</span></Button
                 >
                 <Button
                   type="button"
                   variant="outline"
                   disabled={editor.saving || !FIELD_KINDS.includes(f.kind as FieldKind)}
-                  onclick={() => {
-                    if (!changed || confirm(t.formWork.unsaved)) open(f.id);
+                  onclick={async () => {
+                    if (!changed || (await confirmDiscard())) open(f.id);
                   }}>{t.admin.edit}<span class="sr-only"> {f.label}</span></Button
                 >
                 <Button
@@ -309,7 +354,8 @@
           {/each}
         </ul>
       {/if}
-      <p class="text-muted-foreground text-sm">{t.formWork.orderHint}</p>
+      <p class="text-muted-foreground text-sm">{t.formWork.orderHint} {t.admin.fields.keyHint}</p>
+      <p role="status" class="sr-only">{announcement}</p>
       <Notice
         message={notice ||
           (editor.error
@@ -321,8 +367,8 @@
       {#if editor.error?.status === 409}<div>
           <Button
             variant="outline"
-            onclick={() => {
-              if (!changed || confirm(t.formWork.unsaved)) {
+            onclick={async () => {
+              if (!changed || (await confirmDiscard())) {
                 editing = null;
                 changed = false;
                 void editor.load();
@@ -434,8 +480,8 @@
               <Button
                 type="button"
                 variant="outline"
-                onclick={() => {
-                  if (!changed || confirm(t.formWork.unsaved)) {
+                onclick={async () => {
+                  if (!changed || (await confirmDiscard())) {
                     editing = null;
                     changed = false;
                   }

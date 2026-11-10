@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import RecoveryStep from '$lib/crypto/RecoveryStep.svelte';
   import AccessStatus from './AccessStatus.svelte';
   import KeyringPanel from './KeyringPanel.svelte';
@@ -103,7 +104,16 @@
 
   async function remove(k: PasskeyInfo): Promise<void> {
     if (busy) return;
-    if (k.unlocksKeys && !confirm(a.removeWarn)) return;
+    if (
+      k.unlocksKeys &&
+      !(await confirmAction({
+        title: t.confirm.removePasskeyTitle,
+        description: a.removeWarn,
+        confirmLabel: t.confirm.removePasskey,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     message = ok = '';
     const r = await adminApi.removePasskey(k.credentialId);

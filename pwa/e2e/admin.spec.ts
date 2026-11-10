@@ -444,7 +444,7 @@ async function mock(
 
 const pages: [string, string, string][] = [
   ['customers', '/t', 'Kunden'],
-  ['forms', `/t/${T}`, 'Formulare'],
+  ['forms', `/t/${T}`, 'Kunde A'],
   ['overview', `/t/${T}/f/${F}`, 'Kontakt'],
   ['fields', `/t/${T}/f/${F}/fields`, 'Felder & Ansicht'],
   ['mail', `/t/${T}/f/${F}/mail`, 'Mail'],
@@ -452,6 +452,7 @@ const pages: [string, string, string][] = [
   ['entries', `/t/${T}/f/${F}/entries`, 'Einsendungen'],
   ['account', '/account', 'Mein Konto'],
   ['members', `/t/${T}/members`, 'Mitglieder und Rechte'],
+  ['formDirectory', '/forms', 'Formulare'],
   ['keys', `/t/${T}/f/${F}/keys`, 'PHP-SDK'],
   ['connections', '/connections', 'Verbindungen'],
 ];
@@ -526,12 +527,15 @@ test('hold, deletion, retention and the sealed export work from the entries tab'
   await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
   await expect(page).toHaveURL(`/t/${T}/f/${F}/entries`);
   await expect(page.getByRole('button', { name: 'Öffnen', exact: true })).toBeEnabled();
-  await page.getByText('Aufbewahrung', { exact: true }).click();
+  await page.locator('summary', { hasText: 'Aufbewahrung' }).click();
   await expect(page.getByLabel(/Aufbewahrung in Tagen/)).toHaveValue('90');
   await page.getByRole('button', { name: 'Löschschutz setzen' }).click();
   await expect(page.locator('li').getByText('Geschützt', { exact: true })).toBeVisible();
-  page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Löschschutz aufheben' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Löschschutz aufheben' })
+    .getByRole('button', { name: 'Aufheben' })
+    .click();
   await expect(page.locator('li').getByText('Geschützt', { exact: true })).toHaveCount(0);
   await page.getByLabel(/Aufbewahrung in Tagen/).fill('30');
   await page.getByRole('button', { name: 'Aufbewahrung speichern' }).click();
@@ -542,7 +546,7 @@ test('hold, deletion, retention and the sealed export work from the entries tab'
   await page.getByRole('dialog').getByRole('button', { name: 'Exportieren', exact: true }).click();
   expect((await download).suggestedFilename()).toBe('einsendungen-verschluesselt.json');
   await page.getByRole('button', { name: 'Löschen', exact: true }).click();
-  const confirm = page.getByRole('dialog');
+  const confirm = page.getByRole('alertdialog');
   await expect(confirm.getByRole('button', { name: 'Abbrechen' })).toBeFocused();
   await confirm.getByRole('button', { name: 'Endgültig löschen' }).click();
   await expect(page.getByText(/Gelöscht: 1/)).toBeVisible();
@@ -594,7 +598,7 @@ test('mobile drawer traps focus, closes with Escape and navigates', async ({ pag
   await page.goto(`/t/${T}`);
   const trigger = page.getByRole('button', { name: 'Navigation öffnen' });
   await trigger.click();
-  const drawer = page.locator('#app-sidebar');
+  const drawer = page.getByRole('dialog', { name: 'Hauptnavigation' });
   await expect(drawer).toBeVisible();
   await expect(drawer.locator(':focus')).toHaveCount(1);
   await page.keyboard.press('Shift+Tab');
@@ -930,9 +934,15 @@ test('Formularnavigation erhält alte Ziele und zeigt Platzhalter ohne Außenwir
     'href',
     `/t/${T}/f/${F}/keys`,
   );
-  await page.getByRole('button', { name: 'Ablauf (später)', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Ablauf', exact: true })).toHaveAttribute(
+    'href',
+    `/t/${T}/f/${F}/flow`,
+  );
+  await page.getByRole('link', { name: 'Ablauf', exact: true }).click();
+  await expect(page).toHaveURL(`/t/${T}/f/${F}/flow`);
   await expect(page.getByText('Der Ablauf-Editor folgt später.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Webhooks', exact: true }).click();
+  await page.getByRole('link', { name: 'Webhooks', exact: true }).click();
+  await expect(page).toHaveURL(`/t/${T}/f/${F}/webhooks`);
   await expect(page.getByText('Noch kein Webhook eingerichtet.')).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
@@ -979,8 +989,11 @@ test('Ungespeicherte Feldänderungen bleiben nach abgebrochener Navigation erhal
   await page.goto(`/t/${T}/f/${F}/fields`);
   await page.getByRole('button', { name: 'Feld hinzufügen' }).click();
   await page.getByLabel('Beschriftung', { exact: true }).fill('Entwurf erhalten');
-  page.once('dialog', (dialog) => void dialog.dismiss());
   await page.getByRole('link', { name: 'Einbindung', exact: true }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Änderungen verwerfen' })
+    .getByRole('button', { name: 'Abbrechen' })
+    .click();
   await expect(page).toHaveURL(`/t/${T}/f/${F}/fields`);
   await expect(page.getByLabel('Beschriftung', { exact: true })).toHaveValue('Entwurf erhalten');
 });
@@ -1206,6 +1219,61 @@ test('Feldreihenfolge lässt sich mit einer Tastaturaktion ändern', async ({ pa
     .locator('ul')
     .filter({ has: page.getByRole('button', { name: 'Bearbeiten Zweites Feld', exact: true }) });
   await expect(list.getByRole('listitem').first()).toContainText('Zweites Feld');
+  // The move is announced in a live region with the new position.
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Zweites Feld, Position 1 von 2' }),
+  ).toBeAttached();
+});
+
+test('Alt+Pfeil verschiebt ein Feld direkt und sagt die Position an', async ({ page }) => {
+  await mock(page);
+  const mk = (id: string) => ({
+    name: id,
+    kind: 'text',
+    label: { de: `Feld ${id}` },
+    required: false,
+    hidden: false,
+    locked: false,
+    sensitive: false,
+    validation: { type: 'string' },
+  });
+  const initial = {
+    ...doc,
+    form: { ...doc.form, fields: { a: mk('a'), b: mk('b') } },
+    views: [
+      {
+        ...doc.views[0],
+        steps: [
+          {
+            id: 'm',
+            sections: [
+              {
+                id: 's',
+                fields: ['a', 'b'].map((fieldId) => ({
+                  fieldId,
+                  readOnly: false,
+                  disabled: false,
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  await page.route(`**/forms/${F}/drafts/${D}`, (r) => {
+    if (r.request().method() === 'GET')
+      return r.fulfill({ json: { id: D, revision: 1, hash: 'h', document: initial } });
+    const next = r.request().postDataJSON();
+    return r.fulfill({ json: { id: D, revision: 2, hash: 'n', document: next } });
+  });
+  await page.goto(`/t/${T}/f/${F}/fields`);
+  await page.getByRole('button', { name: 'Nach oben Feld b', exact: true }).focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Feld b, Position 1 von 2' }),
+  ).toBeAttached();
+  await expect(page.getByRole('button', { name: 'Nach unten Feld b', exact: true })).toBeFocused();
 });
 
 test('Befehlspalette: Strg+K, Filter, Pfeiltasten, Enter navigiert, Esc gibt den Fokus zurück', async ({

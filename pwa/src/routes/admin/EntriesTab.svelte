@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import Suche from './Suche.svelte';
   import SealedExport from './SealedExport.svelte';
-  import { Dialog, DialogTrigger, DialogClose, DialogContent } from '$lib/components/ui/dialog';
+  import { Dialog, DialogTrigger, DialogContent } from '$lib/components/ui/dialog';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
@@ -39,8 +40,6 @@
   let query = $state('');
   let protection = $state('all');
   let selected = $state<string[]>([]);
-  let deleteIds = $state<string[]>([]);
-  let deleteOpen = $state(false);
   const visible = $derived(
     items.filter(
       (entry) =>
@@ -285,9 +284,21 @@
     }
   }
 
+  const confirmUnhold = (): Promise<boolean> =>
+    confirmAction({
+      title: t.confirm.releaseHoldTitle,
+      description: ui.unholdWarning,
+      confirmLabel: t.confirm.releaseHold,
+      destructive: true,
+    });
+  async function toggleHoldChecked(entry: (typeof items)[number]): Promise<void> {
+    if (entry.held && !(await confirmUnhold())) return;
+    await toggleHold(entry);
+  }
+
   async function holdSelection(held: boolean): Promise<void> {
     if (busy) return;
-    if (!held && !confirm(ui.unholdWarning)) return;
+    if (!held && !(await confirmUnhold())) return;
     actionKind = 'error';
     for (const entry of items.filter((item) => selected.includes(item.id) && item.held !== held)) {
       await toggleHold(entry);
@@ -295,13 +306,22 @@
     }
   }
 
-  async function remove(): Promise<void> {
+  async function requestRemove(ids: string[]): Promise<void> {
+    if (busy) return;
+    const confirmed = await confirmAction({
+      title: ui.deleteTitle,
+      description: ui.deleteConfirm.replace('{n}', String(ids.length)),
+      confirmLabel: ui.deleteFinal,
+      destructive: true,
+    });
+    if (confirmed) await remove(ids);
+  }
+
+  async function remove(ids: string[]): Promise<void> {
     if (busy) return;
     busy = true;
     actionMessage = '';
     actionKind = 'error';
-    const ids = [...deleteIds];
-    deleteOpen = false;
     const r = await adminApi.deleteEntries(tenant, form, ids);
     busy = false;
     if (!r.ok) {
@@ -363,391 +383,376 @@
   });
 </script>
 
-<Dialog bind:open={deleteOpen}>
-  <div class="flex min-w-0 flex-col gap-5">
-    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-      <div class="min-w-0">
-        <h2 class="text-xl leading-snug font-semibold tracking-tight">
-          {t.admin.entries.title}
-        </h2>
-        <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
-          {t.admin.entries.intro}
-        </p>
-      </div>
-      {#key tenant + form}<SealedExport {tenant} {form} />{/key}
-    </header>
-    <Panel flush class="overflow-hidden">
-      <section aria-label={ui.list} aria-busy={loading}>
-        <div class="border-border border-b p-3">
-          <FilterBar
-            activeCount={activeFilters}
-            hint={ui.filterHint}
-            onreset={() => {
-              query = '';
-              protection = 'all';
-            }}
-          >
-            <div class="min-w-48 flex-1">
-              <Row id="entry-search" label={ui.search}
-                ><Input
-                  id="entry-search"
-                  type="search"
-                  placeholder="2026-11"
-                  bind:value={query}
-                /></Row
-              >
-            </div>
-            <div class="min-w-40 flex-1 sm:max-w-56">
-              <Row id="entry-protection" label={ui.protection}
-                ><Select id="entry-protection" bind:value={protection}>
-                  <option value="all">{ui.all}</option><option value="held">{ui.held}</option
-                  ><option value="free">{ui.free}</option>
-                </Select></Row
-              >
-            </div>
-          </FilterBar>
-        </div>
-        {#if message}
-          <div class="p-3">
-            <Banner tone="danger">
-              {message}
-              {#snippet action()}
-                <Button
-                  disabled={loading}
-                  variant="outline"
-                  onclick={() => void load(next ?? undefined)}>{t.admin.retry}</Button
+<div class="flex min-w-0 flex-col gap-5">
+  <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+    <div class="min-w-0">
+      <h2 class="text-xl leading-snug font-semibold tracking-tight">
+        {t.admin.entries.title}
+      </h2>
+      <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
+        {t.admin.entries.intro}
+      </p>
+    </div>
+    {#key tenant + form}<SealedExport {tenant} {form} />{/key}
+  </header>
+  <Panel flush class="overflow-hidden">
+    <section aria-label={ui.list} aria-busy={loading}>
+      <div class="border-border border-b p-3">
+        <FilterBar
+          activeCount={activeFilters}
+          hint={ui.filterHint}
+          onreset={() => {
+            query = '';
+            protection = 'all';
+          }}
+        >
+          <div class="min-w-48 flex-1">
+            <Row id="entry-search" label={ui.search}
+              ><Input
+                id="entry-search"
+                type="search"
+                placeholder="2026-11"
+                bind:value={query}
+              /></Row
+            >
+          </div>
+          <div class="min-w-40 flex-1 sm:max-w-56">
+            <Row id="entry-protection" label={ui.protection}
+              ><Select id="entry-protection" bind:value={protection}>
+                <option value="all">{ui.all}</option><option value="held">{ui.held}</option><option
+                  value="free">{ui.free}</option
                 >
-              {/snippet}
-            </Banner>
+              </Select></Row
+            >
           </div>
-        {/if}
-        {#if loading}
-          <div class="flex flex-col gap-2 p-4" aria-busy="true">
-            <p role="status" class="text-muted-foreground text-sm">
-              {slow ? ui.slow : t.admin.loading}
-            </p>
-            {#if items.length === 0}
-              {#each [0, 1, 2] as n (n)}<Skeleton class="h-11 rounded-md" />{/each}
-            {/if}
-          </div>
-        {/if}
-        {#if loaded && !message && items.length === 0}
-          <EmptyState icon="inbox" title={t.admin.entries.none} />
-        {:else if loaded && visible.length === 0 && items.length > 0}
-          <EmptyState icon="search" title={ui.filteredEmpty}>
+        </FilterBar>
+      </div>
+      {#if message}
+        <div class="p-3">
+          <Banner tone="danger">
+            {message}
             {#snippet action()}
               <Button
+                disabled={loading}
                 variant="outline"
-                onclick={() => {
-                  query = '';
-                  protection = 'all';
-                }}>{t.lists.reset}</Button
+                onclick={() => void load(next ?? undefined)}>{t.admin.retry}</Button
               >
             {/snippet}
-          </EmptyState>
-        {/if}
-        {#if missingAccess}
-          <div class="p-3 pb-0">
-            <Banner tone="info">{ui.noAccess}</Banner>
-          </div>
-        {/if}
-        {#if visible.length > 0}
-          <div
-            class="border-border bg-muted/50 text-muted-foreground mt-3 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-y px-4 text-sm"
+          </Banner>
+        </div>
+      {/if}
+      {#if loading}
+        <div class="flex flex-col gap-2 p-4" aria-busy="true">
+          <p role="status" class="text-muted-foreground text-sm">
+            {slow ? ui.slow : t.admin.loading}
+          </p>
+          {#if items.length === 0}
+            {#each [0, 1, 2] as n (n)}<Skeleton class="h-11 rounded-md" />{/each}
+          {/if}
+        </div>
+      {/if}
+      {#if loaded && !message && items.length === 0}
+        <EmptyState icon="inbox" title={t.admin.entries.none} />
+      {:else if loaded && visible.length === 0 && items.length > 0}
+        <EmptyState icon="search" title={ui.filteredEmpty}>
+          {#snippet action()}
+            <Button
+              variant="outline"
+              onclick={() => {
+                query = '';
+                protection = 'all';
+              }}>{t.lists.reset}</Button
+            >
+          {/snippet}
+        </EmptyState>
+      {/if}
+      {#if missingAccess}
+        <div class="p-3 pb-0">
+          <Banner tone="info">{ui.noAccess}</Banner>
+        </div>
+      {/if}
+      {#if visible.length > 0}
+        <div
+          class="border-border bg-muted/50 text-muted-foreground mt-3 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-y px-4 text-sm"
+        >
+          <label class="flex min-h-9 items-center gap-3">
+            <input
+              type="checkbox"
+              class="size-6 shrink-0 accent-[var(--ui-accent)]"
+              bind:this={selectAllBox}
+              checked={allSelected}
+              aria-label={t.listUi.selectAll}
+              onchange={(event) => {
+                selected = event.currentTarget.checked
+                  ? [...new Set([...selected, ...visible.map((e) => e.id)])]
+                  : selected.filter((id) => !visible.some((e) => e.id === id));
+              }}
+            />
+            <span aria-hidden="true">{t.admin.entries.received}</span>
+          </label>
+          <span class="ml-auto tabular-nums"
+            >{(next ? t.listUi.loadedMore : t.listUi.loaded).replace(
+              '{n}',
+              String(visible.length),
+            )}</span
           >
-            <label class="flex min-h-9 items-center gap-3">
+        </div>
+      {/if}
+      {#if selected.length}
+        <div
+          class="bg-brand-soft border-brand/40 sticky top-16 z-10 flex flex-wrap items-center gap-2 border-b px-4 py-2"
+          role="group"
+          aria-label={t.listUi.selectionBar}
+        >
+          <p role="status" class="mr-auto font-medium">
+            {ui.selected.replace('{n}', String(selected.length))}
+          </p>
+          <Button
+            class="min-h-9"
+            variant="outline"
+            disabled={busy}
+            onclick={() => void holdSelection(true)}>{t.admin.entries.hold}</Button
+          >
+          <Button
+            class="min-h-9"
+            variant="outline"
+            disabled={busy}
+            onclick={() => void holdSelection(false)}>{t.admin.entries.unhold}</Button
+          >
+          <Button
+            class={`${rowButton} text-red-700 dark:text-destructive`}
+            variant="outline"
+            disabled={busy}
+            onclick={() => void requestRemove([...selected])}>{t.admin.entries.remove}</Button
+          >
+          <Button class="min-h-9" variant="ghost" onclick={() => (selected = [])}
+            >{t.listUi.selectNone}</Button
+          >
+        </div>
+      {/if}
+      <ul class="divide-border divide-y">
+        {#each visible as entry (entry.id)}
+          {@const access = !!keyring.dataKey(entry.keyId ?? '')}
+          <li
+            class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors ${selected.includes(entry.id) ? 'bg-brand-soft' : 'hover:bg-muted/50'}`}
+          >
+            <label class="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-3 text-sm">
               <input
                 type="checkbox"
                 class="size-6 shrink-0 accent-[var(--ui-accent)]"
-                bind:this={selectAllBox}
-                checked={allSelected}
-                aria-label={t.listUi.selectAll}
-                onchange={(event) => {
-                  selected = event.currentTarget.checked
-                    ? [...new Set([...selected, ...visible.map((e) => e.id)])]
-                    : selected.filter((id) => !visible.some((e) => e.id === id));
-                }}
+                bind:group={selected}
+                value={entry.id}
+                aria-label={ui.selectEntry.replace('{date}', entry.receivedAt ?? ui.unknownDate)}
               />
-              <span aria-hidden="true">{t.admin.entries.received}</span>
+              <span class="font-medium tabular-nums">{when(entry.receivedAt)}</span>
             </label>
-            <span class="ml-auto tabular-nums"
-              >{(next ? t.listUi.loadedMore : t.listUi.loaded).replace(
-                '{n}',
-                String(visible.length),
-              )}</span
-            >
-          </div>
-        {/if}
-        {#if selected.length}
-          <div
-            class="bg-brand-soft border-brand/40 sticky top-16 z-10 flex flex-wrap items-center gap-2 border-b px-4 py-2"
-            role="group"
-            aria-label={t.listUi.selectionBar}
-          >
-            <p role="status" class="mr-auto font-medium">
-              {ui.selected.replace('{n}', String(selected.length))}
-            </p>
-            <Button
-              class="min-h-9"
-              variant="outline"
-              disabled={busy}
-              onclick={() => void holdSelection(true)}>{t.admin.entries.hold}</Button
-            >
-            <Button
-              class="min-h-9"
-              variant="outline"
-              disabled={busy}
-              onclick={() => void holdSelection(false)}>{t.admin.entries.unhold}</Button
-            >
-            <DialogTrigger
-              class={`${rowButton} text-red-700 dark:text-destructive`}
-              disabled={busy}
-              onclick={() => {
-                deleteIds = [...selected];
-                deleteOpen = true;
-              }}>{t.admin.entries.remove}</DialogTrigger
-            >
-            <Button class="min-h-9" variant="ghost" onclick={() => (selected = [])}
-              >{t.listUi.selectNone}</Button
-            >
-          </div>
-        {/if}
-        <ul class="divide-border divide-y">
-          {#each visible as entry (entry.id)}
-            {@const access = !!keyring.dataKey(entry.keyId ?? '')}
-            <li
-              class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors ${selected.includes(entry.id) ? 'bg-brand-soft' : 'hover:bg-muted/50'}`}
-            >
-              <label class="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  class="size-6 shrink-0 accent-[var(--ui-accent)]"
-                  bind:group={selected}
-                  value={entry.id}
-                  aria-label={ui.selectEntry.replace('{date}', entry.receivedAt ?? ui.unknownDate)}
-                />
-                <span class="font-medium tabular-nums">{when(entry.receivedAt)}</span>
-              </label>
-              <div class="flex flex-wrap items-center gap-1.5">
-                <StatusChip tone="ok" label={ui.accepted} />
-                {#if entry.held}<StatusChip tone="info" label={ui.held} />{/if}
-                {#if entry.environment === 'test'}<StatusChip
-                    tone="idle"
-                    label={t.abuse.testEntry}
-                  />{/if}
-                {#if entry.captchaStatus === 'unavailable'}<StatusChip
-                    tone="warn"
-                    label={t.abuse.unavailable}
-                  />{/if}
-                {#if entry.captchaStatus === 'rejected'}<StatusChip
-                    tone="warn"
-                    label={t.abuse.rejected}
-                  />{/if}
-                {#if entry.malwareStatus === 'nicht_geprueft'}<StatusChip
-                    tone="idle"
-                    label={t.abuse.unchecked}
-                  />{/if}
-                {#if entry.malwareStatus === 'hash_clear'}<StatusChip
-                    tone="idle"
-                    label={t.abuse.hashClear}
-                  />{/if}
-              </div>
-              <div class="ml-auto flex flex-wrap items-center gap-1.5">
-                {#if !access}<span
-                    id={`no-access-${entry.id}`}
-                    class="text-muted-foreground mr-1 text-sm">{t.listUi.noAccessShort}</span
-                  >{/if}
-                <Dialog
-                  open={openId === entry.id}
-                  onOpenChange={(value) => {
-                    if (!value) lock();
-                  }}
+            <div class="flex flex-wrap items-center gap-1.5">
+              <StatusChip tone="ok" label={ui.accepted} />
+              {#if entry.held}<StatusChip tone="info" label={ui.held} />{/if}
+              {#if entry.environment === 'test'}<StatusChip
+                  tone="idle"
+                  label={t.abuse.testEntry}
+                />{/if}
+              {#if entry.captchaStatus === 'unavailable'}<StatusChip
+                  tone="warn"
+                  label={t.abuse.unavailable}
+                />{/if}
+              {#if entry.captchaStatus === 'rejected'}<StatusChip
+                  tone="warn"
+                  label={t.abuse.rejected}
+                />{/if}
+              {#if entry.malwareStatus === 'nicht_geprueft'}<StatusChip
+                  tone="idle"
+                  label={t.abuse.unchecked}
+                />{/if}
+              {#if entry.malwareStatus === 'hash_clear'}<StatusChip
+                  tone="idle"
+                  label={t.abuse.hashClear}
+                />{/if}
+            </div>
+            <div class="ml-auto flex flex-wrap items-center gap-1.5">
+              {#if !access}<span
+                  id={`no-access-${entry.id}`}
+                  class="text-muted-foreground mr-1 text-sm">{t.listUi.noAccessShort}</span
+                >{/if}
+              <Dialog
+                open={openId === entry.id}
+                onOpenChange={(value) => {
+                  if (!value) lock();
+                }}
+              >
+                <DialogTrigger
+                  class={rowButton}
+                  disabled={busy || !keyring.dataKey(entry.keyId ?? '')}
+                  aria-describedby={keyring.dataKey(entry.keyId ?? '')
+                    ? undefined
+                    : `no-access-${entry.id}`}
+                  onclick={() => void view(entry)}>{t.admin.entries.open}</DialogTrigger
                 >
-                  <DialogTrigger
-                    class={rowButton}
-                    disabled={busy || !keyring.dataKey(entry.keyId ?? '')}
-                    aria-describedby={keyring.dataKey(entry.keyId ?? '')
-                      ? undefined
-                      : `no-access-${entry.id}`}
-                    onclick={() => void view(entry)}>{t.admin.entries.open}</DialogTrigger
-                  >
-                  <DialogContent
-                    title={ui.detail}
-                    description={entry.receivedAt ?? ui.unknownDate}
-                    class="max-h-[90dvh] max-w-2xl overflow-y-auto max-sm:inset-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none"
-                  >
-                    <div class="w-full min-w-0">
-                      {#if busy && !shown}<p role="status">{ui.opening}</p>{/if}
-                      {#if shown}
-                        <div class="mb-4">
-                          <Button
-                            class="min-h-11"
-                            variant="outline"
-                            disabled={busy}
-                            onclick={() => {
-                              actionKind = 'error';
-                              if (!entry.held || confirm(ui.unholdWarning)) void toggleHold(entry);
-                            }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
-                          >
-                        </div>
-                        <h3 class="text-base font-medium">{t.admin.entries.fields}</h3>
-                        <dl
-                          class="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1 text-sm"
-                        >
-                          {#each shown.fields as [k, v], i (i)}
-                            <dt class="text-muted-foreground break-all">{k}</dt>
-                            <dd class="break-words whitespace-pre-wrap">{v}</dd>
-                          {/each}
-                          {#each attachments as a, n (n)}
-                            <dt class="text-muted-foreground break-all">{t.admin.entries.files}</dt>
-                            <dd class="break-words">
-                              {a.name} ({ui.bytes.replace('{n}', String(a.size))})
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={busy}
-                                onclick={() => void download(entry.id, n)}
-                                >{t.admin.entries.download}</Button
-                              >
-                            </dd>
-                          {/each}
-                        </dl>
-                        {#if deliveries.length > 0}
-                          <h3 class="mt-3 text-sm font-medium">{t.admin.entries.mails}</h3>
-                          <ul class="flex flex-col gap-2 text-sm">
-                            {#each deliveries as d (d.id)}
-                              <li class="flex flex-col gap-1">
-                                <span
-                                  >{t.admin.entries.mailKind[d.kind]}: {t.admin.entries.mailState[
-                                    d.state
-                                  ]}</span
-                                >
-                                {#if d.state === 'waiting-manual' || d.state === 'uncertain'}
-                                  {#if d.state === 'uncertain'}
-                                    <label class="flex items-start gap-2">
-                                      <input
-                                        type="checkbox"
-                                        class="mt-0.5 size-5 shrink-0 accent-[var(--ui-accent)]"
-                                        bind:checked={confirmed[d.id]}
-                                      />
-                                      <span>{t.admin.entries.resendUncertain}</span>
-                                    </label>
-                                  {/if}
-                                  <div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      disabled={busy ||
-                                        (d.state === 'uncertain' && !confirmed[d.id])}
-                                      onclick={() => void resend(entry.id, d)}
-                                      >{t.admin.entries.resend}</Button
-                                    >
-                                  </div>
-                                {/if}
-                              </li>
-                            {/each}
-                          </ul>
-                          <Notice
-                            message={resendMessage}
-                            kind={resendMessage === t.admin.entries.resent ? 'ok' : 'error'}
-                          />
-                        {/if}
-                        <div class="mt-2">
-                          <Button type="button" variant="outline" onclick={lock}
-                            >{t.admin.entries.close}</Button
-                          >
-                        </div>
-                      {/if}
-                      <Notice message={openMessage} />
-                      {#if openMessage && !shown}<Button
+                <DialogContent
+                  title={ui.detail}
+                  description={entry.receivedAt ?? ui.unknownDate}
+                  class="max-h-[90dvh] max-w-2xl overflow-y-auto max-sm:inset-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none"
+                >
+                  <div class="w-full min-w-0">
+                    {#if busy && !shown}<p role="status">{ui.opening}</p>{/if}
+                    {#if shown}
+                      <div class="mb-4">
+                        <Button
                           class="min-h-11"
                           variant="outline"
                           disabled={busy}
-                          onclick={() => void view(entry)}>{t.admin.retry}</Button
-                        >{/if}
-                      {#if !shown}<Button variant="outline" onclick={lock}
+                          onclick={() => {
+                            actionKind = 'error';
+                            void toggleHoldChecked(entry);
+                          }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
+                        >
+                      </div>
+                      <h3 class="text-base font-medium">{t.admin.entries.fields}</h3>
+                      <dl
+                        class="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1 text-sm"
+                      >
+                        {#each shown.fields as [k, v], i (i)}
+                          <dt class="text-muted-foreground break-all">{k}</dt>
+                          <dd class="break-words whitespace-pre-wrap">{v}</dd>
+                        {/each}
+                        {#each attachments as a, n (n)}
+                          <dt class="text-muted-foreground break-all">{t.admin.entries.files}</dt>
+                          <dd class="break-words">
+                            {a.name} ({ui.bytes.replace('{n}', String(a.size))})
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={busy}
+                              onclick={() => void download(entry.id, n)}
+                              >{t.admin.entries.download}</Button
+                            >
+                          </dd>
+                        {/each}
+                      </dl>
+                      {#if deliveries.length > 0}
+                        <h3 class="mt-3 text-sm font-medium">{t.admin.entries.mails}</h3>
+                        <ul class="flex flex-col gap-2 text-sm">
+                          {#each deliveries as d (d.id)}
+                            <li class="flex flex-col gap-1">
+                              <span
+                                >{t.admin.entries.mailKind[d.kind]}: {t.admin.entries.mailState[
+                                  d.state
+                                ]}</span
+                              >
+                              {#if d.state === 'waiting-manual' || d.state === 'uncertain'}
+                                {#if d.state === 'uncertain'}
+                                  <label class="flex items-start gap-2">
+                                    <input
+                                      type="checkbox"
+                                      class="mt-0.5 size-5 shrink-0 accent-[var(--ui-accent)]"
+                                      bind:checked={confirmed[d.id]}
+                                    />
+                                    <span>{t.admin.entries.resendUncertain}</span>
+                                  </label>
+                                {/if}
+                                <div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={busy || (d.state === 'uncertain' && !confirmed[d.id])}
+                                    onclick={() => void resend(entry.id, d)}
+                                    >{t.admin.entries.resend}</Button
+                                  >
+                                </div>
+                              {/if}
+                            </li>
+                          {/each}
+                        </ul>
+                        <Notice
+                          message={resendMessage}
+                          kind={resendMessage === t.admin.entries.resent ? 'ok' : 'error'}
+                        />
+                      {/if}
+                      <div class="mt-2">
+                        <Button type="button" variant="outline" onclick={lock}
                           >{t.admin.entries.close}</Button
-                        >{/if}
-                    </div></DialogContent
-                  ></Dialog
-                >
-                <Button
-                  class="min-h-9 px-3"
-                  variant="outline"
-                  disabled={busy}
-                  onclick={() => {
-                    actionKind = 'error';
-                    if (!entry.held || confirm(ui.unholdWarning)) void toggleHold(entry);
-                  }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
-                >
-                <DialogTrigger
-                  class={`${rowButton} text-red-700 dark:text-destructive`}
-                  disabled={busy || entry.held}
-                  onclick={() => {
-                    deleteIds = [entry.id];
-                    deleteOpen = true;
-                  }}>{t.admin.entries.remove}</DialogTrigger
-                >
-              </div>
-            </li>
-          {/each}
-        </ul>
-        {#if next}
-          <div class="border-border border-t p-3">
-            <Button
-              variant="outline"
-              disabled={loading}
-              onclick={() => void load(next ?? undefined)}>{t.admin.entries.more}</Button
-            >
-          </div>
-        {/if}
-        {#if actionMessage}
-          <div class="p-3"><Notice message={actionMessage} kind={actionKind} /></div>
-        {/if}
-      </section>
-    </Panel>
-    {#key tenant + form}<Suche
-        {tenant}
-        {form}
-        onDeleted={(ids) => {
-          items = items.filter((item) => !ids.includes(item.id));
-          lock();
-        }}
-      />{/key}
-    <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5">
-      <summary class="min-h-12 cursor-pointer py-3 font-semibold"
-        >{t.admin.entries.retentionTitle}</summary
-      >
-      <div class="pb-4">
-        <p class="text-muted-foreground max-w-prose text-sm leading-5">
-          {ui.retentionHint}
-        </p>
-        <form onsubmit={(e) => void saveRetention(e)} class="mt-4 flex max-w-xl flex-col gap-3">
-          <Row id="retention-days" label={t.admin.entries.retentionDays}
-            ><Input
-              id="retention-days"
-              type="number"
-              min="1"
-              max="3650"
-              bind:value={retentionInput}
-            /></Row
+                        >
+                      </div>
+                    {/if}
+                    <Notice message={openMessage} />
+                    {#if openMessage && !shown}<Button
+                        class="min-h-11"
+                        variant="outline"
+                        disabled={busy}
+                        onclick={() => void view(entry)}>{t.admin.retry}</Button
+                      >{/if}
+                    {#if !shown}<Button variant="outline" onclick={lock}
+                        >{t.admin.entries.close}</Button
+                      >{/if}
+                  </div></DialogContent
+                ></Dialog
+              >
+              <Button
+                class="min-h-9 px-3"
+                variant="outline"
+                disabled={busy}
+                onclick={() => {
+                  actionKind = 'error';
+                  void toggleHoldChecked(entry);
+                }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
+              >
+              <Button
+                class={`${rowButton} text-red-700 dark:text-destructive`}
+                variant="outline"
+                disabled={busy || entry.held}
+                onclick={() => void requestRemove([entry.id])}>{t.admin.entries.remove}</Button
+              >
+            </div>
+          </li>
+        {/each}
+      </ul>
+      {#if next}
+        <div class="border-border border-t p-3">
+          <Button variant="outline" disabled={loading} onclick={() => void load(next ?? undefined)}
+            >{t.admin.entries.more}</Button
           >
-          <div>
-            <Button type="submit" disabled={busy}>{t.admin.entries.retentionSave}</Button>
-          </div>
-        </form>
-        <Notice
-          message={retentionMessage}
-          kind={retentionMessage === t.admin.entries.retentionSaved ? 'ok' : 'error'}
-        />
-      </div>
-    </details>
-  </div>
-  <DialogContent
-    title={ui.deleteTitle}
-    description={ui.deleteConfirm.replace('{n}', String(deleteIds.length))}
-  >
-    <DialogClose class="min-h-11 rounded-md border px-4">{ui.cancel}</DialogClose>
-    <Button class="min-h-11" disabled={busy} onclick={() => void remove()}>{ui.deleteFinal}</Button>
-  </DialogContent>
-</Dialog>
+        </div>
+      {/if}
+      {#if actionMessage}
+        <div class="p-3"><Notice message={actionMessage} kind={actionKind} /></div>
+      {/if}
+    </section>
+  </Panel>
+  {#key tenant + form}<Suche
+      {tenant}
+      {form}
+      onDeleted={(ids) => {
+        items = items.filter((item) => !ids.includes(item.id));
+        lock();
+      }}
+    />{/key}
+  <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5">
+    <summary class="min-h-12 cursor-pointer py-3 font-semibold"
+      >{t.admin.entries.retentionTitle}</summary
+    >
+    <div class="pb-4">
+      <p class="text-muted-foreground max-w-prose text-sm leading-5">
+        {ui.retentionHint}
+      </p>
+      <form onsubmit={(e) => void saveRetention(e)} class="mt-4 flex max-w-xl flex-col gap-3">
+        <Row id="retention-days" label={t.admin.entries.retentionDays}
+          ><Input
+            id="retention-days"
+            type="number"
+            min="1"
+            max="3650"
+            bind:value={retentionInput}
+          /></Row
+        >
+        <div>
+          <Button type="submit" disabled={busy}>{t.admin.entries.retentionSave}</Button>
+        </div>
+      </form>
+      <Notice
+        message={retentionMessage}
+        kind={retentionMessage === t.admin.entries.retentionSaved ? 'ok' : 'error'}
+      />
+    </div>
+  </details>
+</div>

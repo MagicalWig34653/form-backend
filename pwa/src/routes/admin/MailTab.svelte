@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmDiscard } from '$lib/confirm.svelte';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
@@ -410,8 +411,8 @@
       {#if editor.error?.status === 409}<div>
           <Button
             variant="outline"
-            onclick={() => {
-              if (!changed || confirm(t.formWork.unsaved)) {
+            onclick={async () => {
+              if (!changed || (await confirmDiscard())) {
                 changed = false;
                 void editor.load();
               }

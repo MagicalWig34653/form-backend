@@ -1,4 +1,15 @@
-export const TABS = ['overview', 'fields', 'entries', 'mail', 'publish', 'keys'] as const;
+/** Form tabs in working order: build, receive, keep, go live. */
+export const TABS = [
+  'overview',
+  'fields',
+  'flow',
+  'entries',
+  'mail',
+  'webhooks',
+  'storage',
+  'keys',
+  'publish',
+] as const;
 export type Tab = (typeof TABS)[number];
 
 export type Route =
@@ -6,6 +17,7 @@ export type Route =
   | { name: 'setup' }
   | { name: 'overview' }
   | { name: 'tenants' }
+  | { name: 'formDirectory' }
   | { name: 'forms'; tenant: string }
   | { name: 'form'; tenant: string; form: string; tab: Tab }
   | { name: 'connections' }
@@ -27,6 +39,7 @@ export function matchRoute(path: string): Route {
   if (seg.length === 1 && seg[0] === 'overview') return { name: 'overview' };
   if (seg.length === 1 && seg[0] === 'login') return { name: 'login' };
   if (seg.length === 1 && seg[0] === 'setup') return { name: 'setup' };
+  if (seg.length === 1 && seg[0] === 'forms') return { name: 'formDirectory' };
   if (seg.length === 1 && seg[0] === 'connections') return { name: 'connections' };
   if (seg.length === 1 && seg[0] === 'api-tokens') return { name: 'apiTokens' };
   if (seg.length === 1 && seg[0] === 'ops') return { name: 'ops' };
@@ -51,6 +64,9 @@ export function matchRoute(path: string): Route {
 }
 
 export const OVERVIEW_PATH = '/overview';
+export const FORM_DIRECTORY_PATH = '/forms';
+/** The form directory, pre-filtered to one customer. */
+export const formDirectoryPath = (tenant: string) => `/forms?kunde=${tenant}`;
 export const tenantPath = (tenant: string) => `/t/${tenant}`;
 export const formPath = (tenant: string, form: string, tab: Tab = 'overview') =>
   `/t/${tenant}/f/${form}${tab === 'overview' ? '' : `/${tab}`}`;

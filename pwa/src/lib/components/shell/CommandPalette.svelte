@@ -68,6 +68,15 @@
       href: nav.account.href,
     });
     const tenant = nav.tenant;
+    if (nav.manageTenant && nav.area.kind !== 'all')
+      list.push({
+        id: 'page-members',
+        group: 'pages',
+        label: t.admin.nav.members,
+        hint: t.palette.customerKind,
+        icon: 'members',
+        href: `/t/${nav.manageTenant}/members`,
+      });
     for (const form of tenant ? (formsByTenant[tenant] ?? []) : []) {
       list.push({
         id: `form-${form.id}`,
@@ -115,6 +124,14 @@
         run: () => theme.toggle(),
       },
       {
+        id: 'action-unlock',
+        group: 'actions',
+        label: t.palette.unlockKey,
+        icon: 'unlocked',
+        keywords: 'schlüssel entsperren sperre passkey',
+        href: '/account',
+      },
+      {
         id: 'action-logout',
         group: 'actions',
         label: t.palette.logout,
@@ -158,7 +175,30 @@
     } else return;
     event.preventDefault();
   }
+  // "G" then "B" opens the area menu (not while typing, not with modifiers).
+  let gAt = 0;
+  function areaShortcut(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      target?.closest('input, textarea, select, [contenteditable], [role="dialog"]')
+    )
+      return;
+    const key = event.key.toLowerCase();
+    if (key === 'g') gAt = Date.now();
+    else if (key === 'b' && Date.now() - gAt < 1000) {
+      gAt = 0;
+      const trigger = document.getElementById('area-trigger');
+      if (trigger) {
+        event.preventDefault();
+        trigger.click();
+      }
+    } else gAt = 0;
+  }
   function globalKey(event: KeyboardEvent): void {
+    areaShortcut(event);
     if (
       event.key.toLowerCase() === 'k' &&
       (event.metaKey || event.ctrlKey) &&

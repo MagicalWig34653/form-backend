@@ -3,16 +3,18 @@
   import AccessStatus from './AccessStatus.svelte';
   import { onMount, tick } from 'svelte';
   import { t } from '$lib/i18n';
+  import { confirmDiscard } from '$lib/confirm.svelte';
   import { adminApi } from '$lib/api';
   import type { Statistics } from '$lib/api/admin';
   import { session } from '$lib/session.svelte';
   import { createEditor } from '$lib/draft/editor.svelte';
   import { router } from '$lib/router.svelte';
-  import { formPath, type Tab } from '$lib/routes';
+  import { formPath, TABS, type Tab } from '$lib/routes';
   import { describeError } from '$lib/admin/describe';
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import PageTabs, { type PageTab } from '$lib/components/admin/PageTabs.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
@@ -36,7 +38,6 @@
   const canEdit = $derived(rights.includes('draft.write'));
   const canPublish = $derived(rights.includes('release.publish'));
   const canIssue = $derived(rights.includes('key.manage'));
-  let extra = $state('');
   let fieldsDirty = $state(false);
   let abuseDirty = $state(false);
   const dirty = $derived(fieldsDirty || abuseDirty);
@@ -49,22 +50,19 @@
   let stats = $state<Statistics | null>(null);
   let statsLoading = $state(false);
   let statsError = $state('');
-  const navigation = $derived([
-    { name: t.shell.overview, target: 'overview' as Tab },
-    { name: t.shell.entries, target: 'entries' as Tab },
-    { name: t.formWork.configuration, target: 'fields' as Tab },
-    { name: t.formWork.integration, target: 'keys' as Tab },
-  ]);
-  const configuration = $derived(tab === 'fields' || tab === 'mail');
+  const configuration = $derived(
+    tab === 'fields' || tab === 'flow' || tab === 'mail' || tab === 'webhooks' || tab === 'storage',
+  );
   const customer = $derived(session.tenants.find((x) => x.id === tenant)?.name ?? '');
   const published = $derived(!!editor.detail?.currentReleaseId);
-  const tabActive = (target: Tab): boolean =>
-    tab === target || (target === 'fields' && configuration);
-  // Reiter als Pillen wie im thermoctl-Design: Umriss, aktive Seite hinterlegt.
-  const tabClass = (current: boolean): string =>
-    `inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium whitespace-nowrap transition-colors ${current ? 'bg-secondary text-secondary-foreground border-transparent' : 'border-border bg-background hover:bg-muted'}`;
-  const linkButton =
-    'inline-flex min-h-10 items-center justify-center rounded-md px-4 text-sm font-medium';
+  const formTabs = $derived<PageTab[]>(
+    TABS.map((id) => ({
+      id,
+      label: t.shell.tabs[id],
+      href: formPath(tenant, form, id),
+      active: tab === id,
+    })),
+  );
   // The shell breadcrumb can show the real form name from this shared context.
   $effect(() => {
     formContext.tenant = tenant;
@@ -74,8 +72,13 @@
       formContext.tenant = formContext.form = formContext.name = '';
     };
   });
-  function leave(): boolean {
-    return !dirty || confirm(t.formWork.unsaved);
+  // Leaving with unsaved changes asks once, whichever control triggered the navigation.
+  function guard(): boolean | Promise<boolean> {
+    if (!dirty) return true;
+    return confirmDiscard().then((ok) => {
+      if (ok) fieldsDirty = abuseDirty = false;
+      return ok;
+    });
   }
   function navigate(event: MouseEvent, target: Tab): void {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -83,9 +86,6 @@
     const statistics =
       event.currentTarget instanceof HTMLAnchorElement &&
       event.currentTarget.hash === '#statistics';
-    // The document capture listener has already confirmed navigation.
-    fieldsDirty = abuseDirty = false;
-    extra = '';
     router.navigate(formPath(tenant, form, target) + (statistics ? '#statistics' : ''));
     if (statistics) void tick().then(() => document.getElementById('statistics')?.scrollIntoView());
   }
@@ -119,46 +119,23 @@
     const unload = (event: BeforeUnloadEvent) => {
       if (dirty) event.preventDefault();
     };
-    const click = (event: MouseEvent) => {
-      if (
-        !(event.target instanceof Element) ||
-        !event.target.closest('a[href]') ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        event.altKey
-      )
-        return;
-      if (!leave()) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    };
-    const change = (event: Event) => {
-      const select = event.target;
-      if (
-        !(select instanceof HTMLSelectElement) ||
-        select.getAttribute('aria-label') !== t.admin.customer
-      )
-        return;
-      if (!leave()) {
-        select.value = tenant;
-        event.stopImmediatePropagation();
-      }
-    };
     const back = () => {
-      if (dirty && !leave()) router.navigate(activePath);
-      else fieldsDirty = abuseDirty = false;
+      if (!dirty) return;
+      const target = location.pathname + location.search;
+      router.navigate(activePath, true);
+      void confirmDiscard().then((ok) => {
+        if (!ok) return;
+        fieldsDirty = abuseDirty = false;
+        router.navigate(target);
+      });
     };
+    const release = router.setGuard(guard);
     window.addEventListener('beforeunload', unload);
     window.addEventListener('popstate', back);
-    document.addEventListener('change', change, true);
-    document.addEventListener('click', click, true);
     return () => {
+      release();
       window.removeEventListener('beforeunload', unload);
       window.removeEventListener('popstate', back);
-      document.removeEventListener('change', change, true);
-      document.removeEventListener('click', click, true);
     };
   });
 </script>
@@ -213,36 +190,21 @@
       {/if}
     {/snippet}
     {#snippet actions()}
-      {#if canEdit}<a
-          class={`${linkButton} border-border hover:bg-secondary border`}
+      {#if canEdit}<Button
+          variant="outline"
           href={formPath(tenant, form, 'fields')}
-          onclick={(e) => navigate(e, 'fields')}>{t.formWork.edit}</a
+          onclick={(e) => navigate(e, 'fields')}>{t.formWork.edit}</Button
         >{/if}
-      {#if canPublish}<a
-          class={`${linkButton} bg-primary text-primary-foreground hover:opacity-90`}
+      {#if canPublish}<Button
           href={formPath(tenant, form, 'publish')}
-          onclick={(e) => navigate(e, 'publish')}>{t.formWork.publish}</a
+          onclick={(e) => navigate(e, 'publish')}>{t.formWork.publish}</Button
         >{/if}
+    {/snippet}
+    {#snippet tabs()}
+      <PageTabs label={t.admin.form.tabsLabel} tabs={formTabs} />
     {/snippet}
   </PageHeader>
   <AccessStatus showLocked={tab === 'entries'} />
-  <nav aria-label={t.admin.form.tabsLabel} class="min-w-0">
-    <div class="flex flex-wrap gap-1">
-      {#each navigation as item (item.target)}
-        <a
-          href={formPath(tenant, form, item.target)}
-          aria-current={tabActive(item.target) ? 'page' : undefined}
-          onclick={(e) => navigate(e, item.target)}
-          class={tabClass(tabActive(item.target))}>{item.name}</a
-        >
-      {/each}
-      <a
-        href={formPath(tenant, form) + '#statistics'}
-        class={tabClass(false)}
-        onclick={(e) => navigate(e, 'overview')}>{t.formWork.statistics}</a
-      >
-    </div>
-  </nav>
   {#if editor.loading}
     <div aria-busy="true" class="flex min-h-64 flex-col gap-4">
       <p role="status" class="text-muted-foreground text-sm">
@@ -272,43 +234,8 @@
           <Button variant="outline" onclick={() => void editor.load()}>{t.admin.retry}</Button>
         {/snippet}
       </Banner>
-    {:else if configuration}
-      <nav aria-label={t.formWork.configuration} class="flex flex-wrap gap-1">
-        {#each ['fields', 'mail'] as target (target)}
-          <a
-            class={tabClass(!extra && tab === target)}
-            aria-current={!extra && tab === target ? 'page' : undefined}
-            href={formPath(tenant, form, target as Tab)}
-            onclick={(e) => navigate(e, target as Tab)}
-            >{target === 'fields' ? t.formWork.fields : t.formWork.mail}</a
-          >
-        {/each}
-        {#each ['webhooks', 'storage', 'flow'] as target (target)}
-          <button
-            type="button"
-            class={tabClass(extra === target)}
-            aria-pressed={extra === target}
-            onclick={() => {
-              if (leave()) {
-                fieldsDirty = abuseDirty = false;
-                extra = target;
-              }
-            }}>{t.formWork[target as 'webhooks' | 'storage' | 'flow']}</button
-          >
-        {/each}
-      </nav>
     {/if}
-    {#if extra && configuration}
-      <Panel title={t.formWork[extra as 'webhooks' | 'storage' | 'flow']}>
-        {#if extra === 'webhooks'}
-          <WebhooksPanel {tenant} {form} />
-        {:else}
-          <p class="text-muted-foreground max-w-prose text-sm">
-            {t.formWork[`${extra}Pending` as 'storagePending' | 'flowPending']}
-          </p>
-        {/if}
-      </Panel>
-    {:else if tab === 'overview'}
+    {#if tab === 'overview'}
       {#if !published}
         <Banner tone="info">{t.formWork.unpublished}</Banner>
       {/if}
@@ -397,6 +324,16 @@
     {:else if tab === 'fields'}
       <FieldsTab {editor} ondirty={(value) => (fieldsDirty = value)} />
       <AbusePanel {editor} {tenant} {form} ondirty={(value) => (abuseDirty = value)} />
+    {:else if tab === 'flow'}
+      <Panel title={t.formWork.flow}>
+        <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.flowPending}</p>
+      </Panel>
+    {:else if tab === 'webhooks'}
+      <Panel title={t.formWork.webhooks}><WebhooksPanel {tenant} {form} /></Panel>
+    {:else if tab === 'storage'}
+      <Panel title={t.formWork.storage}>
+        <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.storagePending}</p>
+      </Panel>
     {:else if tab === 'mail'}
       <Panel>
         <MailTab

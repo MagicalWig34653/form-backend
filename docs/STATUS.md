@@ -1,5 +1,27 @@
 # Tatsächlicher Stand
 
+## PWA: Fable-Umsetzung (10.11.2026, Worktree-Branch `worktree-agent-ac52228a6ed7925b5`, lokal committet, ungemergt)
+
+Nutzerentscheidung: Struktur und Bedienung des Fable-Konzepts (Fable 5.2 vorrangig) werden in der echten PWA umgesetzt; die Demo-Optik wird nicht übernommen (shadcn-Tokens, Türkis-Akzent bleiben). Beibehalten: Bereichsauswahl (Gesamt/Kunde/Formular), Schlüsselstatus-Chip, Passkey-Direktabfrage bei frischer Anmeldung, Zero-Knowledge-Regeln (nichts im Dashboard entschlüsseln, „—“ statt Nullen). URLs bleiben unverändert (`/overview`, `/t/:id`, `/t/:id/f/:id/<tab>`); neu nur `/forms`.
+
+Lückenliste (Ist-Stand vor der Umsetzung):
+
+- Navigation: Gruppen „Arbeitsbereich/Verwaltung“ mischten Bereich, Verzeichnisse und Systemseiten; keine Formularübersicht über alle Kunden; Systemseiten (Einstellungen, Einrichtung, Umstieg, Verbindungen) für alle sichtbar; Mitglieder als Seitenleisten-Eintrag statt am Kunden.
+- Shell: mobile Navigation als selbstgebaute Schublade statt Sheet; Suche nur in der Seitenleiste; kein Offline-Hinweis; Aktiv-Markierung ohne Akzentbalken.
+- Seitenaufbau: Formular-Reiter uneinheitlich (fünf „Pillen“, dahinter Unterreiter und Schaltflächen ohne eigene Adresse); kein gemeinsamer Seitenkopf mit Bereichsangabe und Reitern; Kunde ohne Reiter; Karten teils verschachtelt (Bearbeiten-Formular und Vorschau im Feld-Panel).
+- Bestätigungen: native `confirm()`-Dialoge an acht Stellen, uneinheitlich und nicht zugänglich gestaltbar.
+- Zustände/Tabellen: Fehler je Quelle weitgehend vorhanden; Tabellen ohne Sortier-/Zeilenregeln des Konzepts; Einsendungen ohne einheitliche Massenleiste.
+- Feldeditor: nur Auf/Ab-Schaltflächen, keine Live-Ansage, keine Tastaturgriffe, keine Positionsnummern.
+- Befehlspalette vorhanden; es fehlen Kürzel für die Bereichsauswahl und Aktionen wie Schlüssel entsperren.
+- Konsistenz: gemischte Schaltflächen-/Hinweisformen, vereinzelt „Wollen Sie“-Formulierungen.
+
+Fortschritt je Stufe:
+
+- Stufe 1+2 (Fundament, Navigation, Seitenaufbau; ein Commit): Navigation in Bereich (Übersicht, Einsendungen, Statistik) / Verwalten (Kunden, Formulare, Tokens) / System (nur Systemadministration, Betrieb auch für Berechtigte) und Fuß (Konto, Hilfe, Abmelden); neue Route `/forms` (Formularverzeichnis über alle Kunden, Status Entwurf/Live/Pausiert, entfernbarer Kundenfilter `?kunde=`); Suche und Offline-Chip in der Kopfzeile; mobiles Menü als Sheet (Fokus auf dem ersten Eintrag, Escape, Fokusrückgabe); gemeinsamer Bestätigungsdialog (`lib/confirm.svelte.ts`, `ConfirmHost`, ui/alert-dialog) ersetzt alle nativen `confirm()`; Router-Guard (`router.setGuard`) fragt vor dem Verlassen mit ungespeicherten Änderungen genau einmal; Formular mit neun Reitern in Arbeitsreihenfolge (Übersicht, Felder, Ablauf, Einsendungen, Mail, Webhooks, Aufbewahrung, Einbindung, Veröffentlichen), jeder mit eigener Adresse; Kunde mit Reitern Formulare/Mitglieder; `PageHeader` mit Reiterbereich, `PageTabs`, `CustomerHeader`; Dialoge docken mobil unten an.
+- Geprüft: svelte-check 0, eslint, prettier, vitest (232), Playwright komplett (147 bestanden, 9 übersprungen wie zuvor).
+- Stufe 3 (Feldeditor, Palette): Positionsnummern, Alt+Pfeil verschiebt die Zeile direkt, Live-Ansage „Feld, Position n von m“, Fokus bleibt in der Zeile; Palette mit „Mitglieder“ (Kundenbereich) und „Schlüssel entsperren“, Kürzel G dann B öffnet die Bereichsauswahl. Geprüft: Playwright 149 bestanden, vitest 232, check/lint grün.
+- Bewusst NICHT umgesetzt: Greifmodus (Leertaste/Pfeile/Esc) und Zeigerziehen im Feldeditor (jede Verschiebung wird sofort am Entwurf gespeichert, ein Abbruch-Zustand fehlt); Zwei-Spalten-Editor mit Eigenschaftenbereich; Passkey-Bestätigung im Bestätigungsdialog (nur serverseitig erzwungene frische Anmeldung bleibt); Sortierung/Seitenwechsel/Filter-in-URL der Tabellen außer `/forms?kunde=`; Veröffentlichen-Punktindikator und Versionsvergleich (keine Vergleichsdaten); gemeinsamer Entsperrdialog (Chip führt weiter zum Konto); Offline: schreibende Aktionen nicht deaktiviert; Sitzungsablauf-Dialog; Massenleiste weiterhin oben statt unten.
+
 ## PWA: Bereichsauswahl (10.11.2026, Worktree-Branch `worktree-agent-a9782b02214d315f9`, lokal committet, ungemergt)
 
 - Neu oben in der Seitenleiste: Auswahlfeld „Bereich“ (Gesamt, je Kunde Gruppe mit Kunde und Formularen; Combobox/Listbox, Tastatur, Escape gibt Fokus zurück, Suchfeld ab 8 Einträgen). Der Bereich ergibt sich nur aus der Route (`lib/area.ts`, `areaOf`); Auswahl navigiert. Neue Route `/overview` (Gesamt-Dashboard, auch Startseite nach Anmeldung), `/t` bleibt die Kundenliste („Kunden“).

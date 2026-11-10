@@ -97,7 +97,7 @@ it('unterscheidet fehlende Freigabe von leerer Kundenverwaltung', async () => {
   await screen.findByText('Für Ihr Konto ist noch kein Kunde freigegeben.');
   expect(screen.queryByRole('button', { name: 'Kunde anlegen' })).toBeNull();
 });
-it('behält einen einzelnen Kunden im Überblick sichtbar', async () => {
+it('behält einen einzelnen Kunden in der Übersicht sichtbar', async () => {
   render(Tenants);
   await screen.findByRole('link', { name: 'Öffnen: Beispiel' });
   expect(mocks.navigate).not.toHaveBeenCalled();

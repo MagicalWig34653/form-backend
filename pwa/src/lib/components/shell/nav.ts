@@ -1,5 +1,14 @@
 import { t } from '$lib/i18n';
-import { formPath, OVERVIEW_PATH, tenantPath, TABS, type Route, type Tab } from '$lib/routes';
+import {
+  formDirectoryPath,
+  formPath,
+  FORM_DIRECTORY_PATH,
+  OVERVIEW_PATH,
+  tenantPath,
+  TABS,
+  type Route,
+  type Tab,
+} from '$lib/routes';
 import { areaOf } from '$lib/area';
 import type { Crumb } from '$lib/components/admin/Breadcrumb.svelte';
 
@@ -13,13 +22,13 @@ export interface NavItem {
   hint?: string;
 }
 export interface NavGroup {
-  id: 'work' | 'admin';
+  id: 'area' | 'manage' | 'system';
   label: string;
   items: NavItem[];
 }
 export interface NavContext {
   route: Route;
-  /** Customer whose members page is offered; the area's customer, else the only one of the session. */
+  /** Customer whose members page is offered (palette); the area's customer, else the only one of the session. */
   manageTenant: string | undefined;
   systemAdministrator: boolean;
   opsVisible: boolean;
@@ -27,46 +36,32 @@ export interface NavContext {
 
 /** What the user has to choose first; the target page shows a matching hint (see NeedHint). */
 export type Need = 'customer' | 'entries' | 'statistics';
-export const needPath = (path: string, need: Need): string => `${path}?need=${need}`;
 
 /**
- * Navigation model shared by the sidebar and the command palette. "Einsendungen" and "Statistik"
- * follow the area derived from the route (area.ts): overall, one customer or one form.
+ * Navigation model shared by the sidebar and the command palette.
+ * - "Bereich" follows the area derived from the route (area.ts): overall, one customer or one form.
+ * - "Verwalten" lists directories that do not depend on the area; "Formulare" is pre-filtered to the area's customer.
+ * - "System" exists only for system administration (and the operations page for whoever may see it).
  */
 export function buildNav(c: NavContext): NavGroup[] {
   const { route } = c;
   const area = areaOf(route);
   const base = area.kind === 'all' ? OVERVIEW_PATH : tenantPath(area.tenant);
   const onForm = route.name === 'form';
+  const dashboardHref = area.kind === 'form' ? formPath(area.tenant, area.form) : base;
   const entriesHref =
     area.kind === 'form' ? formPath(area.tenant, area.form, 'entries') : `${base}#recent-entries`;
   const statisticsHref =
     area.kind === 'form' ? `${formPath(area.tenant, area.form)}#statistics` : `${base}#statistics`;
-  const work: NavItem[] = [];
-  if (area.kind === 'all')
-    work.push({
+  const areaItems: NavItem[] = [
+    {
       id: 'dashboard',
       label: t.area.dashboard,
-      href: OVERVIEW_PATH,
+      href: dashboardHref,
       icon: 'dashboard',
-      active: route.name === 'overview',
-    });
-  work.push({
-    id: 'customers',
-    label: t.shell.customers,
-    href: '/t',
-    icon: 'customers',
-    active: route.name === 'tenants',
-  });
-  if (area.kind !== 'all')
-    work.push({
-      id: 'forms',
-      label: t.shell.forms,
-      href: tenantPath(area.tenant),
-      icon: 'forms',
-      active: route.name === 'forms' || (onForm && route.tab !== 'entries'),
-    });
-  work.push(
+      active:
+        route.name === 'overview' || route.name === 'forms' || (onForm && route.tab !== 'entries'),
+    },
     {
       id: 'entries',
       label: t.shell.entries,
@@ -81,66 +76,77 @@ export function buildNav(c: NavContext): NavGroup[] {
       icon: 'statistics',
       active: false,
     },
-  );
-  const admin: NavItem[] = [];
-  if (c.manageTenant)
-    admin.push({
-      id: 'members',
-      label: t.admin.nav.members,
-      href: `/t/${c.manageTenant}/members`,
-      icon: 'members',
-      active: route.name === 'members',
-    });
+  ];
+  const manage: NavItem[] = [
+    {
+      id: 'customers',
+      label: t.shell.customers,
+      href: '/t',
+      icon: 'customers',
+      active: route.name === 'tenants' || route.name === 'members',
+    },
+    {
+      id: 'forms',
+      label: t.shell.forms,
+      href: area.kind === 'all' ? FORM_DIRECTORY_PATH : formDirectoryPath(area.tenant),
+      icon: 'forms',
+      active: route.name === 'formDirectory',
+    },
+    {
+      id: 'tokens',
+      label: t.shell.tokens,
+      href: '/api-tokens',
+      icon: 'tokens',
+      active: route.name === 'apiTokens',
+    },
+  ];
+  const system: NavItem[] = [];
   if (c.systemAdministrator)
-    admin.push({
+    system.push({
       id: 'connections',
       label: t.admin.nav.connections,
       href: '/connections',
       icon: 'connections',
       active: route.name === 'connections',
     });
-  admin.push({
-    id: 'tokens',
-    label: t.shell.tokens,
-    href: '/api-tokens',
-    icon: 'tokens',
-    active: route.name === 'apiTokens',
-  });
   if (c.opsVisible)
-    admin.push({
+    system.push({
       id: 'ops',
       label: t.ops.title,
       href: '/ops',
       icon: 'ops',
       active: route.name === 'ops',
     });
-  admin.push(
-    {
-      id: 'settings',
-      label: t.admin.settings.title,
-      href: '/settings',
-      icon: 'settings',
-      active: route.name === 'settings',
-    },
-    {
-      id: 'installation',
-      label: t.shell.setup,
-      href: '/installation',
-      icon: 'setup',
-      active: route.name === 'installation',
-    },
-    {
-      id: 'migration',
-      label: t.shell.migration,
-      href: '/migration',
-      icon: 'migration',
-      active: route.name === 'migration',
-    },
-  );
-  return [
-    { id: 'work', label: t.shell.groups.work, items: work },
-    { id: 'admin', label: t.shell.groups.admin, items: admin },
+  if (c.systemAdministrator)
+    system.push(
+      {
+        id: 'settings',
+        label: t.admin.settings.title,
+        href: '/settings',
+        icon: 'settings',
+        active: route.name === 'settings',
+      },
+      {
+        id: 'installation',
+        label: t.shell.setup,
+        href: '/installation',
+        icon: 'setup',
+        active: route.name === 'installation',
+      },
+      {
+        id: 'migration',
+        label: t.shell.migration,
+        href: '/migration',
+        icon: 'migration',
+        active: route.name === 'migration',
+      },
+    );
+  const groups: NavGroup[] = [
+    { id: 'area', label: t.shell.groups.area, items: areaItems },
+    { id: 'manage', label: t.shell.groups.manage, items: manage },
   ];
+  if (system.length > 0) groups.push({ id: 'system', label: t.shell.groups.system, items: system });
+  return groups;
 }
 
 /** Account entry shown at the foot of the sidebar. */
@@ -166,6 +172,8 @@ export function crumbsFor(
   switch (route.name) {
     case 'tenants':
       return [{ label: t.shell.customers }];
+    case 'formDirectory':
+      return [{ label: t.shell.forms }];
     case 'overview':
       return [{ label: t.area.dashboard }];
     case 'forms':

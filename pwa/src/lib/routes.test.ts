@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formPath, matchRoute, safeNext } from './routes';
+import { formPath, matchRoute, safeNext, TABS } from './routes';
 
 const T = 'aaaaaaaa-1111-4111-8111-11111111111a';
 const F = '22222222-2222-4222-8222-222222222222';
@@ -22,6 +22,7 @@ describe('matchRoute', () => {
       tab: 'mail',
     });
     expect(matchRoute('/connections')).toEqual({ name: 'connections' });
+    expect(matchRoute('/forms')).toEqual({ name: 'formDirectory' });
     expect(matchRoute('/account')).toEqual({ name: 'account' });
     expect(matchRoute('/t/aaaaaaaa-1111-4111-8111-11111111111a/members')).toEqual({
       name: 'members',
@@ -43,6 +44,21 @@ describe('matchRoute', () => {
       `/t/${T}%2f..`,
     ])
       expect(matchRoute(p).name, p).toBe('notFound');
+  });
+  it('knows all nine form tabs in working order', () => {
+    expect(TABS).toEqual([
+      'overview',
+      'fields',
+      'flow',
+      'entries',
+      'mail',
+      'webhooks',
+      'storage',
+      'keys',
+      'publish',
+    ]);
+    for (const tab of TABS)
+      expect(matchRoute(formPath(T, F, tab)), tab).toMatchObject({ name: 'form', tab });
   });
   it('builds the paths it matches', () => {
     expect(matchRoute(formPath(T, F, 'keys'))).toMatchObject({ tab: 'keys' });

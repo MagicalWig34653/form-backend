@@ -63,7 +63,7 @@ const entries: [string, RegExp][] = [
   ['Einstellungen', /\/settings$/],
   ['Einrichtung', /\/installation$/],
   ['Umstieg', /\/migration$/],
-  ['Mitglieder', new RegExp(`/t/${T}/members$`)],
+  ['Formulare', /\/forms/],
   ['Verbindungen', /\/connections$/],
   ['Mein Konto', /\/account$/],
 ];
@@ -82,7 +82,10 @@ for (const [name, viewport] of [
           await page.goto(start);
           if (name === 'mobile')
             await page.getByRole('button', { name: 'Navigation öffnen' }).click();
-          const scope = page.locator('aside');
+          const scope =
+            name === 'mobile'
+              ? page.getByRole('dialog', { name: 'Hauptnavigation' })
+              : page.locator('aside');
           await scope.getByRole('link', { name: label, exact: true }).first().click();
           await expect(page).toHaveURL(url);
           await expect(page.locator('#page-title')).toBeVisible();
@@ -99,7 +102,10 @@ test('overall area: Einsendungen and Statistik stay on the overall dashboard, no
   await mockApi(page, 'none');
   await page.goto('/settings');
   const aside = page.locator('aside');
-  await expect(aside.getByRole('link', { name: 'Formulare', exact: true })).toHaveCount(0);
+  await expect(aside.getByRole('link', { name: 'Formulare', exact: true })).toHaveAttribute(
+    'href',
+    '/forms',
+  );
   for (const [name, hash] of [
     ['Einsendungen', 'recent-entries'],
     ['Statistik', 'statistics'],
@@ -110,7 +116,7 @@ test('overall area: Einsendungen and Statistik stay on the overall dashboard, no
     await page.goto('/settings');
   }
   await expect(aside.locator('[aria-disabled]')).toHaveCount(0);
-  await aside.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await aside.getByRole('link', { name: 'Übersicht', exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/);
   await aside.getByRole('link', { name: 'Kunden', exact: true }).click();
   await expect(page).toHaveURL(/\/t$/);
@@ -124,12 +130,18 @@ test('customer area: Formulare, Einsendungen and Statistik lead to the customer 
   await mockApi(page, 'one-no-forms');
   await page.goto(`/t/${T}/members`);
   const aside = page.locator('aside');
-  await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
+  await aside.getByRole('link', { name: 'Übersicht', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}$`));
   await aside.getByRole('link', { name: 'Einsendungen', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}#recent-entries$`));
   await aside.getByRole('link', { name: 'Statistik', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}#statistics$`));
+  // "Formulare" is a directory: pre-filtered to the area's customer, with a removable filter.
+  await aside.getByRole('link', { name: 'Formulare', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/forms\\?kunde=${T}$`));
+  await expect(
+    page.getByRole('button', { name: /Filter „Kunde: Kunde A“ entfernen/ }),
+  ).toBeVisible();
 });
 
 test('form area: Formulare leads back to the customer, Einsendungen and Statistik stay in the form', async ({

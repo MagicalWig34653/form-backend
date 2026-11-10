@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import { onMount } from 'svelte';
   import { http } from '$lib/api';
   import { describeError, needsFreshLogin } from '$lib/admin/describe';
@@ -60,7 +61,16 @@
     busy = false;
   }
   async function remove(hook: Hook) {
-    if (busy || !window.confirm(text.confirmDelete.replace('{url}', hook.targetURL))) return;
+    if (busy) return;
+    if (
+      !(await confirmAction({
+        title: t.confirm.deleteWebhookTitle,
+        description: t.confirm.deleteWebhookBody.replace('{url}', hook.targetURL),
+        confirmLabel: t.confirm.deleteWebhook,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     error = '';
     const r = await http.request('DELETE', `${base}/${hook.id}`);

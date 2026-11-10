@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmAction } from '$lib/confirm.svelte';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi, http } from '$lib/api';
@@ -9,7 +10,7 @@
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import Notice from '$lib/components/admin/Notice.svelte';
-  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import CustomerHeader from '$lib/components/admin/CustomerHeader.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import { Checkbox } from '$lib/components/ui/checkbox';
@@ -26,7 +27,18 @@
     else if (!handleSessionError(r.error)) message = describeError(r.error);
   }
   async function changeAccount(x: Account, field: 'active' | 'mcpAllowed'): Promise<void> {
-    if (busy || (field === 'active' && x.active && !confirm(c.confirmLock))) return;
+    if (busy) return;
+    if (
+      field === 'active' &&
+      x.active &&
+      !(await confirmAction({
+        title: t.confirm.lockAccountTitle,
+        description: t.confirm.lockAccountBody,
+        confirmLabel: t.confirm.lockAccount,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     message = ok = '';
     const r = await http.request<void>('PUT', `/accounts/${x.id}/status`, {
@@ -93,7 +105,11 @@
 </script>
 
 <div class="flex w-full max-w-[820px] flex-col gap-6">
-  <PageHeader title={m.title} description={m.intro} />
+  <CustomerHeader {tenant} current="members" />
+  <div>
+    <h2 class="text-xl leading-snug font-semibold tracking-tight">{m.title}</h2>
+    <p class="text-muted-foreground mt-1 text-sm">{m.intro}</p>
+  </div>
   {#if !loaded}
     <div aria-busy="true" class="flex flex-col gap-3">
       <span class="sr-only" role="status">{t.admin.loading}</span>

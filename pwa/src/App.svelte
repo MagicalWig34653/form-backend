@@ -7,6 +7,7 @@
   import Setup from './routes/Setup.svelte';
   import NotFound from './routes/NotFound.svelte';
   import Shell from './routes/admin/Shell.svelte';
+  import ConfirmHost from '$lib/components/shell/ConfirmHost.svelte';
   import { matchRoute } from '$lib/routes';
 
   // Public documentation site (GitHub Pages); override per deployment with VITE_DOCS_URL.
@@ -70,3 +71,5 @@
     <NotFound />
   {/if}
 </main>
+
+<ConfirmHost />

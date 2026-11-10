@@ -49,32 +49,38 @@ const ctx = (route: Route) => ({
 
 it('nav model groups pages and only offers rights-based entries when allowed', () => {
   const plain = buildNav(ctx({ name: 'tenants' }));
-  expect(plain.map((g) => g.label)).toEqual(['Arbeitsbereich', 'Verwaltung']);
+  expect(plain.map((g) => g.label)).toEqual(['Bereich', 'Verwalten']);
   const ids = plain.flatMap((g) => g.items.map((i) => i.id));
   expect(ids).not.toContain('ops');
   expect(ids).not.toContain('connections');
-  expect(ids).not.toContain('members');
+  expect(ids).not.toContain('settings');
   const full = buildNav({
     ...ctx({ name: 'tenants' }),
     systemAdministrator: true,
     opsVisible: true,
-    manageTenant: 't1',
   });
+  expect(full.map((g) => g.label)).toEqual(['Bereich', 'Verwalten', 'System']);
   const fullIds = full.flatMap((g) => g.items.map((i) => i.id));
-  expect(fullIds).toEqual(expect.arrayContaining(['ops', 'connections', 'members']));
+  expect(fullIds).toEqual(
+    expect.arrayContaining(['ops', 'connections', 'settings', 'installation', 'migration']),
+  );
+  // Operations may be visible without system administration; the rest of "System" stays hidden.
+  const opsOnly = buildNav({ ...ctx({ name: 'tenants' }), opsVisible: true });
+  expect(opsOnly[2]?.items.map((i) => i.id)).toEqual(['ops']);
 });
 
 const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';
 const form = 'bbbbbbbb-1111-4111-8111-111111111111';
 const find = (nav: ReturnType<typeof buildNav>, id: string) =>
-  nav[0]?.items.find((i) => i.id === id);
+  nav.flatMap((g) => g.items).find((i) => i.id === id);
 
-it('Einsendungen and Statistik follow the area: form, customer, overall', () => {
+it('Bereich entries follow the area: form, customer, overall', () => {
   const onForm = buildNav(ctx({ name: 'form', tenant, form, tab: 'overview' }));
+  expect(find(onForm, 'dashboard')?.href).toBe(`/t/${tenant}/f/${form}`);
   expect(find(onForm, 'entries')?.href).toBe(`/t/${tenant}/f/${form}/entries`);
   expect(find(onForm, 'statistics')?.href).toBe(`/t/${tenant}/f/${form}#statistics`);
-  expect(find(onForm, 'forms')?.href).toBe(`/t/${tenant}`);
   const onTenant = buildNav(ctx({ name: 'forms', tenant }));
+  expect(find(onTenant, 'dashboard')?.href).toBe(`/t/${tenant}`);
   expect(find(onTenant, 'entries')?.href).toBe(`/t/${tenant}#recent-entries`);
   expect(find(onTenant, 'statistics')?.href).toBe(`/t/${tenant}#statistics`);
   const members = buildNav(ctx({ name: 'members', tenant }));
@@ -84,10 +90,20 @@ it('Einsendungen and Statistik follow the area: form, customer, overall', () => 
     expect(find(all, 'entries')?.href).toBe('/overview#recent-entries');
     expect(find(all, 'statistics')?.href).toBe('/overview#statistics');
     expect(find(all, 'dashboard')?.href).toBe('/overview');
-    expect(find(all, 'forms')).toBeUndefined();
     expect(find(all, 'customers')?.href).toBe('/t');
   }
-  expect(find(onTenant, 'dashboard')).toBeUndefined();
+});
+
+it('Verwalten is independent of the area; Formulare is pre-filtered to the area customer', () => {
+  expect(find(buildNav(ctx({ name: 'overview' })), 'forms')?.href).toBe('/forms');
+  expect(find(buildNav(ctx({ name: 'forms', tenant })), 'forms')?.href).toBe(
+    `/forms?kunde=${tenant}`,
+  );
+  expect(find(buildNav(ctx({ name: 'form', tenant, form, tab: 'mail' })), 'forms')?.href).toBe(
+    `/forms?kunde=${tenant}`,
+  );
+  expect(find(buildNav(ctx({ name: 'formDirectory' })), 'forms')?.active).toBe(true);
+  expect(find(buildNav(ctx({ name: 'members', tenant })), 'customers')?.active).toBe(true);
 });
 
 it('no entry is dead or disabled and none carries a need hint', () => {
@@ -103,7 +119,7 @@ it('no entry is dead or disabled and none carries a need hint', () => {
     }
   const onEntries = buildNav(ctx({ name: 'form', tenant, form, tab: 'entries' }));
   expect(find(onEntries, 'entries')?.active).toBe(true);
-  expect(find(onEntries, 'forms')?.active).toBe(false);
+  expect(find(onEntries, 'dashboard')?.active).toBe(false);
   expect(find(buildNav(ctx({ name: 'overview' })), 'dashboard')?.active).toBe(true);
 });
 
@@ -113,5 +129,5 @@ it('breadcrumbs end on the current page', () => {
   expect(trail.map((c) => c.label)).toEqual(['Kunde A', 'Formulare', 'Formular', 'Einsendungen']);
   expect(trail.at(-1)?.href).toBeUndefined();
   expect(crumbsFor({ name: 'notFound' }, tenants, [])).toEqual([]);
-  expect(crumbsFor({ name: 'overview' }, tenants, []).map((c) => c.label)).toEqual(['Dashboard']);
+  expect(crumbsFor({ name: 'overview' }, tenants, []).map((c) => c.label)).toEqual(['Übersicht']);
 });
