@@ -2,7 +2,6 @@
 export const TABS = [
   'overview',
   'fields',
-  'flow',
   'entries',
   'mail',
   'webhooks',
@@ -21,6 +20,7 @@ export type Route =
   | { name: 'forms'; tenant: string }
   | { name: 'form'; tenant: string; form: string; tab: Tab }
   | { name: 'connections' }
+  | { name: 'accounts' }
   | { name: 'settings' }
   | { name: 'ops' }
   | { name: 'installation' }
@@ -41,6 +41,7 @@ export function matchRoute(path: string): Route {
   if (seg.length === 1 && seg[0] === 'setup') return { name: 'setup' };
   if (seg.length === 1 && seg[0] === 'forms') return { name: 'formDirectory' };
   if (seg.length === 1 && seg[0] === 'connections') return { name: 'connections' };
+  if (seg.length === 1 && seg[0] === 'accounts') return { name: 'accounts' };
   if (seg.length === 1 && seg[0] === 'api-tokens') return { name: 'apiTokens' };
   if (seg.length === 1 && seg[0] === 'ops') return { name: 'ops' };
   if (seg.length === 1 && seg[0] === 'installation') return { name: 'installation' };
@@ -55,7 +56,9 @@ export function matchRoute(path: string): Route {
     if (seg.length === 3 && seg[2] === 'members') return { name: 'members', tenant };
     const form = seg[3];
     if (seg[2] === 'f' && form !== undefined && UUID.test(form) && seg.length <= 5) {
-      const tab = seg[4] ?? 'overview';
+      // The flow editor does not exist yet; its former address opens the overview.
+      const raw = seg[4] ?? 'overview';
+      const tab = raw === 'flow' ? 'overview' : raw;
       if ((TABS as readonly string[]).includes(tab))
         return { name: 'form', tenant, form, tab: tab as Tab };
     }

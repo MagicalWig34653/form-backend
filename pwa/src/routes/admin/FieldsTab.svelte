@@ -21,6 +21,8 @@
   import { describeError } from '$lib/admin/describe';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
+  import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import Row from '$lib/components/admin/Row.svelte';
   import Select from '$lib/components/admin/Select.svelte';
   import Textarea from '$lib/components/admin/Textarea.svelte';
@@ -269,7 +271,7 @@
     <DraftGate {editor}>
       {#if slow}<p role="status">{t.formWork.slow}</p>{/if}
       <form onsubmit={(event) => void saveTitle(event)} class="border-border border-t pt-4">
-        <div class="flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="flex max-w-[560px] flex-col gap-3 sm:flex-row sm:items-end">
           <div class="min-w-0 flex-1">
             <Row id="form-title" label={t.admin.form.title}
               ><Input
@@ -282,20 +284,20 @@
               /></Row
             >
           </div>
-          <div>
-            <Button type="submit" variant="outline" disabled={editor.saving || !titleChanged}
-              >{t.admin.form.titleSave}</Button
-            >
-          </div>
+          {#if titleChanged}
+            <div>
+              <Button type="submit" disabled={editor.saving}>{t.admin.form.titleSave}</Button>
+            </div>
+          {/if}
         </div>
       </form>
-      <p class="text-muted-foreground text-sm">
-        {t.admin.fields.sensitiveHint}
-      </p>
+      <details class="text-muted-foreground text-sm">
+        <summary class="min-h-8 cursor-pointer py-1 font-medium">{t.admin.fields.notes}</summary>
+        <p class="mt-2">{t.admin.fields.sensitiveHint}</p>
+        <p class="mt-2">{t.formWork.orderHint} {t.admin.fields.keyHint}</p>
+      </details>
       {#if fields.length === 0}
-        <p class="bg-muted/60 text-muted-foreground rounded-lg p-4 text-center">
-          {t.formWork.firstField}
-        </p>
+        <EmptyState icon="forms" title={t.formWork.firstField} />
       {:else}
         <ul class="divide-border border-border flex flex-col divide-y border-y">
           {#each fields as f, index (f.id)}
@@ -323,16 +325,26 @@
               <span class="flex flex-wrap gap-1">
                 <Button
                   variant="ghost"
+                  size="icon"
+                  title={t.formWork.up}
+                  class="disabled:opacity-25"
                   disabled={editor.saving || editing !== null || !canMove(f.id, -1)}
                   data-move-handle
                   onclick={() => void moveAnnounced(f.id, -1)}
-                  >{t.formWork.up}<span class="sr-only"> {f.label}</span></Button
+                  ><NavIcon name="up" size={16} /><span class="sr-only"
+                    >{t.formWork.up} {f.label}</span
+                  ></Button
                 >
                 <Button
                   variant="ghost"
+                  size="icon"
+                  title={t.formWork.down}
+                  class="disabled:opacity-25"
                   disabled={editor.saving || editing !== null || !canMove(f.id, 1)}
                   onclick={() => void moveAnnounced(f.id, 1)}
-                  >{t.formWork.down}<span class="sr-only"> {f.label}</span></Button
+                  ><NavIcon name="down" size={16} /><span class="sr-only"
+                    >{t.formWork.down} {f.label}</span
+                  ></Button
                 >
                 <Button
                   type="button"
@@ -344,7 +356,7 @@
                 >
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="destructive"
                   disabled={editor.saving || editing !== null}
                   onclick={() => void remove(f.id, f.name)}
                   >{t.admin.remove}<span class="sr-only"> {f.label}</span></Button
@@ -354,7 +366,6 @@
           {/each}
         </ul>
       {/if}
-      <p class="text-muted-foreground text-sm">{t.formWork.orderHint} {t.admin.fields.keyHint}</p>
       <p role="status" class="sr-only">{announcement}</p>
       <Notice
         message={notice ||
@@ -395,7 +406,7 @@
           onsubmit={(e) => void submit(e)}
           oninput={() => (changed = true)}
           onchange={() => (changed = true)}
-          class="border-border flex max-w-xl flex-col gap-3 rounded-xl border p-4"
+          class="border-border flex max-w-[560px] flex-col gap-3 rounded-xl border p-4"
         >
           <fieldset disabled={editor.saving} class="contents">
             <h3 class="font-medium">{editing === '' ? t.admin.fields.add : t.admin.edit}</h3>
@@ -442,35 +453,39 @@
                 />
               </Row>
             {/if}
-            <label class="flex min-h-10 items-center gap-3 text-sm">
-              <input type="checkbox" bind:checked={required} class={box} />
-              {t.admin.fields.required}
-            </label>
-            <Row id="field-visibility" label={t.formWork.visibility} hint={t.formWork.hiddenHint}>
-              <Select
-                id="field-visibility"
-                value={hidden ? 'hidden' : 'visible'}
-                onchange={(e) => {
-                  hidden = e.currentTarget.value === 'hidden';
-                  changed = true;
-                }}
-                ><option value="visible">{t.formWork.visible}</option><option value="hidden"
-                  >{t.formWork.hidden}</option
-                ></Select
+            <fieldset class="m-0 flex flex-col gap-1 border-0 p-0">
+              <legend class="mb-1 text-sm font-medium">{t.formWork.behavior}</legend>
+              <label class="flex min-h-10 items-center gap-3 text-sm">
+                <input type="checkbox" bind:checked={required} class={box} />
+                {t.admin.fields.required}
+              </label>
+              <Row id="field-visibility" label={t.formWork.visibility} hint={t.formWork.hiddenHint}>
+                <Select
+                  id="field-visibility"
+                  value={hidden ? 'hidden' : 'visible'}
+                  onchange={(e) => {
+                    hidden = e.currentTarget.value === 'hidden';
+                    changed = true;
+                  }}
+                  ><option value="visible">{t.formWork.visible}</option><option value="hidden"
+                    >{t.formWork.hidden}</option
+                  ></Select
+                >
+              </Row>
+              <p class="text-muted-foreground text-xs">{t.formWork.viewHint}</p>
+              <label class="flex min-h-10 items-center gap-3 text-sm"
+                ><input type="checkbox" bind:checked={readOnly} class={box} />{t.formWork
+                  .readOnly}</label
               >
-            </Row>
-            <p class="text-muted-foreground text-xs">{t.formWork.viewHint}</p>
-            <label class="flex min-h-10 items-center gap-3 text-sm"
-              ><input type="checkbox" bind:checked={readOnly} class={box} />{t.formWork
-                .readOnly}</label
-            >
-            <label class="flex min-h-10 items-center gap-3 text-sm"
-              ><input type="checkbox" bind:checked={disabled} class={box} />{t.formWork
-                .disabled}</label
-            >
-            <label class="flex min-h-10 items-center gap-3 text-sm"
-              ><input type="checkbox" bind:checked={locked} class={box} />{t.formWork.fixed}</label
-            >
+              <label class="flex min-h-10 items-center gap-3 text-sm"
+                ><input type="checkbox" bind:checked={disabled} class={box} />{t.formWork
+                  .disabled}</label
+              >
+              <label class="flex min-h-10 items-center gap-3 text-sm"
+                ><input type="checkbox" bind:checked={locked} class={box} />{t.formWork
+                  .fixed}</label
+              >
+            </fieldset>
             {#if locked}<Row id="field-fixed" label={t.formWork.fixedValue}
                 ><Input id="field-fixed" bind:value={fixedValue} /></Row
               >{/if}

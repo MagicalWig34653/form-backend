@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-export const setupSteps = ['Konto', 'Wiederherstellung', 'Mail', 'Adressen', 'Umstieg', 'Prüfen'];
 export const migrationStates: Record<string, string> = {
   queued: 'Wartet auf Freigabe des Workers',
   running: 'Läuft',

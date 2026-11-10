@@ -12,12 +12,12 @@
     /** Zero-based index of the current step; -1 when none has started. */
     current: number;
     label: string;
+    /** Furthest step reached so far; earlier steps count as done even while an older one is shown. */
+    reached?: number;
     class?: string;
   }
-  let { steps, current, label, class: className }: Props = $props();
-  const percent = $derived(
-    steps.length > 1 ? Math.round((Math.max(current, 0) / (steps.length - 1)) * 100) : 0,
-  );
+  let { steps, current, label, reached, class: className }: Props = $props();
+  const furthest = $derived(Math.max(reached ?? current, current));
 </script>
 
 <nav aria-label={label} class={cn('min-w-0', className)}>
@@ -26,15 +26,23 @@
     style:--n={steps.length}
   >
     {#each steps as step, index (step.id)}
-      {@const done = index < current}
+      {@const done = index < furthest && index !== current}
       {@const active = index === current}
       <li
         aria-current={active ? 'step' : undefined}
-        class="flex min-w-0 flex-col items-center gap-1.5 text-center"
+        class="relative flex min-w-0 flex-col items-center gap-1.5 text-center"
       >
+        {#if index > 0}<span
+            aria-hidden="true"
+            data-connector
+            class={cn(
+              'absolute top-4 right-1/2 h-0.5 w-full -translate-y-1/2',
+              index <= furthest ? 'bg-emerald-600' : 'bg-border',
+            )}
+          ></span>{/if}
         <span
           class={cn(
-            'flex size-8 items-center justify-center rounded-full border text-sm font-semibold transition-colors',
+            'relative z-10 flex size-8 items-center justify-center rounded-full border text-sm font-semibold transition-colors',
             done && 'border-emerald-600 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
             active && 'border-brand bg-brand text-primary-foreground',
             !done && !active && 'border-input bg-muted/60 text-muted-foreground',
@@ -44,8 +52,8 @@
         </span>
         <span
           class={cn(
-            'w-full text-xs leading-4 [overflow-wrap:anywhere] hyphens-auto',
-            active ? 'text-foreground font-semibold' : 'text-muted-foreground',
+            'w-full text-xs leading-4 break-words',
+            active ? 'text-foreground font-semibold' : 'text-muted-foreground max-sm:sr-only',
           )}
         >
           {step.label}<span class="sr-only">
@@ -59,10 +67,4 @@
       </li>
     {/each}
   </ol>
-  <div aria-hidden="true" class="bg-muted/60 mt-3 h-1 overflow-hidden rounded-full">
-    <div
-      class="bg-brand h-full rounded-full transition-[width] duration-500"
-      style:width="{percent}%"
-    ></div>
-  </div>
 </nav>

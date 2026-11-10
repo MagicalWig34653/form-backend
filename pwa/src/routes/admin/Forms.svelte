@@ -5,7 +5,9 @@
   import { t } from '$lib/i18n';
   import { adminApi, http } from '$lib/api';
   import { session } from '$lib/session.svelte';
-  import { Table } from '$lib/components/ui/table';
+  import DataTable, { type Column } from '$lib/components/admin/DataTable.svelte';
+  import SearchField from '$lib/components/admin/SearchField.svelte';
+  import { formStatus } from '$lib/admin/formStatus';
   import { Select } from '$lib/components/ui/select';
   import type { FormListItem } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
@@ -59,6 +61,11 @@
               : !f.active)),
     ),
   );
+  const columns: Column[] = [
+    { id: 'name', header: t.lists.name },
+    { id: 'status', header: t.lists.status },
+    { id: 'activity', header: t.overview.activity, hideBelow: 'sm' },
+  ];
   const loader = new OverviewLoader(adminApi, handleSessionError);
   // (Re)load the per-form figures whenever the list of forms changes; metadata only, nothing is decrypted.
   $effect(() => {
@@ -144,7 +151,7 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-4">
-  <CustomerHeader {tenant} current="forms" description={t.lists.formsIntro}>
+  <CustomerHeader {tenant} current="forms">
     {#snippet actions()}
       {#if canCreate}<Button
           onclick={() => {
@@ -158,35 +165,25 @@
     accepts={['entries', 'statistics']}
     onshown={() => setTimeout(() => listEl?.focus(), 80)}
   />
-  {#if items === null && loading}
-    <div class="tile-grid" aria-busy="true">
-      {#each [0, 1, 2, 3] as n (n)}<div data-w="3">
-          <KpiTile label={t.overview.kpiSubmits} status="loading" index={n} />
-        </div>{/each}
-    </div>
-  {:else if items !== null && items.length > 0}
-    <TenantOverview
-      {tenant}
-      forms={items}
-      {loader}
-      locked={!keyring.unlocked}
-      moreForms={nextCursor !== null}
-      onreload={() => void loader.load(tenant, items ?? [])}
-    />
-  {/if}
   <Card class="gap-0 py-0">
-    <div class="grid gap-3 border-b p-4 sm:grid-cols-2">
-      <Row id="forms-search" label={t.lists.searchForms}
-        ><Input id="forms-search" type="search" bind:value={query} /></Row
+    <div class="flex flex-wrap gap-3 border-b p-4">
+      <SearchField
+        id="forms-search"
+        label={t.lists.searchForms}
+        placeholder={t.lists.searchFormsPlaceholder}
+        bind:value={query}
+      />
+      <Select
+        id="forms-status"
+        aria-label={t.lists.status}
+        bind:value={status}
+        class="w-full sm:w-48"
       >
-      <Row id="forms-status" label={t.lists.status}
-        ><Select id="forms-status" bind:value={status}>
-          <option value="">{t.lists.all}</option><option value="active">{t.lists.active}</option
-          ><option value="inactive">{t.lists.inactive}</option><option value="unpublished"
-            >{t.lists.unpublished}</option
-          >
-        </Select></Row
-      >
+        <option value="">{t.lists.allStatus}</option><option value="active">{t.lists.active}</option
+        ><option value="inactive">{t.lists.inactive}</option><option value="unpublished"
+          >{t.status.draft}</option
+        >
+      </Select>
     </div>
     <div role="status" class="text-muted-foreground px-4 text-sm empty:hidden">
       {loading ? (slow ? t.lists.slow : t.admin.loading) : ''}
@@ -224,71 +221,62 @@
           {/snippet}
         </EmptyState>
       {:else if items !== null}
-        <Table
-          ><caption class="sr-only">{t.admin.forms.title}</caption>
-          <thead class="bg-muted/50 text-muted-foreground text-sm"
-            ><tr
-              >{#each [t.lists.name, t.lists.publication, t.overview.activity, t.lists.tasks] as heading (heading)}<th
-                  scope="col"
-                  class="h-10 !py-0 text-left whitespace-nowrap">{heading}</th
-                >{/each}</tr
-            ></thead
-          >
-          <tbody
-            >{#each visible as f (f.id)}<tr class="hover:bg-muted/50 transition-colors">
-                <th scope="row" class="text-left"
-                  ><a
-                    class="font-medium underline underline-offset-4"
-                    href={formPath(tenant, f.id)}
-                    onclick={(e) => {
-                      e.preventDefault();
-                      router.navigate(formPath(tenant, f.id));
-                    }}>{f.name}</a
-                  >
-                  <div class="mt-1">
-                    <StatusChip
-                      tone={!f.currentReleaseId ? 'info' : f.active ? 'ok' : 'idle'}
-                      label={f.active ? t.lists.active : t.lists.inactive}
-                    />
-                  </div></th
-                >
-                <td>{f.currentReleaseId ? t.lists.published : t.lists.unpublished}</td><td>
-                  {#if loader.snapshots.get(f.id)?.statsStatus === 'loading' || !loader.snapshots.has(f.id)}
-                    <Skeleton class="h-6 w-24" />
-                  {:else if rowSeries(f.id)}
-                    {@const series = rowSeries(f.id) ?? []}
-                    <div class="flex items-center gap-2">
-                      <Sparkline
-                        class="max-h-8 w-24"
-                        values={series}
-                        label={t.overview.sparkLabel
-                          .replace('{metric}', t.overview.kpiSubmits)
-                          .replace(
-                            '{values}',
-                            series.map((v) => (v === null ? '–' : v)).join(', '),
-                          )}
-                      /><span class="text-sm tabular-nums">{total(series) ?? '–'}</span>
-                    </div>
-                  {:else}<span class="text-muted-foreground">{t.overview.activityNone}</span>{/if}
-                </td>
-                <td
-                  ><a
-                    class="underline underline-offset-4"
-                    aria-label={`${t.lists.openOverview}: ${f.name}`}
-                    href={formPath(tenant, f.id)}
-                    onclick={(e) => {
-                      e.preventDefault();
-                      router.navigate(formPath(tenant, f.id));
-                    }}>{t.lists.openOverview}</a
-                  ></td
-                >
-              </tr>{/each}</tbody
-          >
-        </Table>
+        <DataTable
+          label={t.admin.forms.title}
+          {columns}
+          rows={visible}
+          rowKey={(f) => f.id}
+          rowHref={(f) => formPath(tenant, f.id)}
+        >
+          {#snippet cell(f, column)}
+            {#if column.id === 'name'}
+              <a
+                class="font-medium underline-offset-4 hover:underline"
+                href={formPath(tenant, f.id)}
+                onclick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  router.navigate(formPath(tenant, f.id));
+                }}>{f.name}</a
+              >
+            {:else if column.id === 'status'}
+              {@const st = formStatus(!!f.currentReleaseId, f.active)}
+              <StatusChip tone={st.tone} label={st.label} />
+            {:else if loader.snapshots.get(f.id)?.statsStatus === 'loading' || !loader.snapshots.has(f.id)}
+              <Skeleton class="h-5 w-24" />
+            {:else if rowSeries(f.id)}
+              {@const series = rowSeries(f.id) ?? []}
+              <div class="flex items-center gap-2">
+                <Sparkline
+                  class="max-h-8 w-24 max-sm:hidden"
+                  values={series}
+                  label={t.overview.sparkLabel
+                    .replace('{metric}', t.overview.kpiSubmits)
+                    .replace('{values}', series.map((v) => (v === null ? '–' : v)).join(', '))}
+                /><span class="text-sm tabular-nums">{total(series) ?? '–'}</span>
+              </div>
+            {:else}<span class="text-muted-foreground">{t.overview.activityNone}</span>{/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
   </Card>
-  <p class="text-muted-foreground text-sm">{t.lists.metadataHint}</p>
+  {#if items === null && loading}
+    <div class="tile-grid" aria-busy="true">
+      {#each [0, 1, 2, 3] as n (n)}<div data-w="3">
+          <KpiTile label={t.overview.kpiSubmits} status="loading" index={n} />
+        </div>{/each}
+    </div>
+  {:else if items !== null && items.length > 0}
+    <TenantOverview
+      {tenant}
+      forms={items}
+      {loader}
+      locked={!keyring.unlocked}
+      moreForms={nextCursor !== null}
+      onreload={() => void loader.load(tenant, items ?? [])}
+    />
+  {/if}
   {#if nextCursor}<p class="text-muted-foreground text-sm">{t.lists.partial}</p>
     <div>
       <Button variant="outline" disabled={loading} onclick={() => void load()}

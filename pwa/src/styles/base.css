@@ -152,3 +152,8 @@
     grid-column: span 8;
   }
 }
+
+/* Horizontal scroll regions fade out on the right while more content is hidden. */
+.scroll-hint[data-more='true'] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}

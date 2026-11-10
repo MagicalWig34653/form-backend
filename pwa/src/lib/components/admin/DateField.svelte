@@ -25,9 +25,11 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { t } from '$lib/i18n';
   import { Input } from '$lib/components/ui/input';
   import { cn } from '$lib/utils';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   interface Props {
     id: string;
@@ -59,11 +61,41 @@
     invalid = bad;
   });
   // External resets of the value (for example "clear") update the text.
+  // Only a change of the value itself may rewrite the text; reacting to the text as well would
+  // erase a freshly typed date before the input handler has committed it.
+  let last = value;
   $effect(() => {
-    if (value !== (parsed ?? '')) text = formatDate(value);
+    const next = value;
+    if (next === last) return;
+    last = next;
+    if (next !== untrack(() => parsed ?? '')) text = formatDate(next);
   });
-  function input(): void {
-    const next = parsed ?? '';
+  let native = $state<HTMLInputElement | null>(null);
+  /** Inserts the dots of TT.MM.JJJJ while the user types digits. */
+  function mask(event: Event): void {
+    const el = event.currentTarget as HTMLInputElement;
+    const typed = (event as InputEvent).inputType === 'insertText';
+    const shown = typed && /^(\d{2}|\d{2}\.\d{2})$/.test(el.value) ? el.value + '.' : el.value;
+    text = shown;
+    // Read from the element, not from derived state: bind:value may not have run yet.
+    commit(parseDate(shown) ?? '');
+  }
+  function pick(): void {
+    try {
+      native?.showPicker();
+    } catch {
+      native?.focus();
+    }
+  }
+  function picked(event: Event): void {
+    const next = (event.currentTarget as HTMLInputElement).value;
+    if (!next) return;
+    text = formatDate(next);
+    touched = true;
+    commit(next);
+  }
+  function commit(next: string): void {
+    last = next;
     if (next !== value) {
       value = next;
       onchange?.();
@@ -73,18 +105,38 @@
 
 <div class={cn('flex min-w-0 flex-col gap-1.5', className)}>
   <label for={id} class="text-sm font-medium">{label}</label>
-  <Input
-    {id}
-    bind:value={text}
-    {disabled}
-    inputmode="numeric"
-    autocomplete="off"
-    placeholder={t.listUi.dateFormat}
-    aria-invalid={bad && touched ? true : undefined}
-    aria-describedby={bad && touched ? `${id}-error` : undefined}
-    oninput={input}
-    onblur={() => (touched = true)}
-  />
+  <div class="relative">
+    <Input
+      {id}
+      class="pr-11"
+      maxlength={10}
+      bind:value={text}
+      {disabled}
+      inputmode="numeric"
+      autocomplete="off"
+      placeholder={t.listUi.dateFormat}
+      aria-invalid={bad && touched ? true : undefined}
+      aria-describedby={bad && touched ? `${id}-error` : undefined}
+      oninput={mask}
+      onblur={() => (touched = true)}
+    />
+    <button
+      type="button"
+      {disabled}
+      aria-label={`${label}: ${t.listUi.pickDate}`}
+      class="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-1/2 right-1 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+      onclick={pick}><NavIcon name="calendar" size={18} /></button
+    >
+    <input
+      bind:this={native}
+      type="date"
+      tabindex="-1"
+      aria-hidden="true"
+      class="pointer-events-none absolute right-0 bottom-0 size-0 opacity-0"
+      {value}
+      onchange={picked}
+    />
+  </div>
   {#if bad && touched}<p id={`${id}-error`} role="alert" class="text-destructive text-sm">
       {t.listUi.dateInvalid}
     </p>{/if}

@@ -40,9 +40,10 @@ test('API-Tokens anlegen, einmalig anzeigen und widerrufen', async ({ page }) =>
     });
   });
   await page.goto('/api-tokens');
+  await page.getByRole('button', { name: 'Token anlegen' }).click();
   await page.getByLabel('Bezeichnung').fill('Browser-Test');
   await page.getByLabel('Kunden-ID (UUID)').fill('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-  await page.getByRole('button', { name: 'Token anlegen' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Token anlegen' }).click();
   await expect(page.getByText('kfm_synthetic_browser_fixture')).toBeVisible();
   await page.getByRole('button', { name: 'Ausblenden' }).click();
   await expect(page.getByText('kfm_synthetic_browser_fixture')).toHaveCount(0);

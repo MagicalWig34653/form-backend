@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formStatus } from '$lib/admin/formStatus';
   import { onMount, onDestroy } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
@@ -17,6 +18,7 @@
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import DraftGate from './DraftGate.svelte';
   import StatisticsChart from './StatisticsChart.svelte';
+  import StatisticsKpis from './StatisticsKpis.svelte';
   import AdsStatisticsPanel from './AdsStatisticsPanel.svelte';
 
   let { editor, tenant, form }: { editor: Editor; tenant: string; form: string } = $props();
@@ -67,6 +69,9 @@
     const err = await editor.apply((d) => setTitle(d, text));
     if (!err) ok = t.admin.saved;
   }
+  const status = $derived(
+    formStatus(editor.detail?.currentReleaseVersion != null, editor.detail?.active === true),
+  );
 </script>
 
 <section
@@ -88,17 +93,14 @@
     <div>
       <dt class="text-muted-foreground text-sm">{t.lists.status}</dt>
       <dd class="mt-1.5">
-        <StatusChip
-          tone={editor.detail?.active ? 'ok' : 'idle'}
-          label={editor.detail?.active ? t.lists.active : t.lists.inactive}
-        />
+        <StatusChip tone={status.tone} label={status.label} />
       </dd>
     </div>
     <div>
       <dt class="text-muted-foreground text-sm">{t.lists.draft}</dt>
       <dd class="mt-1.5">
         <StatusChip
-          tone={editor.draft ? 'info' : 'idle'}
+          tone="idle"
           label={editor.draft
             ? t.lists.draftState.replace('{n}', String(editor.draft.revision))
             : editor.error
@@ -165,6 +167,9 @@
     </Banner>
   {/if}
   {#if stats}
-    <StatisticsChart {stats} days={DAYS} /><AdsStatisticsPanel {tenant} {form} />
+    <StatisticsKpis {stats} days={DAYS} /><StatisticsChart {stats} /><AdsStatisticsPanel
+      {tenant}
+      {form}
+    />
   {/if}
 </section>

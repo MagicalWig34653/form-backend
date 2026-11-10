@@ -9,9 +9,11 @@
     error?: string | undefined;
     /** Force the required marker; otherwise it follows the control's `required` attribute. */
     required?: boolean;
+    /** Marks a field that may stay empty (shown as "optional"). */
+    optional?: boolean;
     children: Snippet;
   }
-  let { id, label, hint, error, required, children }: Props = $props();
+  let { id, label, hint, error, required, optional = false, children }: Props = $props();
 
   let box = $state<HTMLElement>();
   let controlRequired = $state(false);
@@ -38,10 +40,12 @@
 </script>
 
 <div bind:this={box} class="flex min-w-0 flex-col gap-1.5">
-  <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+  <div class="flex flex-wrap items-baseline gap-x-2">
     <label for={id} class="text-sm leading-5 font-medium">{label}</label>
     {#if marked}<span aria-hidden="true" class="text-muted-foreground text-xs"
         >{t.formKit.required}</span
+      >{:else if optional}<span aria-hidden="true" class="text-muted-foreground text-xs"
+        >{t.formKit.optional}</span
       >{/if}
   </div>
   {@render children()}

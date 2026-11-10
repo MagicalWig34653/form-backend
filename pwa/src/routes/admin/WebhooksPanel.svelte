@@ -7,6 +7,8 @@
   import { t } from '$lib/i18n';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import EmptyState from '$lib/components/admin/EmptyState.svelte';
+  import StatusChip from '$lib/components/admin/StatusChip.svelte';
 
   interface Hook {
     id: string;
@@ -82,7 +84,6 @@
 </script>
 
 <section class="space-y-4" aria-busy={loading || busy}>
-  <p class="text-muted-foreground max-w-prose text-sm">{text.intro}</p>
   {#if error}<p role="alert" class="text-red-700 dark:text-destructive text-sm">{error}</p>{/if}
   {#if created?.privateKey}
     <div
@@ -94,29 +95,40 @@
       <Button variant="outline" onclick={() => (created = null)}>{text.keySaved}</Button>
     </div>
   {/if}
-  <form class="flex flex-wrap items-end gap-2" onsubmit={create}>
-    <label class="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-      {text.target}
-      <Input type="url" bind:value={target} placeholder="https://example.org/hook" required />
-    </label>
-    <Button type="submit" disabled={busy}>{text.add}</Button>
-  </form>
-  {#if loading}<p role="status">{t.admin.loading}</p>
-  {:else if items.length === 0}<p class="text-muted-foreground text-sm">{text.empty}</p>
+  {#if loading}<p role="status" class="text-muted-foreground text-sm">{t.admin.loading}</p>
+  {:else if items.length === 0}
+    <EmptyState title={text.empty} description={text.emptyHint} icon="connections" />
   {:else}
-    <ul class="divide-border bg-card ring-1 ring-foreground/10 rounded-xl divide-y">
+    <ul class="divide-border m-0 list-none divide-y p-0">
       {#each items as hook (hook.id)}
-        <li class="flex flex-wrap items-center gap-3 p-3 text-sm">
+        <li class="flex flex-wrap items-center gap-3 py-3 text-sm">
           <span class="min-w-0 flex-1 break-all">{hook.targetURL}</span>
-          <span class="text-muted-foreground">{hook.active ? text.active : text.inactive}</span>
+          <StatusChip
+            tone={hook.active ? 'ok' : 'idle'}
+            label={hook.active ? text.active : text.inactive}
+          />
           <Button variant="outline" disabled={busy} onclick={() => void toggle(hook)}>
             {hook.active ? text.disable : text.enable}
           </Button>
-          <Button variant="ghost" disabled={busy} onclick={() => void remove(hook)}>
+          <Button variant="destructive" disabled={busy} onclick={() => void remove(hook)}>
             {text.remove}
           </Button>
         </li>
       {/each}
     </ul>
   {/if}
+  <form class="border-border flex flex-wrap items-start gap-2 border-t pt-4" onsubmit={create}>
+    <div class="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+      <label for="hook-target" class="text-sm font-medium">{text.target}</label>
+      <Input
+        id="hook-target"
+        type="url"
+        bind:value={target}
+        required
+        aria-describedby="hook-example"
+      />
+      <span id="hook-example" class="text-muted-foreground text-xs">{text.example}</span>
+    </div>
+    <Button type="submit" disabled={busy} class="max-sm:w-full sm:mt-6">{text.add}</Button>
+  </form>
 </section>

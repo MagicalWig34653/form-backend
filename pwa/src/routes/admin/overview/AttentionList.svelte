@@ -19,7 +19,7 @@
 
   const ui = t.overview;
   const copy: Record<AttentionItem['kind'], { text: string; action?: string; tab: Tab }> = {
-    locked: { text: ui.locked, tab: 'overview' },
+    locked: { text: ui.locked, action: ui.lockedAction, tab: 'overview' },
     noMail: { text: ui.noMail, action: ui.noMailAction, tab: 'mail' },
     unpublished: { text: ui.unpublished, action: ui.unpublishedAction, tab: 'publish' },
     inactive: { text: ui.inactive, action: ui.inactiveAction, tab: 'overview' },
@@ -28,6 +28,7 @@
   const textOf = (item: AttentionItem): string =>
     copy[item.kind].text.replace('{form}', item.formName ?? '');
   function open(item: AttentionItem): void {
+    if (item.kind === 'locked') return router.navigate('/account');
     if (item.formId)
       router.navigate(formPath(item.tenant ?? tenant, item.formId, copy[item.kind].tab));
   }
@@ -56,9 +57,11 @@
                 >
                 <span class=" leading-6">{textOf(item)}</span>
               </span>
-              {#if copy[item.kind].action && item.formId}
+              {#if copy[item.kind].action && (item.formId || item.kind === 'locked')}
                 <Button variant="outline" onclick={() => open(item)}
-                  >{copy[item.kind].action}<span class="sr-only">: {item.formName}</span></Button
+                  >{copy[item.kind].action}{#if item.formName}<span class="sr-only"
+                      >: {item.formName}</span
+                    >{/if}</Button
                 >
               {/if}
             </li>

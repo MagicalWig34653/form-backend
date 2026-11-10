@@ -1,3 +1,5 @@
+import { hasPrfOutput, notePrfOutcome } from '$lib/crypto/prfSupport';
+
 /** Strict base64url (no padding) helpers and the WebAuthn assertion request, wire format per
  * contracts/auth/p5b-ergaenzung.md E2. */
 
@@ -226,6 +228,7 @@ export async function requestPrf(
     : navigator.credentials,
 ): Promise<PrfResult | null> {
   if (!credentials || typeof PublicKeyCredential === 'undefined') return null;
+  notePrfOutcome(true);
   const prf: Record<string, unknown> =
     'byCredential' in input
       ? {
@@ -254,6 +257,8 @@ export async function requestPrf(
     if (!cred) return null;
     const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } };
     const first = ext.prf?.results?.first;
+    // A ceremony that succeeded without a PRF value is "browser/passkey gives no key", unlike a cancel (throws above).
+    notePrfOutcome(hasPrfOutput(ext));
     if (!first || first.byteLength !== 32) return null;
     return { credentialId: new Uint8Array(cred.rawId), output: new Uint8Array(first) };
   } catch {

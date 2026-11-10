@@ -15,12 +15,13 @@ it('zeigt das Geheimnis nur nach Anlage und entfernt es beim Ausblenden', async 
   request.mockResolvedValue({ ok: true, data: { items: [] } });
   render(ApiTokens);
   await waitFor(() => expect(request).toHaveBeenCalledWith('GET', '/account/tokens'));
+  await fireEvent.click(await screen.findByRole('button', { name: 'Token anlegen' }));
   await fireEvent.input(screen.getByLabelText('Bezeichnung'), { target: { value: 'Test' } });
   await fireEvent.input(screen.getByLabelText('Kunden-ID (UUID)'), {
     target: { value: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
   });
   request.mockResolvedValueOnce({ ok: true, data: { token: 'kfm_synthetic' } });
-  await fireEvent.submit(screen.getByText('Token anlegen').closest('form')!);
+  await fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
   await screen.findByText('kfm_synthetic');
   const issued = request.mock.calls.find(([method]) => method === 'POST');
   expect(issued?.[2].body.expiresAt).toMatch(/T\d{2}:\d{2}:\d{2}Z$/);
@@ -99,7 +100,7 @@ it('zeigt Client und Scopes vor Zustimmung und sendet eine ausdrückliche Freiga
     true,
   );
   const inputs = screen.getAllByLabelText('Kunden-ID (UUID)');
-  await fireEvent.input(inputs[1]!, { target: { value: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+  await fireEvent.input(inputs[0]!, { target: { value: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   await fireEvent.click(screen.getByRole('button', { name: 'Zugriff erlauben' }));
   expect(request).toHaveBeenCalledWith(
     'POST',

@@ -17,6 +17,7 @@
   import AuthShell from '$lib/components/auth/AuthShell.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
   import NavIcon from '$lib/components/shell/NavIcon.svelte';
+  import PrfHint from '$lib/crypto/PrfHint.svelte';
   import { Dialog, DialogTrigger, DialogClose, DialogContent } from '$lib/components/ui/dialog';
 
   interface Props {
@@ -151,6 +152,7 @@
       }
       loginPrf?.output.fill(0);
       loginPrf = out.prf;
+      keyring.prfMissing = !out.prf;
       const v = await api.passkeyVerify(out.body);
       if (!v.ok) {
         loginPrf?.output.fill(0);
@@ -206,6 +208,7 @@
 
   {#if step === 'recovery'}
     {#if !keyring.unlocked}<p>{t.recovery.fallback}</p>{/if}
+    {#if keyring.prfMissing && !keyring.unlocked}<PrfHint />{/if}
     <RecoveryStep oncomplete={continueLogin} />
     <Button
       variant="outline"

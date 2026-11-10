@@ -6,7 +6,7 @@ import EntriesTab from './EntriesTab.svelte';
 const api = vi.hoisted(() => ({ entries: vi.fn(), retention: vi.fn(), deleteEntries: vi.fn() }));
 vi.mock('$lib/api', () => ({ adminApi: api }));
 vi.mock('$lib/crypto/keyring.svelte', () => ({
-  keyring: { dataKey: () => null, onLock: () => () => {} },
+  keyring: { dataKey: () => null, unlocked: true, onLock: () => () => {} },
 }));
 const entry = {
   id: 'e',
@@ -16,6 +16,12 @@ const entry = {
   keyId: 'k',
   releaseId: null,
 };
+
+async function openMenu(): Promise<void> {
+  const trigger = await screen.findByRole('button', { name: /Aktionen für Einsendung/ });
+  await fireEvent.keyDown(trigger, { key: 'Enter' });
+  await screen.findByRole('menu');
+}
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -27,14 +33,14 @@ describe('EntriesTab metadata states', () => {
   it('shows metadata without decrypted previews and explains missing data access', async () => {
     render(EntriesTab, { tenant: 't', form: 'f' });
 
-    expect(
-      await screen.findByText('Für diese Einsendung ist Ihr Datenzugang noch nicht eingerichtet.'),
-    ).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Öffnen' }) as HTMLButtonElement).disabled).toBe(
-      true,
+    expect(await screen.findByText(/Für 1 Einsendungen ist Ihr Datenzugang/)).toBeTruthy();
+    await openMenu();
+    expect(screen.getByRole('menuitem', { name: 'Öffnen' }).getAttribute('aria-disabled')).toBe(
+      'true',
     );
-    await fireEvent.input(screen.getByLabelText('Eingangsdatum (ISO-Datum)'), {
-      target: { value: '2020' },
+    await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await fireEvent.input(screen.getByLabelText('Eingang von (UTC)'), {
+      target: { value: '01.01.2027' },
     });
     expect(await screen.findByText('Keine Einsendungen für diese Filter.')).toBeTruthy();
   });
@@ -55,6 +61,21 @@ describe('EntriesTab metadata states', () => {
   });
 });
 
+it('filters by German dates and keeps the API ISO date internal', async () => {
+  render(EntriesTab, { tenant: 't', form: 'f' });
+  const from = await screen.findByLabelText('Eingang von (UTC)');
+  await fireEvent.input(from, { target: { value: '03.11.2026' } });
+  expect(screen.queryByText('Keine Einsendungen für diese Filter.')).toBeNull();
+  await fireEvent.input(screen.getByLabelText('Eingang bis (UTC)'), {
+    target: { value: '02.11.2026' },
+  });
+  expect(await screen.findByText('Keine Einsendungen für diese Filter.')).toBeTruthy();
+  await fireEvent.input(screen.getByLabelText('Eingang bis (UTC)'), {
+    target: { value: '03.11.2026' },
+  });
+  expect(screen.queryByText('Keine Einsendungen für diese Filter.')).toBeNull();
+});
+
 it('requires a confirmation and keeps pending deletions visible', async () => {
   api.deleteEntries.mockResolvedValue({
     ok: true,
@@ -62,8 +83,8 @@ it('requires a confirmation and keeps pending deletions visible', async () => {
   });
   render(EntriesTab, { tenant: 't', form: 'f' });
   render(ConfirmHost);
-  await screen.findByText('Für diese Einsendung ist Ihr Datenzugang noch nicht eingerichtet.');
-  await fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+  await openMenu();
+  await fireEvent.click(await screen.findByRole('menuitem', { name: 'Löschen' }));
   const dialog = await screen.findByRole('alertdialog', { name: 'Einsendungen löschen' });
   expect(api.deleteEntries).not.toHaveBeenCalled();
   await fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));

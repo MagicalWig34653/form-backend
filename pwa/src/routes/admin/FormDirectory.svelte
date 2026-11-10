@@ -6,7 +6,8 @@
   import { session } from '$lib/session.svelte';
   import { formLists } from '$lib/formLists.svelte';
   import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
+  import SearchField from '$lib/components/admin/SearchField.svelte';
+  import { formStatus } from '$lib/admin/formStatus';
   import DataTable, { type Column } from '$lib/components/admin/DataTable.svelte';
   import FilterBar from '$lib/components/admin/FilterBar.svelte';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
@@ -15,7 +16,6 @@
   import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
-  import Row from '$lib/components/admin/Row.svelte';
   import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   const d = t.directory;
@@ -79,12 +79,7 @@
     { id: 'customer', header: d.customer, hideBelow: 'sm' },
     { id: 'status', header: d.status },
   ];
-  const status = (l: Line): { tone: 'ok' | 'idle' | 'warn'; label: string } =>
-    !l.published
-      ? { tone: 'idle', label: d.statusDraft }
-      : l.active
-        ? { tone: 'ok', label: d.statusLive }
-        : { tone: 'warn', label: d.statusPaused };
+  const status = (l: Line) => formStatus(l.published, l.active);
   const reset = (): void => {
     query = '';
     if (customerFilter) router.navigate(FORM_DIRECTORY_PATH);
@@ -94,11 +89,12 @@
 <section class="flex min-w-0 flex-col gap-5">
   <PageHeader title={d.title} description={d.intro} />
   <FilterBar collapsible={false} activeCount={filters} onreset={reset}>
-    <div class="min-w-48 flex-1">
-      <Row id="directory-search" label={d.search}
-        ><Input id="directory-search" type="search" bind:value={query} /></Row
-      >
-    </div>
+    <SearchField
+      id="directory-search"
+      label={d.search}
+      placeholder={d.searchPlaceholder}
+      bind:value={query}
+    />
     {#snippet trailing()}
       {#if customerFilter}
         <Button
@@ -143,7 +139,13 @@
           {/snippet}
         </EmptyState>
       {:else}
-        <DataTable label={d.title} {columns} rows={visible} rowKey={(l) => l.key}>
+        <DataTable
+          label={d.title}
+          {columns}
+          rows={visible}
+          rowKey={(l) => l.key}
+          rowHref={(l) => formPath(l.tenant, l.form)}
+        >
           {#snippet cell(l, column)}
             {#if column.id === 'name'}
               <a

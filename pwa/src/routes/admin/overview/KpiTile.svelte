@@ -30,6 +30,8 @@
     /** Accessible description of the series including its values. */
     seriesLabel?: string;
     delta?: TileDelta | null;
+    /** Share (0..1) drawn as a bar where other tiles show a trend; keeps all tiles equally tall. */
+    fraction?: number;
     /** Extra line under the value, e.g. scope or "of N". */
     note?: string;
     /** Explanation for the dash when no value can be shown. */
@@ -48,12 +50,13 @@
     seriesLabel = '',
     delta = null,
     note,
+    fraction,
     reason,
     index = 0,
     class: className,
   }: Props = $props();
   const arrows = { up: '▲', down: '▼', flat: '–' } as const;
-  const hasSeries = $derived(!!series && series.some((v) => v !== null));
+  const hasSeries = $derived(!!series && series.filter((v) => v !== null).length >= 2);
 </script>
 
 <div
@@ -68,7 +71,7 @@
   role="group"
   aria-label={label}
 >
-  <div class="text-muted-foreground flex items-center gap-1.5 text-sm">
+  <div class="text-muted-foreground flex items-start gap-1.5 text-sm">
     <span class="text-foreground text-base font-medium">{label}</span>
     {#if hint}<button
         type="button"
@@ -94,7 +97,18 @@
     <p class="text-[32px] leading-9 font-semibold tracking-tight tabular-nums">
       <CountUp {value} {...format ? { format } : {}} />
     </p>
-    {#if series === undefined}
+    {#if fraction !== undefined}
+      <div
+        role="img"
+        aria-label={note ?? label}
+        class="bg-muted my-2 h-2 w-full overflow-hidden rounded-full"
+      >
+        <div
+          class="bg-primary h-full rounded-full"
+          style={`width:${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`}
+        ></div>
+      </div>
+    {:else if series === undefined}
       <!-- no trend for this metric -->
     {:else if hasSeries && series}<Sparkline values={series} label={seriesLabel || label} />
     {:else}<p class="text-muted-foreground text-sm">

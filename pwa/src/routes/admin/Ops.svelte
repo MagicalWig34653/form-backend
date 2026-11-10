@@ -17,6 +17,8 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Checkbox } from '$lib/components/ui/checkbox';
+  import DateField from '$lib/components/admin/DateField.svelte';
+  import { NO_VALUE, formatDateTime } from '$lib/format';
   type Event = keyof typeof t.ops.events;
   type Operation = keyof typeof t.ops.operations;
   interface Item {
@@ -40,6 +42,8 @@
   let operation = $state('');
   let from = $state('');
   let to = $state('');
+  let fromInvalid = $state(false);
+  let toInvalid = $state(false);
   let submission = $state('');
   let alarms = $state(true);
   let items = $state<Item[]>([]);
@@ -61,7 +65,7 @@
     denied = false;
     const r = await http.request<Access>('GET', '/ops/access');
     if (r.ok) {
-      access = r.data;
+      access = { ...r.data, forms: r.data.forms ?? [] };
       form = access.forms[0]?.id ?? '';
     } else failure(r.error);
     busy = false;
@@ -78,8 +82,8 @@
       const query = new SvelteURLSearchParams({ form, limit: '50' });
       if (event) query.set('event', event);
       if (operation) query.set('operation', operation);
-      if (from) query.set('from', new Date(from + 'Z').toISOString());
-      if (to) query.set('to', new Date(to + 'Z').toISOString());
+      if (from && !fromInvalid) query.set('from', `${from}T00:00:00Z`);
+      if (to && !toInvalid) query.set('to', `${to}T23:59:59Z`);
       if (submission) query.set('submission', submission);
       if (alarms) query.set('alarms', '1');
       applied = query.toString();
@@ -106,26 +110,21 @@
     else failure(r.error);
     busy = false;
   }
+  const hasSubmission = $derived(items.some((i) => i.submission));
+  const hasTarget = $derived(items.some((i) => i.target));
+  const columns = $derived([
+    t.ops.time,
+    t.ops.event,
+    t.ops.operation,
+    t.ops.priority,
+    ...(hasSubmission ? [t.ops.submission] : []),
+    ...(hasTarget ? [t.ops.target] : []),
+  ]);
   onMount(() => void initialize());
 </script>
 
-<div class="flex w-full max-w-[1100px] flex-col gap-6">
-  <PageHeader title={t.ops.title} description={t.ops.description}>
-    {#snippet badges()}
-      {#if access?.alarm}
-        <StatusChip
-          tone={access.alarm.outcome === 'failed'
-            ? 'danger'
-            : access.alarm.outcome === 'accepted'
-              ? 'ok'
-              : access.alarm.outcome === 'claimed'
-                ? 'warn'
-                : 'idle'}
-          label={`${t.ops.alarm}: ${t.ops.outcomes[access.alarm.outcome]}`}
-        />
-      {/if}
-    {/snippet}
-  </PageHeader>
+<div class="flex w-full min-w-0 flex-col gap-6">
+  <PageHeader title={t.ops.title} description={t.ops.description}></PageHeader>
   {#if error}
     <ErrorState
       title={denied ? t.states.forbiddenTitle : t.states.errorTitle}
@@ -146,96 +145,166 @@
     <p role="status" class="sr-only">{t.ops.loading}</p>
   {/if}
   {#if access}
-    {#if !access.system && !access.forms.length && !error}
-      <EmptyState title={t.ops.denied} icon="ops" />
+    {#if !access.forms.length && !error}
+      <Panel>
+        <EmptyState title={t.ops.noForms} description={t.ops.noFormsHint} icon="ops" />
+      </Panel>
     {/if}
-    <Panel>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void load();
-        }}
-        class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        aria-busy={busy}
-      >
-        <Row id="ops-form" label={t.ops.form}>
-          <Select id="ops-form" bind:value={form} disabled={busy}>
-            <option value="">{t.ops.choose}</option>
-            {#each access.forms as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
-          </Select>
-        </Row>
-        <Row id="ops-event" label={t.ops.event}>
-          <Select id="ops-event" bind:value={event} disabled={busy}>
-            <option value="">{t.ops.all}</option>
-            {#each Object.entries(t.ops.events) as [key, label] (key)}<option value={key}
-                >{label}</option
-              >{/each}
-          </Select>
-        </Row>
-        <Row id="ops-operation" label={t.ops.operation}>
-          <Select id="ops-operation" bind:value={operation} disabled={busy}>
-            <option value="">{t.ops.all}</option>
-            {#each Object.entries(t.ops.operations) as [key, label] (key)}<option value={key}
-                >{label}</option
-              >{/each}
-          </Select>
-        </Row>
-        <Row id="ops-from" label={t.ops.from}>
-          <Input id="ops-from" type="datetime-local" bind:value={from} disabled={busy} />
-        </Row>
-        <Row id="ops-to" label={t.ops.to}>
-          <Input id="ops-to" type="datetime-local" bind:value={to} disabled={busy} />
-        </Row>
-        <Row id="ops-submission" label={t.ops.submission}>
-          <Input id="ops-submission" bind:value={submission} disabled={busy} />
-        </Row>
-        <label class="flex min-h-10 items-center gap-2 text-sm">
-          <Checkbox bind:checked={alarms} disabled={busy} />{t.ops.alarms}
-        </label>
-        <div class="flex items-end sm:col-span-1 lg:col-start-3 lg:justify-end">
-          <Button type="submit" disabled={busy || !form}>{t.ops.apply}</Button>
-        </div>
-      </form>
-    </Panel>
-    <Panel flush>
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
-      <div
-        class="overflow-x-auto"
-        aria-busy={busy}
-        role="region"
-        aria-label={t.ops.title}
-        tabindex="0"
-      >
-        <table class="w-full min-w-[40rem] text-left text-sm">
-          <thead class="bg-muted/60 text-muted-foreground text-xs"
-            ><tr
-              >{#each [t.ops.time, t.ops.event, t.ops.operation, t.ops.priority, t.ops.submission, t.ops.target] as heading (heading)}<th
-                  scope="col"
-                  class="px-4 py-3 font-medium">{heading}</th
-                >{/each}</tr
-            ></thead
-          ><tbody>
-            {#each items as item (item.id)}<tr class="border-border border-t"
-                ><td class="px-4 py-3 whitespace-nowrap">{item.occurredAt}</td><td class="px-4 py-3"
-                  >{t.ops.events[item.event]}</td
-                ><td class="px-4 py-3">{t.ops.operations[item.operation]}</td><td class="px-4 py-3"
-                  >{item.priority}</td
-                ><td class="px-4 py-3 break-all">{item.submission ?? ''}</td><td
-                  class="px-4 py-3 break-all">{item.target ?? ''}</td
-                ></tr
-              >{/each}
-          </tbody>
-        </table>
-      </div>
-      {#if loaded && !items.length}<EmptyState title={t.ops.empty} icon="ops" />{/if}
-      {#if next}
-        <div class="border-border border-t px-4 py-3">
-          <Button variant="outline" disabled={busy} onclick={() => void load(true)}
-            >{t.ops.next}</Button
+    {#if access.alarm}
+      {@const alarmTone =
+        access.alarm.outcome === 'failed'
+          ? 'danger'
+          : access.alarm.outcome === 'accepted'
+            ? 'ok'
+            : access.alarm.outcome === 'claimed'
+              ? 'warn'
+              : 'idle'}
+      <Panel title={t.ops.alarm} description={access.system ? t.ops.settings : undefined}>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <StatusChip
+            tone={alarmTone}
+            label={t.ops.lastAlarm.replace('{outcome}', t.ops.outcomes[access.alarm.outcome])}
+          />
+          <span class="text-muted-foreground"
+            >{t.ops.suppressed}: <span class="tabular-nums">{access.alarm.suppressed}</span></span
           >
         </div>
-      {/if}
-    </Panel>
+      </Panel>
+    {/if}
+    {#if access.forms.length}
+      <Panel title={t.ops.filter}>
+        <form
+          onsubmit={(e) => {
+            e.preventDefault();
+            void load();
+          }}
+          class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-busy={busy}
+        >
+          <Row id="ops-form" label={t.ops.form}>
+            <Select id="ops-form" bind:value={form} disabled={busy}>
+              <option value="">{t.ops.choose}</option>
+              {#each access.forms as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+            </Select>
+          </Row>
+          <Row id="ops-event" label={t.ops.event}>
+            <Select id="ops-event" bind:value={event} disabled={busy}>
+              <option value="">{t.ops.all}</option>
+              {#each Object.entries(t.ops.events) as [key, label] (key)}<option value={key}
+                  >{label}</option
+                >{/each}
+            </Select>
+          </Row>
+          <Row id="ops-operation" label={t.ops.operation}>
+            <Select id="ops-operation" bind:value={operation} disabled={busy}>
+              <option value="">{t.ops.all}</option>
+              {#each Object.entries(t.ops.operations) as [key, label] (key)}<option value={key}
+                  >{label}</option
+                >{/each}
+            </Select>
+          </Row>
+          <DateField
+            id="ops-from"
+            label={t.ops.from}
+            bind:value={from}
+            bind:invalid={fromInvalid}
+            disabled={busy}
+          />
+          <DateField
+            id="ops-to"
+            label={t.ops.to}
+            bind:value={to}
+            bind:invalid={toInvalid}
+            disabled={busy}
+          />
+          <Row id="ops-submission" label={t.ops.submission}>
+            <Input id="ops-submission" bind:value={submission} disabled={busy} />
+          </Row>
+          <label class="flex min-h-10 items-center gap-2 text-sm">
+            <Checkbox bind:checked={alarms} disabled={busy} />{t.ops.alarms}
+          </label>
+          <div class="flex items-end sm:col-span-1 lg:col-start-3 lg:justify-end">
+            <Button type="submit" disabled={busy || !form}>{t.ops.apply}</Button>
+          </div>
+        </form>
+      </Panel>
+      <Panel flush>
+        {#if items.length}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
+          <div
+            class="overflow-x-auto max-sm:hidden"
+            aria-busy={busy}
+            role="region"
+            aria-label={t.ops.title}
+            tabindex="0"
+          >
+            <table class="w-full text-left text-sm">
+              <thead class="bg-muted/60 text-muted-foreground text-xs"
+                ><tr
+                  >{#each columns as heading (heading)}<th scope="col" class="px-4 py-3 font-medium"
+                      >{heading}</th
+                    >{/each}</tr
+                ></thead
+              ><tbody>
+                {#each items as item (item.id)}<tr class="border-border border-t"
+                    ><td class="px-4 py-3 whitespace-nowrap tabular-nums"
+                      >{formatDateTime(item.occurredAt, { utc: true })}</td
+                    ><td class="px-4 py-3">{t.ops.events[item.event] ?? item.event}</td><td
+                      class="px-4 py-3">{t.ops.operations[item.operation] ?? item.operation}</td
+                    ><td class="px-4 py-3"
+                      ><span
+                        class="bg-muted text-muted-foreground inline-flex min-w-6 justify-center rounded-md px-1.5 text-xs leading-6 font-medium tabular-nums"
+                        title={t.ops.priority}>{item.priority ?? NO_VALUE}</span
+                      ></td
+                    >{#if hasSubmission}<td class="px-4 py-3 break-all"
+                        >{item.submission || NO_VALUE}</td
+                      >{/if}{#if hasTarget}<td class="px-4 py-3 break-all"
+                        >{item.target || NO_VALUE}</td
+                      >{/if}</tr
+                  >{/each}
+              </tbody>
+            </table>
+          </div>
+          <ul class="flex flex-col gap-2 p-3 sm:hidden" aria-label={t.ops.title}>
+            {#each items as item (item.id)}
+              <li class="border-border flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="font-medium tabular-nums"
+                    >{formatDateTime(item.occurredAt, { utc: true })}</span
+                  >
+                  <span
+                    class="bg-muted text-muted-foreground rounded-md px-1.5 text-xs leading-6 font-medium"
+                    >{t.ops.priority} {item.priority ?? NO_VALUE}</span
+                  >
+                </div>
+                <p class="m-0">
+                  {t.ops.events[item.event] ?? item.event} · {t.ops.operations[item.operation] ??
+                    item.operation}
+                </p>
+                {#if item.submission}<p class="text-muted-foreground m-0 break-all">
+                    {t.ops.submissionShort}: {item.submission}
+                  </p>{/if}
+                {#if item.target}<p class="text-muted-foreground m-0 break-all">
+                    {t.ops.targetShort}: {item.target}
+                  </p>{/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if loaded && !items.length}<EmptyState
+            title={t.ops.empty}
+            description={t.ops.emptyHint}
+            icon="ops"
+          />{/if}
+        {#if next}
+          <div class="border-border border-t px-4 py-3">
+            <Button variant="outline" disabled={busy} onclick={() => void load(true)}
+              >{t.ops.next}</Button
+            >
+          </div>
+        {/if}
+      </Panel>
+    {/if}
     {#if access.cleanup}
       <Panel title={t.ops.cleanup} description={t.ops.limit}>
         <Button variant="outline" disabled={busy} onclick={() => void cleanup()}
@@ -250,10 +319,5 @@
           </p>{/each}
       </Banner>
     {/if}
-    {#if access.system}<p class="text-muted-foreground text-sm">{t.ops.settings}</p>{/if}
-    {#if access.alarm}<p class="text-muted-foreground text-sm">
-        {t.ops.alarm}: {t.ops.outcomes[access.alarm.outcome]} · {t.ops.suppressed}: {access.alarm
-          .suppressed}
-      </p>{/if}
   {/if}
 </div>

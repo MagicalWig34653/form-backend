@@ -6,7 +6,7 @@
   import RotationPanel from './RotationPanel.svelte';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
-  import { authApi, adminApi, http } from '$lib/api';
+  import { adminApi, http } from '$lib/api';
   import type { PasskeyInfo } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
   import { session } from '$lib/session.svelte';
@@ -17,8 +17,8 @@
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
-  import Banner from '$lib/components/admin/Banner.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
 
@@ -63,10 +63,7 @@
   let message = $state('');
   let ok = $state('');
   let busy = $state(false);
-  let username = $state('');
-  let password = $state('');
-  let link = $state('');
-  let secondFactorRequired = $state(false);
+  let advancedOpen = $state(false);
   let showPassword = $state(false);
   let ownPassword = $state('');
 
@@ -90,8 +87,6 @@
   async function load(): Promise<void> {
     const state = await http.request<{ enabled: boolean }>('GET', '/me/totp');
     if (state.ok) totpEnabled = state.data.enabled;
-    const policy = await authApi.session();
-    if (policy.ok) secondFactorRequired = policy.data.secondFactorRequired ?? true;
     const r = await adminApi.passkeys();
     if (r.ok) keys = r.data.items;
     else if (!handleSessionError(r.error)) message = describeError(r.error);
@@ -128,49 +123,23 @@
     await load();
   }
 
-  async function create(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    if (busy) return;
-    busy = true;
-    message = ok = link = '';
-    const r = await adminApi.createAccount(username.trim(), password);
-    busy = false;
-    password = '';
-    if (!r.ok) {
-      if (needsFreshLogin(r.error)) return void (await reauthenticate(router.path));
-      if (!handleSessionError(r.error)) message = r.error.status === 409 ? a.exists : a.failed;
-      return;
-    }
-    username = '';
-    link = r.data.setupLink;
-  }
-
-  // The one-time link must not outlive this view.
-  $effect(() => () => {
-    link = '';
-  });
   onMount(() => void load());
 </script>
 
-<div class="flex w-full max-w-[820px] min-w-0 flex-col gap-6">
+<div class="flex w-full min-w-0 flex-col gap-6">
   <PageHeader title={a.title} description={a.intro}>
     {#snippet badges()}
       {#if session.me?.systemAdministrator}<StatusChip
-          tone="info"
+          tone="idle"
           label={t.admin.systemAdministrator}
         />{/if}
     {/snippet}
   </PageHeader>
-  {#if session.me?.systemAdministrator}
-    <Banner tone="info" title={t.admin.systemAdministrator}>
-      <span data-testid="system-admin-hint">{t.admin.systemAdministratorHint}</span>
-    </Banner>
-  {/if}
   <Panel title={t.access.security}>
     <div class="flex flex-col gap-4">
       <AccessStatus showLocked />
       <RecoveryStep security />
-      <details class="rounded-lg border px-4 py-3">
+      <details class="border-t pt-3" bind:open={advancedOpen}>
         <summary class="min-h-6 cursor-pointer text-sm font-medium">{t.access.advanced}</summary>
         <div class="mt-3 flex flex-col gap-4">
           {#each session.tenants as tenant (tenant.id)}
@@ -186,9 +155,8 @@
       </details>
     </div>
   </Panel>
-  <Panel title={c.totp} id="totp">
+  <Panel title={c.totp} description={c.totpHint} id="totp">
     <div class="flex flex-col gap-4">
-      <p class="text-muted-foreground max-w-prose text-sm">{c.totpHint}</p>
       <p>
         <StatusChip
           tone={totpEnabled ? 'ok' : 'idle'}
@@ -214,7 +182,7 @@
               e.preventDefault();
               void changeTotp('PUT');
             }}
-            class="flex max-w-xl flex-col gap-3"
+            class="flex max-w-[560px] flex-col gap-3"
           >
             <Row id="totp-code" label={c.code}
               ><Input
@@ -236,7 +204,7 @@
             e.preventDefault();
             void changeTotp('DELETE');
           }}
-          class="flex max-w-xl flex-col gap-3"
+          class="flex max-w-[560px] flex-col gap-3"
         >
           <Row id="totp-password" label={c.password}
             ><Input
@@ -264,17 +232,20 @@
       <ul class="flex flex-col gap-2">
         {#each keys as k (k.credentialId)}
           <li
-            class="border-border bg-muted/60 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
+            class="border-border flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-b-0"
           >
             <span class="min-w-0 break-words"
               >{k.label}{k.unlocksKeys ? ` · ${a.unlocksKeys}` : ''}</span
             >
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy || keys.length < 2}
-              onclick={() => void remove(k)}>{a.remove}</Button
-            >
+            {#if keys.length < 2}
+              <span class="text-muted-foreground inline-flex items-center gap-1.5 text-sm"
+                ><NavIcon name="locked" size={14} />{a.lastOneLabel}</span
+              >
+            {:else}
+              <Button type="button" variant="outline" disabled={busy} onclick={() => void remove(k)}
+                >{a.remove}</Button
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -293,7 +264,7 @@
     {/snippet}
     <div class="flex flex-col gap-4">
       {#if showPassword}
-        <form onsubmit={(e) => void savePassword(e)} class="flex max-w-xl flex-col gap-3">
+        <form onsubmit={(e) => void savePassword(e)} class="flex max-w-[560px] flex-col gap-3">
           <Row id="own-password" label={a.password}>
             <Input
               id="own-password"
@@ -310,39 +281,5 @@
       {/if}
     </div>
   </Panel>
-  {#if session.me?.systemAdministrator}
-    <Panel title={a.create} description={a.createIntro}>
-      <form onsubmit={(e) => void create(e)} class="flex max-w-xl flex-col gap-3">
-        <Row id="new-username" label={a.username}>
-          <Input
-            id="new-username"
-            bind:value={username}
-            required
-            autocomplete="off"
-            spellcheck={false}
-          />
-        </Row>
-        {#if secondFactorRequired}
-          <Row id="new-password" label={a.password}>
-            <Input
-              id="new-password"
-              type="password"
-              bind:value={password}
-              required
-              minlength={12}
-              autocomplete="new-password"
-            />
-          </Row>
-        {/if}
-        <div><Button type="submit" disabled={busy}>{a.createBtn}</Button></div>
-      </form>
-      {#if link}
-        <div role="group" class="bg-muted/60 mt-4 max-w-prose rounded-md p-3">
-          <p class="text-sm font-medium">{a.link}</p>
-          <p class="my-2 font-mono text-sm break-all select-all" data-testid="setup-link">{link}</p>
-        </div>
-      {/if}
-    </Panel>
-  {/if}
   <Notice message={message || ok} kind={message ? 'error' : 'ok'} />
 </div>

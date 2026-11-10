@@ -1,5 +1,36 @@
 # Tatsächlicher Stand
 
+## PWA: UI-Bewertung dritter Durchgang 3,8/5, Umsetzung (10.11.2026, Worktree-Branch `worktree-agent-a38f11d123f49c66e`, lokal committet, ungemergt)
+
+Commits 78476e9 (Datumsformate, CardHeader, Seitenraster, KPI, Betrieb), 1414032 (Einstellungen, Verbindungen, Konten, Mitglieder), 6f9dd5f (Speichermuster, Textdiät, Tokens-Dialog, Stepper, Scroll-Hinweis) und Folgecommit. Übergabe: docs/handoffs/UI-Durchgang-3.md.
+- Neu: `lib/format.ts` (ein deutscher Formatierer, nie „undefined“/„Invalid Date“), `CardHeader`, `RichText`, `scrollHint`, Route `/accounts` (System > Konten), Seitenbreite einheitlich über den Shell-Container.
+- Geprüft: svelte-check 0, eslint, prettier, vitest 297, Playwright vollständig grün (167, 9 übersprungen). Erneute Bewertung steht aus.
+- Grenzen: „Mitglied hinzufügen“ setzt Leserecht über den bestehenden Rechte-Endpunkt (nicht gegen echtes Backend geprüft). Verbindungen zeigen „getestet“ nur für die laufende Sitzung (API liefert keinen Teststatus); Bearbeiten/Löschen fehlen mangels API. „Passkey hinzufügen“ im Konto bewusst nicht (Passkey-Logik gehört einem anderen Agent).
+
+## PWA: Geführter Einrichtungsfluss (10.11.2026, Worktree-Branch `worktree-agent-aaf780feb413b194c`, lokal committet, ungemergt)
+
+- `/installation` ist eine Checkliste mit sieben echten Schritten (Konto/Passkey, Wiederherstellungscode, Mail-Versandweg, Adressen, Kunde, Formular veröffentlichen, optional Umstieg; Umstieg nur mit Recht und aktivem Umstieg). Status kommt aus den Daten (`lib/onboarding.ts` rein, `lib/onboarding.svelte.ts` Store/Laden); unbekannt = Fehler, nie geraten. Kunde, Formular und Wiederherstellungscode werden inline erledigt. Optionales lässt sich „Später“ (nur dieser Browser, localStorage je Konto) verschieben. Abschluss setzt `setup.completed=true` über den bestehenden Settings-Vertrag (frische Anmeldung nötig); `setup.step` wird nicht mehr geschrieben.
+- Kontext: Wechselt ein Schritt auf eine andere Seite, merkt sich sessionStorage den Schritt (überlebt Neuladen); `SetupBar` (Shell) zeigt dort „Einrichtung · Schritt n von m“, „Zurück zur Einrichtung“ und nach echter Erledigung „Weiter zum nächsten Schritt“. Die Leiste prüft den Schritt alle 5 s, bei Fokus und kurz nach Klick/Absenden; sie endet beim Verlassen der Seiten des Schritts. Seitenleiste: „Einrichtung fortsetzen (n von m)“ oben im Bereich bis zum Abschluss. Startseite (`/overview`, `/t`) leitet bei offener Einrichtung einmal (ohne Verlaufseintrag) dorthin; Deep Links nicht mehr.
+- Geprüft: svelte-check 0, eslint, prettier, vitest 241, Playwright 155 bestanden/9 übersprungen (neu `e2e/setup-flow.spec.ts`: Durchlauf mit Hin-/Rückweg über Verbindungen, Einstellungen, Formularseite, Neuladen, 320 px, axe hell/dunkel).
+- Grenzen: „Mail getestet“ ist serverseitig nicht erfasst; erledigt = aktive Verbindung vorhanden. Formulare/Kunden nur für die ersten 10 Kunden geprüft. „Später“ gilt je Browser.
+
+## PWA: UI-Bewertung, offene Punkte umgesetzt (10.11.2026, Worktree-Branch `worktree-agent-a007d9c4b0448dfe0`, lokal committet, ungemergt)
+
+- Umstieg (`Migration.svelte`, `lib/admin/migrationFlow.ts`, `StepNav`): fünf Schritte mit je einem Panel, Weiter/Zurück, Fortschritt aus echten Läufen (laufender Import und Prüfung springen selbst weiter), Prüfwerte (Schema-HMAC, Formular-UUIDs, Snapshot-Hash, Kunden-UUID) aus der Quellprüfung übernommen und unter „Erweitert“, Prüfbericht als Zeilenliste, Lade-/Leer-/Fehlerzustände je Schritt. Verträge und Endpunkte unverändert.
+- Einsendungen: deutsche Datumsfelder (`DateField` mit Maske und Kalenderwahl, intern ISO) statt ISO-Freitext, Zeilenaktionen im „⋯“-Menü (`RowMenu`, bits-ui), Kartenliste mobil, ein Hinweis zum gesperrten Zugriff (Hinweis je Einsendung nur bei entsperrtem Schlüsselbund). Fehler behoben: `DateField` verlor Eingaben (Effekt überschrieb Text vor dem Commit).
+- Mobiler Formularkopf (kompakte Aktionen in einer Zeile, Reiter mit Überlaufpfeilen), Seitenleiste bei 800 px Höhe ohne abgeschnittenen Umstieg, Einbindung mit PHP-SDK-Kurzanleitung (Inhalt aus `sdk/php/README.md`), Unit-Tests für SaveBar, SearchField, ScopePicker, formStatus, rights, delta, NewAccountPanel.
+- Geprüft: svelte-check 0, eslint, prettier, vitest 280, Playwright vollständig grün. Erneute Bewertung steht aus. Grenzen: „Weiter“ im Umstieg folgt nur der Datenlage; PHP-Beispiel nennt die Backend-Adresse als Platzhalter.
+
+## PWA: UI-Bewertung 3,2/5, Umsetzung (10.11.2026, Worktree-Branch `worktree-agent-aa1049713be59fd43`, lokal committet, ungemergt)
+
+Grundlage: Bewertung der 21 Seiten (Screenshots, Bericht liegt außerhalb des Repos). Ziel des Nutzers: erneute Bewertung mindestens 4,5/5. Umgesetzt in drei Gruppen (Commits 2f50642, 7bbb856, ac81733 und Folgecommit):
+
+- Gruppe 1: einheitliche Formularstatus (`lib/admin/formStatus.ts`: Entwurf/Live/Pausiert), Rechte als Klartext (`lib/admin/rights.ts`), Seitenleiste markiert Kunden bei Formularliste, Breadcrumb ohne Doppelglieder und mit Zurückpfeil mobil, „Betrieb“ bleibt aktiv, Gruppen „Ansicht für“/„Arbeiten“, Aufbewahrung als echter Reiter (`RetentionPanel`, Switch + Tage + Sticky-`SaveBar`), Reiter Ablauf entfernt (`/flow` öffnet die Übersicht), Diagramm mit Mustern und Markern, einheitliche KPI-Kachel, Kontraste für Checkbox/Switch/deaktivierte Schaltflächen, dunkle Kartenebene, Alert-Rahmen als Inset-Ring, `SearchField`, klickbare Tabellenzeilen mit Chevron und Unterzeile mobil.
+- Gruppe 2: Mitglieder (Klartext-Rechte mit Beschreibung, Leerzustand), „Neues Konto“ in Mitglieder verschoben (`NewAccountPanel`), Konto flach mit „Erweitert öffnen“, Einstellungen mit Sticky-`SaveBar` und Klartext-Untertitel, Verbindungen mit Leerzustand und Anlegen auf Abruf, Betrieb mit Alarmkarte, Filterkarte und Leerzuständen.
+- Gruppe 3: Mail (Karten, Switches, Platzhalter-Chips, Sticky-Speicherleiste, Zustellungen eigene Karte), Felder (Icon-Reihenfolge, Hinweise einklappbar), Missbrauchsschutz gekürzt, Veröffentlichen mit Prüfstatus, Webhooks Liste zuerst, „API & MCP“ mit Kunden-/Formularauswahl statt UUID-Eingabe.
+- Prüfungen: svelte-check, eslint, prettier, vitest (233) und Playwright (151, 9 übersprungen) grün.
+- Offen (bewusst nicht umgesetzt): Umstieg als echter Schritt-für-Schritt-Stepper mit automatisch übernommenen Prüfwerten, Einsendungen (Datumsauswahl im deutschen Format, Überlaufmenü für Zeilenaktionen, Kartenliste mobil), mobiler Formularkopf mit Überlaufmenü, Tabellen als Kartenlisten für Einsendungen, Einbindung mit PHP-SDK-Kurzanleitung, Einrichtungsmeldung unterscheiden (gehört zur parallelen Einrichtungsarbeit). Erneute Bewertung steht aus.
+
 ## PWA: Fable-Umsetzung (10.11.2026, Worktree-Branch `worktree-agent-ac52228a6ed7925b5`, lokal committet, ungemergt)
 
 Nutzerentscheidung: Struktur und Bedienung des Fable-Konzepts (Fable 5.2 vorrangig) werden in der echten PWA umgesetzt; die Demo-Optik wird nicht übernommen (shadcn-Tokens, Türkis-Akzent bleiben). Beibehalten: Bereichsauswahl (Gesamt/Kunde/Formular), Schlüsselstatus-Chip, Passkey-Direktabfrage bei frischer Anmeldung, Zero-Knowledge-Regeln (nichts im Dashboard entschlüsseln, „—“ statt Nullen). URLs bleiben unverändert (`/overview`, `/t/:id`, `/t/:id/f/:id/<tab>`); neu nur `/forms`.

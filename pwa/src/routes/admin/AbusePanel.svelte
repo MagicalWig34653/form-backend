@@ -8,9 +8,10 @@
   import Panel from '$lib/components/admin/Panel.svelte';
   import Row from '$lib/components/admin/Row.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
-  import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Checkbox } from '$lib/components/ui/checkbox';
+  import SaveBar from '$lib/components/admin/SaveBar.svelte';
+  import { stamped } from '$lib/format';
   let {
     editor,
     tenant,
@@ -32,6 +33,8 @@
   let closed = $state(false);
   let testMode = $state(false);
   let notice = $state('');
+  let noticeKind = $state<'ok' | 'error'>('ok');
+  const formId = 'abuse-form';
   let busy = $state(false);
   const text = t.abuse;
   $effect(() => {
@@ -42,11 +45,17 @@
     closed = policy?.failPolicy === 'closed';
     testMode = policy?.testMode === true;
   });
+  function discard(): void {
+    secret = '';
+    notice = '';
+    changed = false;
+  }
   async function save(event: SubmitEvent) {
     event.preventDefault();
     if (!editor.draft || busy) return;
     busy = true;
     notice = '';
+    noticeKind = 'ok';
     if (secret) {
       const result = await http.request('PUT', `/tenants/${tenant}/forms/${form}/abuse-secret`, {
         body: { secret },
@@ -54,6 +63,7 @@
       secret = '';
       if (!result.ok) {
         notice = describeError(result.error);
+        noticeKind = 'error';
         busy = false;
         return;
       }
@@ -70,7 +80,8 @@
       return next;
     });
     if (!error) changed = false;
-    notice = error ? describeError(error) : text.saved;
+    noticeKind = error ? 'error' : 'ok';
+    notice = error ? describeError(error) : stamped(text.saved);
     busy = false;
   }
 </script>
@@ -78,15 +89,20 @@
 <Panel title={text.title} description={text.help}>
   {#if testMode}<div class="mb-4"><Banner tone="warn">{text.testWarning}</Banner></div>{/if}
   <form
+    id={formId}
     onsubmit={save}
     oninput={() => (changed = true)}
     onchange={() => (changed = true)}
-    class="flex max-w-xl flex-col gap-4"
+    class="flex max-w-[560px] flex-col gap-4"
   >
-    <Row id="abuse-site-key" label={text.siteKey}>
+    <details class="text-muted-foreground text-sm">
+      <summary class="min-h-8 cursor-pointer py-1 font-medium">{text.detailsTitle}</summary>
+      <p class="mt-2 mb-0">{text.details}</p>
+    </details>
+    <Row id="abuse-site-key" optional label={text.siteKey}>
       <Input id="abuse-site-key" bind:value={siteKey} maxlength={100} />
     </Row>
-    <Row id="abuse-secret" label={text.secret}>
+    <Row id="abuse-secret" optional label={text.secret}>
       <Input
         id="abuse-secret"
         type="password"
@@ -95,15 +111,23 @@
         autocomplete="new-password"
       />
     </Row>
-    <label class="flex min-h-8 items-center gap-2 text-sm"
-      ><Checkbox bind:checked={closed} />{text.closed}</label
-    >
-    <label class="flex min-h-8 items-center gap-2 text-sm"
-      ><Checkbox bind:checked={testMode} />{text.test}</label
-    >
-    <div>
-      <Button type="submit" disabled={!editor.draft || busy || editor.saving}>{text.save}</Button>
-    </div>
+    <fieldset class="m-0 flex flex-col gap-1 border-0 p-0">
+      <legend class="mb-1 text-sm font-medium">{t.formWork.behavior}</legend>
+      <label class="flex min-h-10 items-center gap-3 text-sm"
+        ><Checkbox bind:checked={closed} />{text.closed}</label
+      >
+      <label class="flex min-h-10 items-center gap-3 text-sm"
+        ><Checkbox bind:checked={testMode} />{text.test}</label
+      >
+    </fieldset>
   </form>
-  {#if notice}<p role="status" class="mt-3 text-sm">{notice}</p>{/if}
 </Panel>
+<SaveBar
+  dirty={changed}
+  busy={busy || editor.saving}
+  form={formId}
+  ondiscard={discard}
+  status={notice}
+  statusKind={noticeKind}
+  saveLabel={text.save}
+/>

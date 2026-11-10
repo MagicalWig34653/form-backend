@@ -4,24 +4,35 @@
   import { adminApi } from '$lib/api';
   import type { Connection, JsonObject } from '$lib/api/admin';
   import { session } from '$lib/session.svelte';
+  import { onboarding } from '$lib/onboarding.svelte';
   import { describeError, needsFreshLogin } from '$lib/admin/describe';
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Select from '$lib/components/admin/Select.svelte';
+  import RowMenu from '$lib/components/admin/RowMenu.svelte';
+  import { Dialog, DialogContent, DialogClose } from '$lib/components/ui/dialog';
+  import { formatClock } from '$lib/format';
   import Notice from '$lib/components/admin/Notice.svelte';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import EmptyState from '$lib/components/admin/EmptyState.svelte';
   import StatusChip from '$lib/components/admin/StatusChip.svelte';
+  import Banner from '$lib/components/admin/Banner.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
 
   let items = $state<Connection[] | null>(null);
+  let loadError = $state('');
   let message = $state('');
   let ok = $state('');
   let busy = $state(false);
-  let assignTo = $state<Record<string, string>>({});
+  // Kommt der Nutzer aus der Einrichtung (Schritt Mail-Versandweg), ist das Formular sofort offen.
+  let showCreate = $state(onboarding.activeContext === 'mail');
+  let assigned = $state<Record<string, string[]> | null>(null);
+  let tested = $state<Record<string, { ok: boolean; at: Date }>>({});
+  let assignFor = $state<Connection | null>(null);
+  let picked = $state<string[]>([]);
 
   let kind = $state<'smtp' | 'mail-proxy'>('smtp');
   let name = $state('');
@@ -33,9 +44,35 @@
   let url = $state('');
 
   async function load(): Promise<void> {
+    loadError = '';
     const r = await adminApi.connections();
-    if (r.ok) items = r.data.items;
-    else if (!handleSessionError(r.error)) message = describeError(r.error);
+    if (r.ok) {
+      items = r.data.items;
+      void loadAssigned();
+    } else if (!handleSessionError(r.error))
+      loadError =
+        r.error.kind === 'http' && r.error.status === 403
+          ? t.admin.connections.forbidden
+          : describeError(r.error);
+  }
+
+  /** Which customers use which connection; unknown (null) when a customer cannot be read. */
+  async function loadAssigned(): Promise<void> {
+    const result: Record<string, string[]> = {};
+    const lists = await Promise.all(
+      session.tenants.map(async (tenant) => ({
+        tenant,
+        r: await adminApi.tenantConnections(tenant.id),
+      })),
+    );
+    for (const { tenant, r } of lists) {
+      if (!r.ok) {
+        assigned = null;
+        return;
+      }
+      for (const c of r.data.items) (result[c.id] ??= []).push(tenant.name);
+    }
+    assigned = result;
   }
 
   /** Runs a call; a stale login sends the user through login and back, other failures are shown. */
@@ -76,6 +113,7 @@
     const created = await run(() => adminApi.createConnection(body), t.admin.connections.created);
     if (created) {
       name = host = username = secret = url = '';
+      showCreate = false;
       await load();
     }
   }
@@ -83,140 +121,264 @@
   async function test(id: string): Promise<void> {
     const res = await run(() => adminApi.testConnection(id), '');
     if (!res) return;
+    tested[id] = { ok: res.ok, at: new Date() };
     if (res.ok) ok = t.admin.connections.testOk;
     else message = t.admin.connections.testFailed.replace('{code}', res.code ?? '?');
   }
 
-  async function assign(id: string): Promise<void> {
-    const tenant = assignTo[id];
-    if (!tenant) return;
-    await run(() => adminApi.assignConnection(tenant, id), t.admin.connections.assigned);
+  function openAssign(c: Connection): void {
+    assignFor = c;
+    picked = [];
   }
+  const taken = (c: Connection, tenantName: string): boolean =>
+    !!assigned?.[c.id]?.includes(tenantName);
+
+  async function assign(): Promise<void> {
+    const c = assignFor;
+    if (!c || picked.length === 0) return;
+    for (const tenant of picked) {
+      const done = await run(
+        () => adminApi.assignConnection(tenant, c.id),
+        t.admin.connections.assigned,
+      );
+      if (done === null && message) return;
+    }
+    assignFor = null;
+    await loadAssigned();
+  }
+
+  const hostOf = (c: Connection): string => {
+    const config = c.config as { host?: unknown; url?: unknown };
+    if (typeof config.host === 'string') return config.host;
+    if (typeof config.url === 'string') {
+      try {
+        return new URL(config.url).hostname;
+      } catch {
+        return config.url;
+      }
+    }
+    return '';
+  };
 
   onMount(() => void load());
 </script>
 
-<div class="flex w-full max-w-[820px] flex-col gap-6">
-  <PageHeader title={t.admin.connections.title} description={t.admin.connections.intro} />
+<div class="flex w-full min-w-0 flex-col gap-6">
+  <PageHeader
+    title={t.admin.connections.title}
+    description={t.admin.connections.intro}
+    compactActions
+  >
+    {#snippet actions()}
+      {#if items !== null && !loadError && !showCreate}<Button onclick={() => (showCreate = true)}
+          >{t.admin.connections.create}</Button
+        >{/if}
+    {/snippet}
+  </PageHeader>
   <Notice message={message || ok} kind={message ? 'error' : 'ok'} />
 
-  {#if items === null}
+  {#if loadError}
+    <Banner tone="danger">
+      {loadError}
+      {#snippet action()}
+        <Button variant="outline" onclick={() => void load()}>{t.lists.retry}</Button>
+      {/snippet}
+    </Banner>
+  {:else if items === null}
     <div aria-busy="true" class="flex flex-col gap-3">
       <span class="sr-only" role="status">{t.admin.loading}</span>
       <Skeleton class="h-20" /><Skeleton class="h-20" />
     </div>
   {:else if items.length === 0}
-    <div class="bg-card ring-1 ring-foreground/10 rounded-xl">
-      <EmptyState title={t.admin.connections.none} icon="connections" />
-    </div>
+    <Panel>
+      <EmptyState
+        title={t.admin.connections.none}
+        description={t.admin.connections.noneHint}
+        icon="connections"
+      >
+        {#snippet action()}
+          <Button onclick={() => (showCreate = true)}>{t.admin.connections.create}</Button>
+        {/snippet}
+      </EmptyState>
+    </Panel>
   {:else}
-    <ul class="flex flex-col gap-3">
-      {#each items as c (c.id)}
-        <li class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-col gap-3 px-5 py-4">
-          <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <span class="font-medium">{c.name}</span>
-            <span class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm"
-              >{t.admin.connections.kinds[c.kind]}{c.hasCredential
-                ? ' · ' + t.admin.connections.hasCredential
-                : ''}{#if !c.enabled}<StatusChip
-                  tone="idle"
-                  label={t.admin.connections.disabled}
-                />{/if}</span
-            >
-          </div>
-          <div class="flex flex-wrap items-end gap-2">
-            <Button type="button" variant="outline" disabled={busy} onclick={() => void test(c.id)}
-              >{t.admin.connections.test}<span class="sr-only"> {c.name}</span></Button
-            >
-            <label class="flex flex-col gap-1 text-sm">
-              <span class="sr-only">{t.admin.connections.assign} {c.name}</span>
-              <Select
-                bind:value={assignTo[c.id]}
-                aria-label={`${t.admin.connections.assign}: ${c.name}`}
+    <Panel flush>
+      <ul class="divide-border m-0 flex list-none flex-col divide-y p-0">
+        {#each items as c (c.id)}
+          {@const result = tested[c.id]}
+          {@const names = assigned?.[c.id]}
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
+            <div class="min-w-0 flex-1 basis-64">
+              <p class="m-0 font-medium">{c.name}</p>
+              <p class="text-muted-foreground m-0 text-sm">
+                {t.admin.connections.kinds[c.kind]}{hostOf(c)
+                  ? ' · ' + hostOf(c)
+                  : ''}{c.hasCredential ? ' · ' + t.admin.connections.hasCredential : ''}
+              </p>
+              {#if assigned !== null}<p class="text-muted-foreground m-0 text-sm">
+                  {names?.length
+                    ? t.admin.connections.assignedTo.replace('{names}', names.join(', '))
+                    : t.admin.connections.assignedNone}
+                </p>{/if}
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              {#if !c.enabled}<StatusChip tone="idle" label={t.admin.connections.disabled} />{/if}
+              {#if result?.ok}<StatusChip
+                  tone="ok"
+                  label={t.admin.connections.tested.replace('{time}', formatClock(result.at))}
+                />{:else if result}<StatusChip
+                  tone="danger"
+                  label={t.admin.connections.testFailedChip}
+                />{:else}<StatusChip tone="idle" label={t.admin.connections.untested} />{/if}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onclick={() => void test(c.id)}
+                >{t.admin.connections.test}<span class="sr-only"> {c.name}</span></Button
               >
-                <option value={undefined} disabled selected>{t.admin.connections.assign}</option>
-                {#each session.tenants as tenant (tenant.id)}<option value={tenant.id}
-                    >{tenant.name}</option
-                  >{/each}
-              </Select>
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy || !assignTo[c.id]}
-              onclick={() => void assign(c.id)}>{t.admin.connections.assign}</Button
-            >
-          </div>
-        </li>
-      {/each}
-    </ul>
+              <RowMenu
+                label={t.admin.connections.rowActions.replace('{name}', c.name)}
+                disabled={busy}
+                items={[
+                  {
+                    id: 'assign',
+                    label: t.admin.connections.assign,
+                    onselect: () => openAssign(c),
+                  },
+                ]}
+              />
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </Panel>
   {/if}
 
-  <Panel title={t.admin.connections.create} description={t.admin.connections.freshHint}>
-    <form onsubmit={(e) => void create(e)} class="flex max-w-md flex-col gap-4">
-      <Row id="conn-kind" label={t.admin.connections.kind}>
-        <Select id="conn-kind" bind:value={kind}>
-          <option value="smtp">{t.admin.connections.kinds.smtp}</option>
-          <option value="mail-proxy">{t.admin.connections.kinds['mail-proxy']}</option>
-        </Select>
-      </Row>
-      <Row id="conn-name" label={t.admin.connections.name}
-        ><Input id="conn-name" bind:value={name} required maxlength={190} autocomplete="off" /></Row
-      >
-      {#if kind === 'smtp'}
-        <Row id="conn-host" label={t.admin.connections.host}
-          ><Input
-            id="conn-host"
-            bind:value={host}
-            required
-            autocomplete="off"
-            spellcheck={false}
-          /></Row
-        >
-        <Row id="conn-port" label={t.admin.connections.port}
-          ><Input
-            id="conn-port"
-            type="number"
-            min="1"
-            max="65535"
-            bind:value={port}
-            required
-          /></Row
-        >
-        <Row id="conn-security" label={t.admin.connections.security}>
-          <Select id="conn-security" bind:value={security}>
-            {#each ['tls', 'starttls', 'plain'] as s (s)}<option value={s}
-                >{t.admin.connections.securities[s as 'tls']}</option
-              >{/each}
+  {#if showCreate}
+    <Panel title={t.admin.connections.create} description={t.admin.connections.freshHint}>
+      <form onsubmit={(e) => void create(e)} class="flex max-w-[560px] flex-col gap-4">
+        <Row id="conn-kind" label={t.admin.connections.kind}>
+          <Select id="conn-kind" bind:value={kind}>
+            <option value="smtp">{t.admin.connections.kinds.smtp}</option>
+            <option value="mail-proxy">{t.admin.connections.kinds['mail-proxy']}</option>
           </Select>
         </Row>
-        <Row id="conn-user" label={t.admin.connections.username}
-          ><Input id="conn-user" bind:value={username} autocomplete="off" /></Row
-        >
-        <Row id="conn-secret" label={t.admin.connections.password}
+        <Row id="conn-name" label={t.admin.connections.name}
           ><Input
-            id="conn-secret"
-            type="password"
-            bind:value={secret}
-            autocomplete="new-password"
-            required={username.trim() !== ''}
-          /></Row
-        >
-      {:else}
-        <Row id="conn-url" label={t.admin.connections.url}
-          ><Input id="conn-url" type="url" bind:value={url} required autocomplete="off" /></Row
-        >
-        <Row id="conn-secret" label={t.admin.connections.acode}
-          ><Input
-            id="conn-secret"
-            type="password"
-            bind:value={secret}
-            autocomplete="new-password"
+            id="conn-name"
+            bind:value={name}
             required
+            maxlength={190}
+            autocomplete="off"
           /></Row
         >
-      {/if}
-      <div><Button type="submit" disabled={busy}>{t.admin.connections.create}</Button></div>
-    </form>
-  </Panel>
+        {#if kind === 'smtp'}
+          <Row id="conn-host" label={t.admin.connections.host}
+            ><Input
+              id="conn-host"
+              bind:value={host}
+              required
+              autocomplete="off"
+              spellcheck={false}
+            /></Row
+          >
+          <Row id="conn-port" label={t.admin.connections.port}
+            ><Input
+              id="conn-port"
+              type="number"
+              min="1"
+              max="65535"
+              bind:value={port}
+              required
+            /></Row
+          >
+          <Row id="conn-security" label={t.admin.connections.security}>
+            <Select id="conn-security" bind:value={security}>
+              {#each ['tls', 'starttls', 'plain'] as s (s)}<option value={s}
+                  >{t.admin.connections.securities[s as 'tls']}</option
+                >{/each}
+            </Select>
+          </Row>
+          <Row id="conn-user" optional label={t.admin.connections.username}
+            ><Input id="conn-user" bind:value={username} autocomplete="off" /></Row
+          >
+          <Row
+            id="conn-secret"
+            optional={username.trim() === ''}
+            label={t.admin.connections.password}
+            ><Input
+              id="conn-secret"
+              type="password"
+              bind:value={secret}
+              autocomplete="new-password"
+              required={username.trim() !== ''}
+            /></Row
+          >
+        {:else}
+          <Row id="conn-url" label={t.admin.connections.url}
+            ><Input id="conn-url" type="url" bind:value={url} required autocomplete="off" /></Row
+          >
+          <Row id="conn-secret" label={t.admin.connections.acode}
+            ><Input
+              id="conn-secret"
+              type="password"
+              bind:value={secret}
+              autocomplete="new-password"
+              required
+            /></Row
+          >
+        {/if}
+        <div class="flex gap-2">
+          <Button type="submit" disabled={busy}>{t.admin.connections.create}</Button>
+          <Button type="button" variant="ghost" onclick={() => (showCreate = false)}
+            >{t.admin.cancel}</Button
+          >
+        </div>
+      </form>
+    </Panel>
+  {/if}
+  <Dialog
+    open={assignFor !== null}
+    onOpenChange={(value) => {
+      if (!value) assignFor = null;
+    }}
+  >
+    {#if assignFor}
+      <DialogContent
+        title={t.admin.connections.assign}
+        description={t.admin.connections.assignDescription.replace('{name}', assignFor.name)}
+      >
+        <ul class="m-0 flex w-full list-none flex-col gap-1 p-0">
+          {#each session.tenants as tenant (tenant.id)}
+            {@const already = taken(assignFor, tenant.name)}
+            <li>
+              <label class="flex min-h-11 items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  class="size-5 accent-[var(--ui-accent)]"
+                  value={tenant.id}
+                  bind:group={picked}
+                  disabled={already || busy}
+                  checked={already || undefined}
+                />
+                <span>{tenant.name}</span>
+                {#if already}<span class="text-muted-foreground"
+                    >{t.admin.connections.alreadyAssigned}</span
+                  >{/if}
+              </label>
+            </li>
+          {/each}
+        </ul>
+        <DialogClose>
+          {#snippet child({ props })}
+            <Button {...props} variant="ghost" type="button">{t.admin.cancel}</Button>
+          {/snippet}
+        </DialogClose>
+        <Button type="button" disabled={busy || picked.length === 0} onclick={() => void assign()}
+          >{t.admin.connections.assignConfirm}</Button
+        >
+      </DialogContent>
+    {/if}
+  </Dialog>
 </div>

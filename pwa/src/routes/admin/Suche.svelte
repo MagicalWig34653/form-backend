@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDateTime } from '$lib/format';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { Button } from '$lib/components/ui/button';
@@ -230,7 +231,9 @@
                 bind:group={selected}
                 value={row.id}
                 disabled={busy}
-              /><span class="tabular-nums">{row.receivedAt ?? ui.noDate}</span>
+              /><span class="tabular-nums"
+                >{row.receivedAt ? formatDateTime(row.receivedAt) : ui.noDate}</span
+              >
               <span class="text-muted-foreground text-sm">· {row.id}</span></label
             >
             {#if row.unreadable}<p class="text-muted-foreground pl-9 text-sm">

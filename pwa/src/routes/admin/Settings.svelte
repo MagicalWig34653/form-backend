@@ -7,6 +7,7 @@
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
   import FormSection from '$lib/components/admin/FormSection.svelte';
   import Row from '$lib/components/admin/Row.svelte';
+  import Panel from '$lib/components/admin/Panel.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
   import ErrorState from '$lib/components/admin/ErrorState.svelte';
   import EmptyState from '$lib/components/admin/EmptyState.svelte';
@@ -15,7 +16,10 @@
   import Select from '$lib/components/admin/Select.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import SaveBar from '$lib/components/admin/SaveBar.svelte';
   import NavIcon from '$lib/components/shell/NavIcon.svelte';
+  import { formatClock, stamped } from '$lib/format';
+  import SearchField from '$lib/components/admin/SearchField.svelte';
   interface Item {
     definition: {
       key: string;
@@ -43,7 +47,7 @@
   let sourceFilter = $state('');
   const sourceOf = (item: Item): Source =>
     item.source in ui.sources ? (item.source as Source) : 'default';
-  const groups = [
+  const knownGroups = [
     t.abuse.title,
     'Mail-Netze',
     'Limits',
@@ -60,6 +64,7 @@
   let busy = $state(false);
   let error = $state('');
   let notice = $state('');
+  let loadedAt = $state<Date | null>(null);
   const visible = $derived(
     (snapshot?.items ?? []).filter((x) => {
       const q = query.trim().toLowerCase();
@@ -77,14 +82,26 @@
           .length
       : 0,
   );
+  // Known groups come first in their usual order; groups the server adds follow alphabetically.
+  const groups = $derived.by(() => {
+    const present = new Set((snapshot?.items ?? []).map((x) => x.definition.group));
+    return [
+      ...knownGroups.filter((g) => present.has(g)),
+      ...[...present]
+        .filter((g) => !knownGroups.includes(g))
+        .sort((a, b) => a.localeCompare(b, 'de')),
+    ];
+  });
   const groupCounts = $derived(
     groups
       .map((g) => ({ g, n: visible.filter((x) => x.definition.group === g).length }))
       .filter((x) => x.n > 0),
   );
-  const emptyGroups = $derived(
-    groups.filter((g) => !(snapshot?.items ?? []).some((x) => x.definition.group === g)),
-  );
+  const emptyGroups = $derived(knownGroups.filter((g) => !groups.includes(g)));
+  function resetFilters(): void {
+    query = '';
+    sourceFilter = '';
+  }
   const slug = (g: string) => 'grp-' + g.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   async function failure(e: Parameters<typeof describeError>[0]) {
     if (e.status === 409) error = text.conflict;
@@ -93,6 +110,7 @@
   }
   function accept(data: Snapshot) {
     snapshot = data;
+    loadedAt = new Date();
     values = Object.fromEntries(data.items.map((x) => [x.definition.key, x.value ?? '']));
   }
   async function load() {
@@ -124,26 +142,37 @@
     });
     if (r.ok) {
       accept(r.data);
-      notice = changed.some((x) => x.definition.restartRequired) ? text.savedRestart : text.saved;
+      notice = stamped(
+        changed.some((x) => x.definition.restartRequired) ? text.savedRestart : t.saveBar.saved,
+      );
     } else await failure(r.error);
     busy = false;
+  }
+  function discard() {
+    if (snapshot) accept(snapshot);
   }
   onMount(() => void load());
 </script>
 
-<div class="flex w-full max-w-[1040px] flex-col gap-6">
+<div class="flex w-full min-w-0 flex-col gap-6">
   <PageHeader title={text.title} description={text.precedence}>
-    {#snippet badges()}
-      <StatusChip tone="info" label={ui.precedenceChain} />
-    {/snippet}
     {#snippet actions()}
-      <Button type="button" variant="outline" disabled={busy} onclick={() => void load()}
-        >{text.reload}</Button
+      {#if loadedAt}<span class="text-muted-foreground text-sm"
+          >{text.asOf.replace('{time}', formatClock(loadedAt))}</span
+        >{/if}
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        class="size-11 sm:size-9"
+        disabled={busy}
+        aria-label={text.reloadIcon}
+        title={text.reload}
+        onclick={() => void load()}><NavIcon name="refresh" size={18} /></Button
       >
     {/snippet}
   </PageHeader>
   {#if error && snapshot}<Banner tone="danger">{error}</Banner>{/if}
-  {#if notice}<Banner tone="ok">{notice}</Banner>{/if}
   {#if !snapshot}
     {#if error}
       <ErrorState title={ui.loadFailed} message={error} onretry={() => void load()} {busy} />
@@ -157,38 +186,26 @@
       </div>
     {/if}
   {:else}
-    <div class="bg-card ring-1 ring-foreground/10 rounded-xl flex flex-wrap items-end gap-3 p-4">
-      <div class="min-w-0 flex-1 basis-56">
-        <label for="settings-search" class="mb-1.5 block text-sm font-medium">{ui.search}</label>
-        <div class="relative">
-          <span
-            aria-hidden="true"
-            class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
-            ><NavIcon name="search" size={16} /></span
-          >
-          <Input
-            id="settings-search"
-            type="search"
-            bind:value={query}
-            class="pl-9"
-            autocomplete="off"
-            aria-describedby="settings-search-hint"
-          />
-        </div>
-        <p id="settings-search-hint" class="text-muted-foreground mt-1 text-xs">{ui.searchHint}</p>
-      </div>
-      <div class="w-full sm:w-48">
-        <label for="settings-source" class="mb-1.5 block text-sm font-medium">{ui.source}</label>
-        <Select id="settings-source" bind:value={sourceFilter}>
-          <option value="">{ui.allSources}</option>
-          {#each Object.entries(ui.sources) as [key, label] (key)}<option value={key}
-              >{label}</option
-            >{/each}
-        </Select>
-      </div>
+    <div class="flex flex-wrap items-start gap-3">
+      <SearchField
+        id="settings-search"
+        label={ui.search}
+        placeholder={ui.searchPlaceholder}
+        bind:value={query}
+      />
+      <Select
+        id="settings-source"
+        aria-label={ui.source}
+        bind:value={sourceFilter}
+        class="w-full sm:w-48"
+      >
+        <option value="">{ui.allSources}</option>
+        {#each Object.entries(ui.sources) as [key, label] (key)}<option value={key}>{label}</option
+          >{/each}
+      </Select>
     </div>
-    {#if groupCounts.length > 1}
-      <nav aria-label="Gruppen" class="flex flex-wrap gap-2">
+    {#if groupCounts.length > 0}
+      <nav aria-label={text.groupsLabel} class="flex flex-wrap gap-2">
         {#each groupCounts as { g, n } (g)}
           <a
             href={`#${slug(g)}`}
@@ -199,18 +216,15 @@
       </nav>
     {/if}
     <p class="sr-only" role="status">{ui.count.replace('{n}', String(visible.length))}</p>
-    <form onsubmit={save} class="flex flex-col gap-5" aria-busy={busy}>
+    <form id="settings-form" onsubmit={save} class="flex flex-col gap-5" aria-busy={busy}>
       {#each groups as group, index (group)}
         {@const items = visible.filter((x) => x.definition.group === group)}
         {#if items.length}
           <FormSection title={group} {index} id={slug(group)}>
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-x-6 gap-y-6 md:grid-cols-2">
               {#each items as item (item.definition.key)}
                 {@const source = sourceOf(item)}
-                <div
-                  data-setting={item.definition.key}
-                  class="border-border bg-muted/50 flex flex-col gap-2 rounded-lg border p-3"
-                >
+                <div data-setting={item.definition.key} class="flex flex-col gap-2">
                   <Row
                     id={item.definition.key}
                     label={item.definition.key}
@@ -241,21 +255,30 @@
           </FormSection>
         {/if}
       {/each}
-      {#if (query || sourceFilter) && !visible.length}
-        <EmptyState title={ui.noMatch} icon="search" />
+      {#if !snapshot.items.length}
+        <Panel>
+          <EmptyState title={text.emptyTitle} description={text.emptyHint} icon="settings" />
+        </Panel>
+      {:else if (query || sourceFilter) && !visible.length}
+        <Panel>
+          <EmptyState title={ui.noMatch} icon="search">
+            {#snippet action()}
+              <Button type="button" variant="outline" onclick={resetFilters}
+                >{text.resetFilter}</Button
+              >
+            {/snippet}
+          </EmptyState>
+        </Panel>
       {:else if !query && !sourceFilter && emptyGroups.length}
-        <p class="text-muted-foreground text-sm">
-          {text.noExistingEnv} ({emptyGroups.join(', ')})
-        </p>
+        <details class="text-muted-foreground text-sm">
+          <summary class="min-h-8 cursor-pointer py-1 font-medium">{text.noExistingTitle}</summary>
+          <p class="mt-2 mb-1">{text.noExistingEnv}</p>
+          <ul class="m-0 flex list-disc flex-col gap-0.5 pl-5">
+            {#each emptyGroups as g (g)}<li>{g}</li>{/each}
+          </ul>
+        </details>
       {/if}
-      <div
-        class="app-topbar border-border sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:-mx-7 sm:px-7"
-      >
-        <span class="text-muted-foreground text-sm" aria-live="polite"
-          >{dirty ? `${ui.dirty}: ${dirty}` : ''}</span
-        >
-        <Button type="submit" disabled={busy}>{text.save}</Button>
-      </div>
     </form>
+    <SaveBar dirty={dirty > 0} {busy} form="settings-form" ondiscard={discard} status={notice} />
   {/if}
 </div>

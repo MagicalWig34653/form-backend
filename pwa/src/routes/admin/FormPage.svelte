@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formStatus } from '$lib/admin/formStatus';
   import WebhooksPanel from './WebhooksPanel.svelte';
   import AccessStatus from './AccessStatus.svelte';
   import { onMount, tick } from 'svelte';
@@ -27,7 +28,9 @@
   import PublishTab from './PublishTab.svelte';
   import EntriesTab from './EntriesTab.svelte';
   import KeysTab from './KeysTab.svelte';
+  import RetentionPanel from './RetentionPanel.svelte';
   import StatisticsChart from './StatisticsChart.svelte';
+  import StatisticsKpis from './StatisticsKpis.svelte';
   import ActiveSwitch from './ActiveSwitch.svelte';
   import AdsStatisticsPanel from './AdsStatisticsPanel.svelte';
 
@@ -40,7 +43,8 @@
   const canIssue = $derived(rights.includes('key.manage'));
   let fieldsDirty = $state(false);
   let abuseDirty = $state(false);
-  const dirty = $derived(fieldsDirty || abuseDirty);
+  let retentionDirty = $state(false);
+  const dirty = $derived(fieldsDirty || abuseDirty || retentionDirty);
   let slow = $state(false);
   let statsSlow = $state(false);
   let activePath = router.path;
@@ -50,8 +54,9 @@
   let stats = $state<Statistics | null>(null);
   let statsLoading = $state(false);
   let statsError = $state('');
+  let statsDays = $state(14);
   const configuration = $derived(
-    tab === 'fields' || tab === 'flow' || tab === 'mail' || tab === 'webhooks' || tab === 'storage',
+    tab === 'fields' || tab === 'mail' || tab === 'webhooks' || tab === 'storage',
   );
   const customer = $derived(session.tenants.find((x) => x.id === tenant)?.name ?? '');
   const published = $derived(!!editor.detail?.currentReleaseId);
@@ -76,7 +81,7 @@
   function guard(): boolean | Promise<boolean> {
     if (!dirty) return true;
     return confirmDiscard().then((ok) => {
-      if (ok) fieldsDirty = abuseDirty = false;
+      if (ok) fieldsDirty = abuseDirty = retentionDirty = false;
       return ok;
     });
   }
@@ -92,7 +97,7 @@
   async function loadStats(): Promise<void> {
     statsLoading = true;
     statsError = '';
-    const r = await adminApi.statistics(tenant, form, 30);
+    const r = await adminApi.statistics(tenant, form, statsDays);
     statsLoading = false;
     if (r.ok) stats = r.data;
     else if (!handleSessionError(r.error)) statsError = describeError(r.error);
@@ -125,7 +130,7 @@
       router.navigate(activePath, true);
       void confirmDiscard().then((ok) => {
         if (!ok) return;
-        fieldsDirty = abuseDirty = false;
+        fieldsDirty = abuseDirty = retentionDirty = false;
         router.navigate(target);
       });
     };
@@ -166,13 +171,9 @@
   <PageHeader title={editor.detail?.name ?? t.formWork.title} description={customer}>
     {#snippet badges()}
       {#if editor.detail}
-        {#if !published}
-          <StatusChip tone="idle" label={t.formUi.notPublishedChip} />
-        {:else}
-          <StatusChip
-            tone={editor.detail.active ? 'ok' : 'idle'}
-            label={editor.detail.active ? t.formWork.active : t.formWork.inactive}
-          />
+        {@const st = formStatus(published, editor.detail.active)}
+        <StatusChip tone={st.tone} label={st.label} />
+        {#if published}
           <StatusChip
             tone="idle"
             label={t.lists.version.replace(
@@ -182,7 +183,8 @@
           />
         {/if}
         <StatusChip
-          tone={editor.draft ? 'info' : 'idle'}
+          class="max-sm:hidden"
+          tone="idle"
           label={editor.draft
             ? t.formWork.saved.replace('{n}', String(editor.draft.revision))
             : t.formUi.noDraftChip}
@@ -192,12 +194,22 @@
     {#snippet actions()}
       {#if canEdit}<Button
           variant="outline"
+          class="max-sm:flex-1 max-sm:px-2"
+          aria-label={t.formWork.edit}
           href={formPath(tenant, form, 'fields')}
-          onclick={(e) => navigate(e, 'fields')}>{t.formWork.edit}</Button
+          onclick={(e) => navigate(e, 'fields')}
+          ><span class="sm:hidden" aria-hidden="true">{t.formWork.editShort}</span><span
+            class="max-sm:hidden">{t.formWork.edit}</span
+          ></Button
         >{/if}
-      {#if canPublish}<Button
+      {#if canPublish && tab !== 'publish'}<Button
+          class="max-sm:flex-1 max-sm:px-2"
+          aria-label={t.formWork.publish}
           href={formPath(tenant, form, 'publish')}
-          onclick={(e) => navigate(e, 'publish')}>{t.formWork.publish}</Button
+          onclick={(e) => navigate(e, 'publish')}
+          ><span class="sm:hidden" aria-hidden="true">{t.formWork.publishShort}</span><span
+            class="max-sm:hidden">{t.formWork.publish}</span
+          ></Button
         >{/if}
     {/snippet}
     {#snippet tabs()}
@@ -239,13 +251,23 @@
       {#if !published}
         <Banner tone="info">{t.formWork.unpublished}</Banner>
       {/if}
+      {#if stats && !statsError}
+        <StatisticsKpis
+          {stats}
+          days={statsDays}
+          onperiod={(n) => {
+            statsDays = n;
+            void loadStats();
+          }}
+        />
+      {/if}
       <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div
           id="statistics"
           class="flex min-w-0 scroll-mt-20 flex-col gap-5"
           aria-busy={statsLoading}
         >
-          {#if statsLoading}
+          {#if statsLoading && !stats}
             <p role="status" class="text-muted-foreground text-sm">
               {statsSlow ? t.formWork.slow : t.admin.loading}
             </p>
@@ -261,11 +283,11 @@
               {/snippet}
             </Banner>
           {:else if stats}
-            <StatisticsChart {stats} days={30} />
+            <StatisticsChart {stats} />
             <AdsStatisticsPanel {tenant} {form} />
           {/if}
         </div>
-        <div class="flex min-w-0 flex-col gap-5">
+        <div class="flex min-w-0 flex-col gap-5 max-lg:order-first">
           <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
             <ul class="divide-border -my-1 divide-y">
               {@render checkItem(
@@ -324,26 +346,20 @@
     {:else if tab === 'fields'}
       <FieldsTab {editor} ondirty={(value) => (fieldsDirty = value)} />
       <AbusePanel {editor} {tenant} {form} ondirty={(value) => (abuseDirty = value)} />
-    {:else if tab === 'flow'}
-      <Panel title={t.formWork.flow}>
-        <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.flowPending}</p>
-      </Panel>
     {:else if tab === 'webhooks'}
-      <Panel title={t.formWork.webhooks}><WebhooksPanel {tenant} {form} /></Panel>
+      <Panel title={t.formWork.webhooks} description={t.webhooks.intro}
+        ><WebhooksPanel {tenant} {form} /></Panel
+      >
     {:else if tab === 'storage'}
-      <Panel title={t.formWork.storage}>
-        <p class="text-muted-foreground max-w-prose text-sm">{t.formWork.storagePending}</p>
-      </Panel>
+      <RetentionPanel {tenant} {form} ondirty={(value) => (retentionDirty = value)} />
     {:else if tab === 'mail'}
-      <Panel>
-        <MailTab
-          {editor}
-          {tenant}
-          {form}
-          canAssign={canPublish}
-          ondirty={(value) => (fieldsDirty = value)}
-        />
-      </Panel>
+      <MailTab
+        {editor}
+        {tenant}
+        {form}
+        canAssign={canPublish}
+        ondirty={(value) => (fieldsDirty = value)}
+      />
     {:else if tab === 'publish'}<PublishTab {editor} {tenant} {form} canBump={canEdit} />
     {:else}<KeysTab {editor} {tenant} {form} {canIssue} />{/if}
   {/if}

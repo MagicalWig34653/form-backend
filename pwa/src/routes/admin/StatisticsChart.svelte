@@ -1,13 +1,13 @@
 <script lang="ts">
+  import { formatDay, formatDayShort } from '$lib/format';
+  import { scrollHint } from '$lib/scrollHint';
   import { t } from '$lib/i18n';
   import type { Statistics } from '$lib/api/admin';
-  import StatTile from './StatTile.svelte';
 
-  let { stats, days }: { stats: Statistics; days: number } = $props();
+  let { stats }: { stats: Statistics } = $props();
   const ui = t.admin.statisticsPage;
   const metrics = ['visits', 'begins', 'submits', 'abandons'] as const;
   type Metric = (typeof metrics)[number];
-  const conversion = $derived(stats.visits === 0 ? null : stats.submits / stats.visits);
   const hasEvents = $derived(metrics.some((metric) => stats[metric] > 0));
   const percent = (value: number | null): string =>
     value === null
@@ -17,16 +17,32 @@
         );
 
   // Series differ by colour, dash pattern and direct label, never by colour alone.
-  const style: Record<Metric, { color: string; dash: string | undefined }> = {
-    visits: { color: 'var(--ui-accent)', dash: undefined },
-    begins: { color: 'var(--muted-foreground)', dash: '6 4' },
-    submits: { color: 'var(--chart-3)', dash: undefined },
-    abandons: { color: 'var(--chart-4)', dash: '2 3' },
+  type Shape = 'circle' | 'square' | 'diamond' | 'triangle';
+  const style: Record<Metric, { color: string; dash: string | undefined; shape: Shape }> = {
+    visits: { color: 'var(--chart-1)', dash: undefined, shape: 'circle' },
+    begins: { color: 'var(--muted-foreground)', dash: '6 4', shape: 'square' },
+    submits: { color: 'var(--ui-accent)', dash: undefined, shape: 'diamond' },
+    abandons: { color: 'var(--chart-4)', dash: '2 3', shape: 'triangle' },
   };
+  /** Marker outline (centre cx, cy; half-size r) for the series shapes: colour is never the only cue. */
+  function marker(shape: Shape, cx: number, cy: number, r = 4): string {
+    if (shape === 'square') return `M${cx - r},${cy - r}h${2 * r}v${2 * r}h${-2 * r}z`;
+    if (shape === 'diamond')
+      return `M${cx},${cy - r - 1}L${cx + r + 1},${cy}L${cx},${cy + r + 1}L${cx - r - 1},${cy}z`;
+    if (shape === 'triangle')
+      return `M${cx},${cy - r - 1}L${cx + r + 1},${cy + r}L${cx - r - 1},${cy + r}z`;
+    return `M${cx - r},${cy}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0z`;
+  }
+  const barFill = (metric: Metric): string =>
+    metric === 'begins'
+      ? 'url(#stat-hatch)'
+      : metric === 'abandons'
+        ? 'url(#stat-dots)'
+        : style[metric].color;
 
   // SVG text must stay readable: on narrow screens the drawing is as wide as the card.
-  let viewport = $state(1024);
-  const W = $derived(viewport < 640 ? Math.max(260, viewport - 72) : 640);
+  let boxWidth = $state(0);
+  const W = $derived(boxWidth > 0 ? Math.min(1100, Math.max(260, Math.round(boxWidth))) : 640);
   const H = 220;
   const direct = $derived(W >= 480);
   const padL = 34;
@@ -47,7 +63,7 @@
   const ticks = $derived(Number.isInteger(top / 2) && top > 2 ? [0, top / 2, top] : [0, top]);
   const x = (i: number): number =>
     padL + (stats.days.length < 2 ? plotW / 2 : (i * plotW) / (stats.days.length - 1));
-  const shortDate = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+  const shortDate = (iso: string): string => formatDayShort(iso);
 
   const lines = $derived(
     metrics.map((metric) => ({
@@ -79,43 +95,18 @@
   const barW = $derived(Math.min(20, (groupW * 0.8) / metrics.length));
 </script>
 
-<header class="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-  <div>
-    <h2 class="text-xl leading-snug font-semibold tracking-tight">
-      {ui.title}
-    </h2>
-    <p class="text-muted-foreground text-sm leading-[18px]">
-      {t.admin.stats.range.replace('{n}', String(days))} ·
-      {ui.period.replace('{from}', stats.from).replace('{to}', stats.to)}
-    </p>
-  </div>
-  <span
-    class="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-sm leading-[18px] font-medium"
-    >{ui.scope}</span
-  >
-</header>
-<svelte:window bind:innerWidth={viewport} />
-<dl
-  class="mb-5 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3"
-  aria-label={t.admin.stats.total}
->
-  {#each metrics as metric (metric)}
-    <StatTile
-      label={t.admin.stats[metric]}
-      icon={metric}
-      value={String(stats[metric])}
-      series={stats.days.length > 2 ? stats.days.map((d) => d[metric]) : undefined}
-    />
-  {/each}
-  <StatTile label={t.admin.stats.conversion} icon="conversion" value={percent(conversion)} />
-</dl>
 {#if !hasEvents}
-  <p class="bg-muted/60 text-muted-foreground rounded-xl p-5 text-center">
+  <p class="bg-muted/60 text-muted-foreground m-0 rounded-xl p-5 text-center">
     {ui.empty}
   </p>
+  <details class="text-muted-foreground mt-1 text-sm">
+    <summary class="min-h-8 cursor-pointer py-1 font-medium">{ui.notes}</summary>
+    <p class="mt-2">{t.admin.stats.hint}</p>
+    <p class="mt-2">{ui.explanation}</p>
+  </details>
 {:else}
   <section class="bg-card ring-1 ring-foreground/10 rounded-xl mb-4 min-w-0 px-5 py-4">
-    <figure class="mb-3 min-w-0">
+    <figure class="mb-3 min-w-0" bind:clientWidth={boxWidth}>
       <figcaption class="mb-2 font-medium">{ui.chart}</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} class="block h-auto w-full" aria-hidden="true">
         {#each ticks as tick (tick)}
@@ -124,7 +115,7 @@
             x2={W - padR}
             y1={y(tick)}
             y2={y(tick)}
-            stroke="var(--border-border)"
+            stroke="var(--border)"
             stroke-width="1"
           />
           <text
@@ -135,6 +126,22 @@
             fill="var(--muted-foreground)">{tick}</text
           >
         {/each}
+        <defs>
+          <pattern
+            id="stat-hatch"
+            width="5"
+            height="5"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width="5" height="5" fill="var(--card)" />
+            <rect width="2.2" height="5" fill="var(--muted-foreground)" />
+          </pattern>
+          <pattern id="stat-dots" width="5" height="5" patternUnits="userSpaceOnUse">
+            <rect width="5" height="5" fill="var(--card)" />
+            <circle cx="2.5" cy="2.5" r="1.4" fill="var(--chart-4)" />
+          </pattern>
+        </defs>
         {#if few}
           {#each stats.days as d, i (d.date)}
             {@const gx = padL + i * groupW + (groupW - barW * metrics.length) / 2}
@@ -146,7 +153,9 @@
                 width={Math.max(1, barW - 2)}
                 height={Math.max(0, y(0) - y(d[metric]))}
                 rx="2"
-                fill={style[metric].color}
+                fill={barFill(metric)}
+                stroke={style[metric].color}
+                stroke-width="1"
               />
               <text
                 x={bx + barW / 2}
@@ -182,10 +191,8 @@
           {/each}
           {#each lines as line (line.metric)}
             {@const last = stats.days[stats.days.length - 1]}
-            {#if last}<circle
-                cx={x(stats.days.length - 1)}
-                cy={y(last[line.metric])}
-                r="3.5"
+            {#if last}<path
+                d={marker(style[line.metric].shape, x(stats.days.length - 1), y(last[line.metric]))}
                 fill={style[line.metric].color}
               />{/if}
           {/each}
@@ -211,6 +218,10 @@
                 stroke-width="2.5"
                 stroke-dasharray={style[item.metric].dash}
               />
+              <path
+                d={marker(style[item.metric].shape, W - padR + 17, item.y, 3.5)}
+                fill={style[item.metric].color}
+              />
               <text x={W - padR + 29} y={item.y + 4} font-size="12" fill="var(--foreground)"
                 >{t.admin.stats[item.metric]} {item.value}</text
               >
@@ -221,17 +232,30 @@
       {#if !direct || few}
         <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {#each metrics as metric (metric)}<li class="flex items-center gap-2">
-              <svg width="22" height="8" aria-hidden="true"
-                ><line
-                  x1="0"
-                  y1="4"
-                  x2="22"
-                  y2="4"
-                  stroke={style[metric].color}
-                  stroke-width="3"
-                  stroke-dasharray={few ? undefined : style[metric].dash}
-                /></svg
-              >{t.admin.stats[metric]}
+              <svg width="26" height="12" aria-hidden="true">
+                {#if few}
+                  <rect
+                    x="3"
+                    y="1"
+                    width="20"
+                    height="10"
+                    rx="2"
+                    fill={barFill(metric)}
+                    stroke={style[metric].color}
+                  />
+                {:else}
+                  <line
+                    x1="0"
+                    y1="6"
+                    x2="26"
+                    y2="6"
+                    stroke={style[metric].color}
+                    stroke-width="2.5"
+                    stroke-dasharray={style[metric].dash}
+                  />
+                  <path d={marker(style[metric].shape, 13, 6, 3.5)} fill={style[metric].color} />
+                {/if}
+              </svg>{t.admin.stats[metric]}
             </li>{/each}
         </ul>
       {/if}
@@ -242,6 +266,7 @@
       >
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access to horizontal scrolling) -->
       <div
+        use:scrollHint
         class="border-border max-w-full overflow-x-auto rounded-lg border"
         role="region"
         aria-label={ui.table}
@@ -267,7 +292,7 @@
             {#each stats.days as d (d.date)}
               <tr class="hover:bg-muted/50">
                 <th scope="row" class="px-3 py-1.5 text-left font-normal whitespace-nowrap"
-                  >{d.date}</th
+                  >{formatDay(d.date)}</th
                 >
                 {#each metrics as metric (metric)}
                   <td class="px-3 py-1.5 text-right tabular-nums">{d[metric]}</td>
@@ -281,11 +306,11 @@
         </table>
       </div>
     </details>
+    <details class="text-muted-foreground mt-2 text-sm">
+      <summary class="min-h-8 cursor-pointer py-1 font-medium">{ui.notes}</summary>
+      <p class="mt-2">{t.admin.stats.hint}</p>
+      <p class="mt-2">{ui.explanation}</p>
+      {#if stats.visits === 0}<p class="mt-2">{ui.instrumentation}</p>{/if}
+    </details>
   </section>
 {/if}
-<p class="text-muted-foreground mt-3 text-sm">{t.admin.stats.hint}</p>
-
-<p class="text-muted-foreground mt-2 text-sm">{ui.explanation}</p>
-{#if stats.visits === 0}<p class="text-muted-foreground mt-2 text-sm">
-    {ui.instrumentation}
-  </p>{/if}

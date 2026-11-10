@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import { cn } from '$lib/utils';
   import { Card } from '$lib/components/ui/card';
+  import CardHeader from './CardHeader.svelte';
 
   interface Props {
     title?: string;
@@ -25,7 +26,6 @@
     class: className,
     id,
   }: Props = $props();
-  const heading = $derived(`h${level}`);
 </script>
 
 <Card
@@ -37,18 +37,7 @@
   )}
 >
   {#if title || actions}
-    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-(--card-spacing)">
-      <div class="min-w-0">
-        {#if title}<svelte:element
-            this={heading}
-            class="m-0 text-xl leading-snug font-semibold tracking-tight">{title}</svelte:element
-          >{/if}
-        {#if description}<p class="text-muted-foreground m-0 mt-0.5 text-sm leading-5">
-            {description}
-          </p>{/if}
-      </div>
-      {#if actions}<div class="flex flex-wrap items-center gap-2">{@render actions()}</div>{/if}
-    </header>
+    <CardHeader {title} {description} {level} {actions} class="px-(--card-spacing)" />
   {/if}
   <div class={cn(!flush && 'px-(--card-spacing)')}>
     {@render children?.()}

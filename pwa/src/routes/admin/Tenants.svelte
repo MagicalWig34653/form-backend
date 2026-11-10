@@ -21,6 +21,7 @@
   import { describeError, needsFreshLogin } from '$lib/admin/describe';
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
+  import SearchField from '$lib/components/admin/SearchField.svelte';
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
@@ -51,8 +52,14 @@
   const columns = $derived<Column[]>([
     { id: 'name', header: t.lists.name },
     ...(hasRights ? [{ id: 'rights', header: t.listUi.rights, hideBelow: 'sm' as const }] : []),
-    { id: 'action', header: t.lists.action, align: 'right' as const, srOnlyHeader: true },
   ]);
+  /** Two initials (first letters of the first two words, else the first two letters). */
+  function initials(name: string): string {
+    const words = name.trim().split(/\s+/);
+    const raw =
+      words.length > 1 ? (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '') : name.trim().slice(0, 2);
+    return raw.toLocaleUpperCase('de');
+  }
   function rights(permissions: string[]): string[] {
     const list: string[] = [t.listUi.rightsRead];
     if (permissions.includes('draft.write')) list.push(t.listUi.rightsEdit);
@@ -120,7 +127,7 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-5">
-  <PageHeader title={t.admin.tenants.title} description={t.lists.intro}>
+  <PageHeader title={t.admin.tenants.title} description={t.lists.intro} compactActions>
     {#snippet actions()}
       {#if session.me?.systemAdministrator && !(items !== null && items.length === 0 && !showCreate)}<Button
           onclick={() => {
@@ -159,11 +166,12 @@
     </Card>
   {/if}
   <FilterBar collapsible={false} activeCount={query.trim() ? 1 : 0} onreset={() => (query = '')}>
-    <div class="min-w-48 flex-1">
-      <Row id="customer-search" label={t.lists.searchCustomers}
-        ><Input id="customer-search" type="search" bind:value={query} /></Row
-      >
-    </div>
+    <SearchField
+      id="customer-search"
+      label={t.lists.searchCustomers}
+      placeholder={t.lists.searchCustomersPlaceholder}
+      bind:value={query}
+    />
     {#snippet trailing()}
       {#if items !== null}<span
           class="text-muted-foreground flex min-h-10 items-center text-sm tabular-nums"
@@ -212,16 +220,31 @@
           {/snippet}
         </EmptyState>
       {:else if items !== null}
-        <DataTable label={t.admin.tenants.title} {columns} rows={visible} rowKey={(c) => c.id}>
+        <DataTable
+          label={t.admin.tenants.title}
+          {columns}
+          rows={visible}
+          rowKey={(c) => c.id}
+          rowHref={(c) => tenantPath(c.id)}
+        >
           {#snippet cell(c, column)}
             {#if column.id === 'name'}
               <span class="flex min-w-0 items-center gap-3">
                 <span
                   aria-hidden="true"
                   class="bg-brand-soft text-brand-ink flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                  >{c.name.trim().slice(0, 1).toLocaleUpperCase('de')}</span
+                  >{initials(c.name)}</span
                 >
-                <span class="min-w-0 break-words">{c.name}</span>
+                <a
+                  class="min-w-0 break-words underline-offset-4 hover:underline"
+                  aria-label={`${t.lists.open}: ${c.name}`}
+                  href={tenantPath(c.id)}
+                  onclick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    router.navigate(tenantPath(c.id));
+                  }}>{c.name}</a
+                >
                 {#if pending?.id === c.id && (busy || incomplete)}
                   <StatusChip
                     tone={busy ? 'info' : 'warn'}
@@ -231,22 +254,7 @@
                 {/if}
               </span>
             {:else if column.id === 'rights'}
-              <span class="flex flex-wrap gap-1.5">
-                {#each rights(c.permissions) as right (right)}<StatusChip
-                    tone="idle"
-                    label={right}
-                  />{/each}
-              </span>
-            {:else}
-              <a
-                class="border-border hover:bg-secondary inline-flex min-h-9 items-center rounded-md border px-3 text-sm font-medium"
-                aria-label={`${t.lists.open}: ${c.name}`}
-                href={tenantPath(c.id)}
-                onclick={(e) => {
-                  e.preventDefault();
-                  router.navigate(tenantPath(c.id));
-                }}>{t.lists.open}</a
-              >
+              <span class="text-muted-foreground">{rights(c.permissions).join(', ')}</span>
             {/if}
           {/snippet}
         </DataTable>

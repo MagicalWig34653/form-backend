@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { formatDateTime } from '$lib/format';
   import { confirmAction } from '$lib/confirm.svelte';
   import Suche from './Suche.svelte';
   import SealedExport from './SealedExport.svelte';
-  import { Dialog, DialogTrigger, DialogContent } from '$lib/components/ui/dialog';
+  import { Dialog, DialogContent } from '$lib/components/ui/dialog';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
@@ -15,8 +16,9 @@
   import { rewrapPackage } from '$lib/crypto/rewrap';
   import { keyring } from '$lib/crypto/keyring.svelte';
   import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
+  import DateField from '$lib/components/admin/DateField.svelte';
+  import RowMenu from '$lib/components/admin/RowMenu.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
@@ -37,31 +39,43 @@
   const ui = t.admin.entriesPage;
   let loading = $state(false);
   let slow = $state(false);
-  let query = $state('');
+  let from = $state(''),
+    until = $state('');
+  let fromInvalid = $state(false),
+    untilInvalid = $state(false);
   let protection = $state('all');
   let selected = $state<string[]>([]);
   const visible = $derived(
     items.filter(
       (entry) =>
         (protection === 'all' || entry.held === (protection === 'held')) &&
-        (!query || (entry.receivedAt ?? '').includes(query)),
+        (!from || (entry.receivedAt ?? '').slice(0, 10) >= from) &&
+        (!until || (entry.receivedAt ?? '').slice(0, 10) <= until),
     ),
   );
 
   const rowButton =
     'border-border hover:bg-secondary inline-flex min-h-9 items-center justify-center rounded-md border px-3 text-sm font-medium disabled:pointer-events-none disabled:opacity-50';
-  const activeFilters = $derived((query ? 1 : 0) + (protection !== 'all' ? 1 : 0));
-  const missingAccess = $derived(visible.some((entry) => !keyring.dataKey(entry.keyId ?? '')));
+  const activeFilters = $derived((from ? 1 : 0) + (until ? 1 : 0) + (protection !== 'all' ? 1 : 0));
+  const missingCount = $derived(
+    visible.filter((entry) => !keyring.dataKey(entry.keyId ?? '')).length,
+  );
+  function resetFilters(): void {
+    from = '';
+    until = '';
+    protection = 'all';
+  }
+  /** Gives focus back to the row's menu button once the detail dialog is closed. */
+  function focusMenu(id: string): void {
+    setTimeout(() => document.getElementById(`row-menu-${id}`)?.focus(), 0);
+  }
   const allSelected = $derived(visible.length > 0 && visible.every((e) => selected.includes(e.id)));
   const someSelected = $derived(visible.some((e) => selected.includes(e.id)));
   let selectAllBox = $state<HTMLInputElement | null>(null);
   $effect(() => {
     if (selectAllBox) selectAllBox.indeterminate = someSelected && !allSelected;
   });
-  const when = (iso: string | null): string =>
-    iso
-      ? new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
-      : ui.unknownDate;
+  const when = (iso: string | null): string => (iso ? formatDateTime(iso) : ui.unknownDate);
 
   let openId = $state('');
   let shown = $state<{ fields: [string, string][]; files: [string, string][] } | null>(null);
@@ -224,8 +238,6 @@
   // --- deletion, hold, retention, export (ADR 0012) ---
   let actionMessage = $state('');
   let actionKind = $state<'ok' | 'error'>('error');
-  let retentionInput = $state('');
-  let retentionMessage = $state('');
 
   async function toggleHold(entry: EntryItem): Promise<void> {
     if (busy) return;
@@ -346,77 +358,41 @@
     if (pending.length) actionMessage += ' ' + ui.deletePending;
   }
 
-  async function loadRetention(): Promise<void> {
-    const r = await adminApi.retention(tenant, form);
-    if (r.ok) retentionInput = r.data.days === null ? '' : String(r.data.days);
-    else if (!handleSessionError(r.error)) retentionMessage = describeError(r.error);
-  }
-
-  async function saveRetention(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    if (busy) return;
-    const text = String(retentionInput ?? '').trim();
-    const days = text === '' ? null : Number(text);
-    if (days !== null && (!Number.isInteger(days) || days < 1 || days > 3650)) {
-      retentionMessage = t.admin.entries.retentionFailed;
-      return;
-    }
-    busy = true;
-    retentionMessage = '';
-    const r = await adminApi.setRetention(tenant, form, days);
-    busy = false;
-    if (!r.ok) {
-      if (needsFreshLogin(r.error)) return void (await reauthenticate(router.path));
-      if (!handleSessionError(r.error)) retentionMessage = describeError(r.error);
-      return;
-    }
-    retentionMessage = t.admin.entries.retentionSaved;
-  }
-
   // Decrypted content and the key must not outlive the page view.
   $effect(() => () => lock());
 
   onMount(() => {
     void load();
-    void loadRetention();
     return keyring.onLock(lock);
   });
 </script>
 
 <div class="flex min-w-0 flex-col gap-5">
-  <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-    <div class="min-w-0">
-      <h2 class="text-xl leading-snug font-semibold tracking-tight">
-        {t.admin.entries.title}
-      </h2>
-      <p class="text-muted-foreground max-w-prose text-sm leading-[18px]">
-        {t.admin.entries.intro}
-      </p>
-    </div>
-    {#key tenant + form}<SealedExport {tenant} {form} />{/key}
-  </header>
-  <Panel flush class="overflow-hidden">
+  <Panel
+    flush
+    class="overflow-hidden"
+    title={t.admin.entries.title}
+    description={t.admin.entries.intro}
+  >
+    {#snippet actions()}{#key tenant + form}<SealedExport {tenant} {form} />{/key}{/snippet}
     <section aria-label={ui.list} aria-busy={loading}>
-      <div class="border-border border-b p-3">
-        <FilterBar
-          activeCount={activeFilters}
-          hint={ui.filterHint}
-          onreset={() => {
-            query = '';
-            protection = 'all';
-          }}
-        >
-          <div class="min-w-48 flex-1">
-            <Row id="entry-search" label={ui.search}
-              ><Input
-                id="entry-search"
-                type="search"
-                placeholder="2026-11"
-                bind:value={query}
-              /></Row
-            >
-          </div>
-          <div class="min-w-40 flex-1 sm:max-w-56">
+      <div class="border-border border-b px-(--card-spacing) py-3">
+        <FilterBar activeCount={activeFilters} hint={ui.filterHint} onreset={resetFilters}>
+          <DateField
+            id="entry-from"
+            label={ui.from}
+            bind:value={from}
+            bind:invalid={fromInvalid}
+            class="min-w-40 flex-1"
+          />
+          <DateField
+            id="entry-until"
+            label={ui.until}
+            bind:value={until}
+            bind:invalid={untilInvalid}
+            class="min-w-40 flex-1"
+          />
+          <div class="min-w-40 flex-1">
             <Row id="entry-protection" label={ui.protection}
               ><Select id="entry-protection" bind:value={protection}>
                 <option value="all">{ui.all}</option><option value="held">{ui.held}</option><option
@@ -456,19 +432,13 @@
       {:else if loaded && visible.length === 0 && items.length > 0}
         <EmptyState icon="search" title={ui.filteredEmpty}>
           {#snippet action()}
-            <Button
-              variant="outline"
-              onclick={() => {
-                query = '';
-                protection = 'all';
-              }}>{t.lists.reset}</Button
-            >
+            <Button variant="outline" onclick={resetFilters}>{t.lists.reset}</Button>
           {/snippet}
         </EmptyState>
       {/if}
-      {#if missingAccess}
+      {#if missingCount > 0 && keyring.unlocked}
         <div class="p-3 pb-0">
-          <Banner tone="info">{ui.noAccess}</Banner>
+          <Banner tone="warn">{ui.noAccess.replace('{n}', String(missingCount))}</Banner>
         </div>
       {/if}
       {#if visible.length > 0}
@@ -530,11 +500,13 @@
           >
         </div>
       {/if}
-      <ul class="divide-border divide-y">
+      <ul
+        class="divide-border divide-y max-sm:flex max-sm:flex-col max-sm:gap-2 max-sm:divide-y-0 max-sm:p-3"
+      >
         {#each visible as entry (entry.id)}
           {@const access = !!keyring.dataKey(entry.keyId ?? '')}
           <li
-            class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors ${selected.includes(entry.id) ? 'bg-brand-soft' : 'hover:bg-muted/50'}`}
+            class={`flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 transition-colors max-sm:border-border max-sm:rounded-lg max-sm:border max-sm:py-3 ${selected.includes(entry.id) ? 'bg-brand-soft' : 'hover:bg-muted/50'}`}
           >
             <label class="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-3 text-sm">
               <input
@@ -542,7 +514,7 @@
                 class="size-6 shrink-0 accent-[var(--ui-accent)]"
                 bind:group={selected}
                 value={entry.id}
-                aria-label={ui.selectEntry.replace('{date}', entry.receivedAt ?? ui.unknownDate)}
+                aria-label={ui.selectEntry.replace('{date}', when(entry.receivedAt))}
               />
               <span class="font-medium tabular-nums">{when(entry.receivedAt)}</span>
             </label>
@@ -570,28 +542,47 @@
                   label={t.abuse.hashClear}
                 />{/if}
             </div>
-            <div class="ml-auto flex flex-wrap items-center gap-1.5">
-              {#if !access}<span
-                  id={`no-access-${entry.id}`}
-                  class="text-muted-foreground mr-1 text-sm">{t.listUi.noAccessShort}</span
-                >{/if}
+            <div class="ml-auto">
+              <RowMenu
+                id={`row-menu-${entry.id}`}
+                label={ui.rowActions.replace('{date}', when(entry.receivedAt))}
+                disabled={busy}
+                items={[
+                  {
+                    id: 'open',
+                    label: t.admin.entries.open,
+                    disabled: !access,
+                    onselect: () => void view(entry),
+                  },
+                  {
+                    id: 'hold',
+                    label: entry.held ? t.admin.entries.unhold : t.admin.entries.hold,
+                    onselect: () => {
+                      actionKind = 'error';
+                      void toggleHoldChecked(entry);
+                    },
+                  },
+                  {
+                    id: 'remove',
+                    label: t.admin.entries.remove,
+                    disabled: entry.held,
+                    destructive: true,
+                    onselect: () => void requestRemove([entry.id]),
+                  },
+                ]}
+              />
               <Dialog
                 open={openId === entry.id}
                 onOpenChange={(value) => {
-                  if (!value) lock();
+                  if (!value) {
+                    lock();
+                    focusMenu(entry.id);
+                  }
                 }}
               >
-                <DialogTrigger
-                  class={rowButton}
-                  disabled={busy || !keyring.dataKey(entry.keyId ?? '')}
-                  aria-describedby={keyring.dataKey(entry.keyId ?? '')
-                    ? undefined
-                    : `no-access-${entry.id}`}
-                  onclick={() => void view(entry)}>{t.admin.entries.open}</DialogTrigger
-                >
                 <DialogContent
                   title={ui.detail}
-                  description={entry.receivedAt ?? ui.unknownDate}
+                  description={when(entry.receivedAt)}
                   class="max-h-[90dvh] max-w-2xl overflow-y-auto max-sm:inset-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none"
                 >
                   <div class="w-full min-w-0">
@@ -688,21 +679,6 @@
                   </div></DialogContent
                 ></Dialog
               >
-              <Button
-                class="min-h-9 px-3"
-                variant="outline"
-                disabled={busy}
-                onclick={() => {
-                  actionKind = 'error';
-                  void toggleHoldChecked(entry);
-                }}>{entry.held ? t.admin.entries.unhold : t.admin.entries.hold}</Button
-              >
-              <Button
-                class={`${rowButton} text-red-700 dark:text-destructive`}
-                variant="outline"
-                disabled={busy || entry.held}
-                onclick={() => void requestRemove([entry.id])}>{t.admin.entries.remove}</Button
-              >
             </div>
           </li>
         {/each}
@@ -727,32 +703,4 @@
         lock();
       }}
     />{/key}
-  <details class="bg-card ring-1 ring-foreground/10 rounded-xl px-5">
-    <summary class="min-h-12 cursor-pointer py-3 font-semibold"
-      >{t.admin.entries.retentionTitle}</summary
-    >
-    <div class="pb-4">
-      <p class="text-muted-foreground max-w-prose text-sm leading-5">
-        {ui.retentionHint}
-      </p>
-      <form onsubmit={(e) => void saveRetention(e)} class="mt-4 flex max-w-xl flex-col gap-3">
-        <Row id="retention-days" label={t.admin.entries.retentionDays}
-          ><Input
-            id="retention-days"
-            type="number"
-            min="1"
-            max="3650"
-            bind:value={retentionInput}
-          /></Row
-        >
-        <div>
-          <Button type="submit" disabled={busy}>{t.admin.entries.retentionSave}</Button>
-        </div>
-      </form>
-      <Notice
-        message={retentionMessage}
-        kind={retentionMessage === t.admin.entries.retentionSaved ? 'ok' : 'error'}
-      />
-    </div>
-  </details>
 </div>

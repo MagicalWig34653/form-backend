@@ -32,11 +32,12 @@ test.beforeEach(async ({ page }) => {
     });
   });
 });
-test('Erststart führt zum bestätigten Wiederherstellungsschritt', async ({ page }) => {
+test('Erststart führt zur Einrichtung; Wiederherstellungscode wird dort bestätigt', async ({
+  page,
+}) => {
   await page.goto('/t');
   await expect(page).toHaveURL(/installation/);
-  await expect(page.getByLabel('Einrichtungsschritte').getByRole('listitem')).toHaveCount(6);
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+  await expect(page.getByLabel('Einrichtungsschritte').getByRole('listitem')).toHaveCount(7);
   await page.getByRole('button', { name: 'Wiederherstellungscode vorbereiten' }).click();
   await expect(page.getByTestId('account-recovery-code')).toBeVisible();
   await expect(page.getByLabel('Code zur Bestätigung erneut eingeben')).toBeVisible();

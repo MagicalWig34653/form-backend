@@ -52,6 +52,7 @@ const sha256 = (wire: string) => createHash('sha256').update(wire).digest('hex')
 async function mock(
   page: Page,
   unlock = false,
+  noPrf = false,
 ): Promise<{ calls: string[]; holdRequests: unknown[] }> {
   const calls: string[] = [];
   let authenticated = !unlock;
@@ -91,7 +92,7 @@ async function mock(
         { tenantId: T, kid: K, enc: toBase64Url(access.enc), sealed: toBase64Url(access.sealed) },
       ],
     };
-    await page.addInitScript(() => {
+    await page.addInitScript((noPrf) => {
       const bytes = (n: number[]) => new Uint8Array(n).buffer;
       (window as unknown as { PublicKeyCredential: unknown }).PublicKeyCredential ??= class {};
       Object.defineProperty(navigator, 'credentials', {
@@ -108,12 +109,12 @@ async function mock(
               userHandle: null,
             },
             getClientExtensionResults: () => ({
-              prf: { results: { first: new Uint8Array(32).fill(7).buffer } },
+              prf: noPrf ? undefined : { results: { first: new Uint8Array(32).fill(7).buffer } },
             }),
           }),
         },
       });
-    });
+    }, noPrf);
   }
   const j = (b: unknown, s = 200) => ({
     status: s,
@@ -448,13 +449,16 @@ const pages: [string, string, string][] = [
   ['overview', `/t/${T}/f/${F}`, 'Kontakt'],
   ['fields', `/t/${T}/f/${F}/fields`, 'Felder & Ansicht'],
   ['mail', `/t/${T}/f/${F}/mail`, 'Mail'],
-  ['publish', `/t/${T}/f/${F}/publish`, 'Prüfen & veröffentlichen'],
+  ['publish', `/t/${T}/f/${F}/publish`, 'Veröffentlichung'],
   ['entries', `/t/${T}/f/${F}/entries`, 'Einsendungen'],
   ['account', '/account', 'Mein Konto'],
   ['members', `/t/${T}/members`, 'Mitglieder und Rechte'],
   ['formDirectory', '/forms', 'Formulare'],
-  ['keys', `/t/${T}/f/${F}/keys`, 'PHP-SDK'],
+  ['keys', `/t/${T}/f/${F}/keys`, 'PHP einbinden'],
   ['connections', '/connections', 'Verbindungen'],
+  ['accounts', '/accounts', 'Konten'],
+  ['settings', '/settings', 'Einstellungen'],
+  ['tokens', '/api-tokens', 'API & MCP'],
 ];
 
 test.describe('administration pages (mocked API) have no detectable axe violations', () => {
@@ -508,44 +512,46 @@ test('Einsendungen bieten keine private Schlüsseleingabe und bleiben ohne Freig
 }) => {
   const { holdRequests } = await mock(page);
   await page.goto(`/t/${T}/f/${F}/entries`);
-  await expect(page.getByRole('button', { name: 'Öffnen', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await expect(page.getByRole('menuitem', { name: 'Öffnen', exact: true })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
   await expect(page.getByLabel(/Privater Datenschlüssel/)).toHaveCount(0);
   await expect(page.getByText(/Der Zugriff auf Einsendungen ist gesperrt/)).toBeVisible();
-  await page.getByRole('button', { name: 'Löschschutz setzen' }).click();
+  await page.getByRole('menuitem', { name: 'Löschschutz setzen' }).click();
   await expect(page.getByRole('alert')).toHaveText(
     'Zum Umhängen müssen alte und neue Generation lokal entsperrt sein.',
   );
   expect(holdRequests).toEqual([]);
-  await expect(page.getByRole('button', { name: 'Löschschutz setzen' })).toBeEnabled();
+  await page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await expect(page.getByRole('menuitem', { name: 'Löschschutz setzen' })).toBeVisible();
 });
 
-test('hold, deletion, retention and the sealed export work from the entries tab', async ({
-  page,
-}) => {
+test('hold, deletion and the sealed export work from the entries tab', async ({ page }) => {
   const { calls } = await mock(page, true);
   await page.goto(`/login?next=${encodeURIComponent(`/t/${T}/f/${F}/entries`)}`);
   await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
   await expect(page).toHaveURL(`/t/${T}/f/${F}/entries`);
-  await expect(page.getByRole('button', { name: 'Öffnen', exact: true })).toBeEnabled();
-  await page.locator('summary', { hasText: 'Aufbewahrung' }).click();
-  await expect(page.getByLabel(/Aufbewahrung in Tagen/)).toHaveValue('90');
-  await page.getByRole('button', { name: 'Löschschutz setzen' }).click();
+  const menu = () => page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await menu();
+  await expect(page.getByRole('menuitem', { name: 'Öffnen', exact: true })).toBeEnabled();
+  await page.getByRole('menuitem', { name: 'Löschschutz setzen' }).click();
   await expect(page.locator('li').getByText('Geschützt', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Löschschutz aufheben' }).click();
+  await menu();
+  await page.getByRole('menuitem', { name: 'Löschschutz aufheben' }).click();
   await page
     .getByRole('alertdialog', { name: 'Löschschutz aufheben' })
     .getByRole('button', { name: 'Aufheben' })
     .click();
   await expect(page.locator('li').getByText('Geschützt', { exact: true })).toHaveCount(0);
-  await page.getByLabel(/Aufbewahrung in Tagen/).fill('30');
-  await page.getByRole('button', { name: 'Aufbewahrung speichern' }).click();
-  await expect(page.getByText('Aufbewahrung gespeichert.')).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Verschlüsselt exportieren', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Alle Einsendungen dieses Formulars');
   await page.getByRole('dialog').getByRole('button', { name: 'Exportieren', exact: true }).click();
   expect((await download).suggestedFilename()).toBe('einsendungen-verschluesselt.json');
-  await page.getByRole('button', { name: 'Löschen', exact: true }).click();
+  await page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await page.getByRole('menuitem', { name: 'Löschen', exact: true }).click();
   const confirm = page.getByRole('alertdialog');
   await expect(confirm.getByRole('button', { name: 'Abbrechen' })).toBeFocused();
   await confirm.getByRole('button', { name: 'Endgültig löschen' }).click();
@@ -556,10 +562,24 @@ test('hold, deletion, retention and the sealed export work from the entries tab'
     'hold true',
     'hold-objects',
     'hold false',
-    'retention {"days":30}',
     'export',
     `delete {"ids":["${E}"]}`,
   ]);
+});
+
+test('retention is set on the Aufbewahrung tab with a sticky save bar', async ({ page }) => {
+  const { calls } = await mock(page, true);
+  await page.goto(`/login?next=${encodeURIComponent(`/t/${T}/f/${F}/storage`)}`);
+  await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
+  await expect(page).toHaveURL(`/t/${T}/f/${F}/storage`);
+  await expect(page.getByLabel('Einsendungen automatisch löschen')).toBeChecked();
+  await expect(page.getByLabel('Aufbewahrung in Tagen')).toHaveValue('90');
+  await expect(page.getByRole('region', { name: 'Änderungen speichern' })).toHaveCount(0);
+  await page.getByRole('button', { name: '30 Tage' }).click();
+  await expect(page.getByRole('region', { name: 'Änderungen speichern' })).toBeVisible();
+  await page.getByRole('button', { name: 'Aufbewahrung speichern' }).click();
+  await expect(page.getByText('Aufbewahrung gespeichert.')).toBeVisible();
+  expect(calls).toContain('retention {"days":30}');
 });
 
 test('the overview shows events and conversion with an undefined zero-visit day', async ({
@@ -584,7 +604,7 @@ test('rights of another member are saved, the own row is read-only', async ({ pa
   await mock(page);
   await page.goto(`/t/${T}/members`);
   await expect(page.getByRole('heading', { name: 'zweite.person' })).toBeVisible();
-  await expect(page.getByText('Zusätzlich (systemweit/Gruppe): audit.read')).toBeVisible();
+  await expect(page.getByText('Zusätzlich über System oder Gruppe: Protokoll lesen')).toBeVisible();
   const row = page.locator('li', { hasText: 'zweite.person' });
   await row.getByLabel('content.read').check();
   await row.getByRole('button', { name: 'Rechte speichern' }).click();
@@ -764,7 +784,8 @@ test('entries filters, detail and export are accessible on a narrow screen', asy
   await mock(page, true);
   await page.goto(`/login?next=${encodeURIComponent(`/t/${T}/f/${F}/entries`)}`);
   await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
-  await page.getByRole('button', { name: 'Öffnen', exact: true }).click();
+  await page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await page.getByRole('menuitem', { name: 'Öffnen', exact: true }).click();
   const detail = page.getByRole('dialog');
   await expect(detail.getByRole('heading', { name: 'Einsendungsdetail' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Schließen' })).toBeVisible();
@@ -777,7 +798,7 @@ test('entries filters, detail and export are accessible on a narrow screen', asy
   await page.keyboard.press('Escape');
   await expect(detail).toBeHidden();
   await page.getByText('Filter', { exact: true }).click();
-  await page.getByLabel('Eingangsdatum (ISO-Datum)').fill('2020');
+  await page.getByRole('textbox', { name: 'Eingang von (UTC)' }).fill('01.01.2030');
   await expect(page.getByText('Keine Einsendungen für diese Filter.')).toBeVisible();
   await page.getByRole('button', { name: 'Verschlüsselt exportieren', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Alle Einsendungen dieses Formulars');
@@ -844,7 +865,8 @@ test('pending external deletion never appears as confirmed deletion', async ({ p
     }),
   );
   await page.goto(`/t/${T}/f/${F}/entries`);
-  await page.getByRole('button', { name: 'Löschen', exact: true }).click();
+  await page.getByRole('button', { name: /Aktionen für Einsendung/ }).click();
+  await page.getByRole('menuitem', { name: 'Löschen', exact: true }).click();
   await page.getByRole('button', { name: 'Endgültig löschen' }).click();
   await expect(page.getByText(/Gelöscht: 0.*Noch in Löschung: 1/)).toBeVisible();
   await expect(page.getByText(/Löschung läuft. Die Bestätigung steht noch aus./)).toBeVisible();
@@ -923,7 +945,7 @@ test('mixed deletion keeps protected and pending entries visible', async ({ page
   ).toBeVisible();
   await expect(page.getByRole('checkbox', { name: /Einsendung vom/ })).toHaveCount(3);
 });
-test('Formularnavigation erhält alte Ziele und zeigt Platzhalter ohne Außenwirkung', async ({
+test('Formularnavigation erhält alte Ziele; der Ablauf-Platzhalter ist ausgeblendet', async ({
   page,
 }) => {
   await mock(page);
@@ -934,13 +956,9 @@ test('Formularnavigation erhält alte Ziele und zeigt Platzhalter ohne Außenwir
     'href',
     `/t/${T}/f/${F}/keys`,
   );
-  await expect(page.getByRole('link', { name: 'Ablauf', exact: true })).toHaveAttribute(
-    'href',
-    `/t/${T}/f/${F}/flow`,
-  );
-  await page.getByRole('link', { name: 'Ablauf', exact: true }).click();
-  await expect(page).toHaveURL(`/t/${T}/f/${F}/flow`);
-  await expect(page.getByText('Der Ablauf-Editor folgt später.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ablauf', exact: true })).toHaveCount(0);
+  await page.goto(`/t/${T}/f/${F}/flow`);
+  await expect(page.getByRole('heading', { name: 'Statistik', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Webhooks', exact: true }).click();
   await expect(page).toHaveURL(`/t/${T}/f/${F}/webhooks`);
   await expect(page.getByText('Noch kein Webhook eingerichtet.')).toBeVisible();
@@ -1006,7 +1024,7 @@ test('SDK-Datei wird nur bewusst ausgestellt und heruntergeladen', async ({ page
     return r.fulfill({ json: { formId: F, tenantId: T, signingSeed: 'synthetic-only' } });
   });
   await page.goto(`/t/${T}/f/${F}/keys`);
-  await expect(page.getByRole('heading', { name: 'PHP-SDK' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'PHP einbinden', exact: true })).toBeVisible();
   expect(issued).toBe(0);
   await page.getByRole('button', { name: 'Einrichtungsdatei ausstellen' }).click();
   await expect(page.getByLabel('Einrichtungsdatei', { exact: true })).toBeVisible();
@@ -1016,6 +1034,17 @@ test('SDK-Datei wird nur bewusst ausgestellt und heruntergeladen', async ({ page
   expect((await download).suggestedFilename()).toBe('form-backend-credentials.json');
   await page.getByRole('button', { name: 'Datei ausblenden' }).click();
   await expect(page.getByLabel('Einrichtungsdatei', { exact: true })).toHaveCount(0);
+});
+
+test('Einbindung zeigt eine PHP-Kurzanleitung mit kopierbarem Beispiel', async ({ page }) => {
+  await mock(page);
+  await page.goto(`/t/${T}/f/${F}/keys`);
+  await expect(page.getByRole('heading', { name: 'Einsendung senden' })).toBeVisible();
+  const code = page.getByLabel('Beispiel für PHP', { exact: true });
+  await expect(code).toContainText("Credentials::fromFile('/etc/myapp/credentials.json')");
+  await expect(code).toContainText('use FormBackend\\Client;');
+  await page.getByRole('button', { name: 'Beispiel kopieren' }).click();
+  await expect(page.getByText('Beispiel kopiert.').or(page.getByRole('alert'))).toBeVisible();
 });
 
 test('Veröffentlichungswiederholung nach Antwortverlust verwendet denselben Auftrag', async ({
@@ -1142,7 +1171,7 @@ test('Feldänderung erhält Kennung, Metadaten und sendet Ansichtsoptionen mit R
   await page.getByLabel('Sichtbarkeit', { exact: true }).selectOption('hidden');
   await page.getByLabel('Schreibgeschützt', { exact: true }).check();
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.getByText('Entwurf: Stand 2, gespeichert')).toBeVisible();
+  await expect(page.getByText('Entwurf · Stand 2')).toBeVisible();
 });
 
 test('Feldkonflikt erhält lokale Eingaben und überschreibt nicht automatisch', async ({ page }) => {
@@ -1214,7 +1243,7 @@ test('Feldreihenfolge lässt sich mit einer Tastaturaktion ändern', async ({ pa
   const up = page.getByRole('button', { name: 'Nach oben Zweites Feld', exact: true });
   await up.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Entwurf: Stand 2, gespeichert')).toBeVisible();
+  await expect(page.getByText('Entwurf · Stand 2')).toBeVisible();
   const list = page
     .locator('ul')
     .filter({ has: page.getByRole('button', { name: 'Bearbeiten Zweites Feld', exact: true }) });
@@ -1322,4 +1351,55 @@ test('Leuchten wird pro Gerät gespeichert, die Akzentfarbe bleibt lesbar', asyn
   expect(await root.evaluate((el) => el.style.getPropertyValue('--primary-foreground'))).toBe(
     '#000000',
   );
+});
+
+test('Verbindungen: fehlendes Recht zeigt eine Meldung statt endloser Platzhalter', async ({
+  page,
+}) => {
+  await mock(page);
+  await page.route('**/admin/api/v1/connections', (r) =>
+    r.request().method() === 'GET'
+      ? r.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'forbidden' }),
+        })
+      : r.fallback(),
+  );
+  await page.goto('/connections');
+  await expect(page.getByText(/Recht der Systemadministration/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Erneut versuchen' })).toBeVisible();
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+});
+
+test('Verbindungen: vorhandene Verbindung wird gelistet, Rendern wirft keinen Fehler', async ({
+  page,
+}) => {
+  await mock(page);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/admin/api/v1/connections', (r) =>
+    r.request().method() === 'GET'
+      ? r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: [
+              {
+                id: 'c1',
+                kind: 'smtp',
+                name: 'Mailserver',
+                enabled: true,
+                hasCredential: false,
+                config: {},
+              },
+            ],
+          }),
+        })
+      : r.fallback(),
+  );
+  await page.goto('/connections');
+  await expect(page.locator('li p.font-medium', { hasText: 'Mailserver' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Testen/ }).first()).toBeVisible();
+  expect(errors.filter((m) => /props_invalid_value/.test(m))).toEqual([]);
 });

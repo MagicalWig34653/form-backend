@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatClock } from '$lib/format';
   import { t } from '$lib/i18n';
   import type { OverviewLoader } from '$lib/stats/loader.svelte';
   import {
@@ -17,8 +18,9 @@
     weekOverWeek,
     type Series,
   } from '$lib/stats/series';
+  import { countDelta, formatPercent, pointsDelta } from '$lib/stats/delta';
   import { Button } from '$lib/components/ui/button';
-  import KpiTile, { type TileDelta } from './KpiTile.svelte';
+  import KpiTile from './KpiTile.svelte';
   import AttentionList from './AttentionList.svelte';
   import SetupProgress from './SetupProgress.svelte';
   import RecentEntries, { type RecentRow } from './RecentEntries.svelte';
@@ -38,6 +40,8 @@
     recentLimit?: number;
     /** Target of "Alle ansehen" instead of the single form's entries. */
     allHref?: string;
+    /** Leading text of the section subtitle, e.g. "2 Kunden, 2 Formulare". */
+    lead?: string;
   }
   let {
     tenant = '',
@@ -49,6 +53,7 @@
     showSetup = true,
     recentLimit = 6,
     allHref,
+    lead,
   }: Props = $props();
 
   const ui = t.overview;
@@ -84,31 +89,7 @@
         : 'unavailable',
   );
 
-  const fmtSigned = new Intl.NumberFormat('de-DE', {
-    signDisplay: 'exceptZero',
-    maximumFractionDigits: 0,
-  });
-  const fmtPoints = new Intl.NumberFormat('de-DE', {
-    signDisplay: 'exceptZero',
-    maximumFractionDigits: 1,
-  });
-  const fmtPercent = (n: number): string =>
-    new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 1 }).format(n);
-
-  function countDelta(pair: { current: number; previous: number } | null): TileDelta | null {
-    if (!pair) return null;
-    const d = pair.current - pair.previous;
-    return d === 0
-      ? { direction: 'flat', text: ui.unchanged }
-      : { direction: d > 0 ? 'up' : 'down', text: `${fmtSigned.format(d)} ${ui.vsWeek}` };
-  }
-  function pointsDelta(pair: { current: number; previous: number } | null): TileDelta | null {
-    if (!pair) return null;
-    const d = Math.round((pair.current - pair.previous) * 1000) / 10;
-    return d === 0
-      ? { direction: 'flat', text: ui.unchanged }
-      : { direction: d > 0 ? 'up' : 'down', text: `${fmtPoints.format(d)} ${ui.vsWeekPoints}` };
-  }
+  const fmtPercent = formatPercent;
   const describe = (metric: string, series: Series | null): string =>
     ui.sparkLabel
       .replace('{metric}', metric)
@@ -116,9 +97,10 @@
 
   const submitsTotal = $derived(submits ? total(submits) : null);
   const visitsTotal = $derived(visits ? total(visits) : null);
-  const convSeries = $derived(visits && submits ? conversionSeries(visits, submits) : null);
   const convValue = $derived(conversion(visitsTotal, submitsTotal));
   const activeCount = $derived(forms.filter((f) => f.active && f.currentReleaseId).length);
+  const convSeries = $derived(visits && submits ? conversionSeries(visits, submits) : undefined);
+  const formNames = $derived(Object.fromEntries(forms.map((f) => [f.id, f.name])));
 
   const scope = $derived(
     statsState.ready < statsState.total && statsState.status === 'ready'
@@ -154,17 +136,20 @@
 
   const attention = $derived(deriveAttention(forms, loader.snapshots, locked));
   const steps = $derived(setupSteps(forms, loader.snapshots));
-  const timeText = $derived(
-    stamp ? new Intl.DateTimeFormat('de-DE', { timeStyle: 'short' }).format(stamp) : '…',
-  );
+  const timeText = $derived(stamp ? formatClock(stamp) : '…');
 </script>
 
 <div class="flex min-w-0 flex-col gap-4">
-  <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-    <p class="text-muted-foreground text-sm">
-      {ui.subtitle.replace('{time}', timeText)}
-      <span class="block sm:ml-2 sm:inline">· {scope}{moreForms ? ` · ${ui.scopeMore}` : ''}</span>
-    </p>
+  <div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+    <div>
+      <h2 class="m-0 text-xl leading-snug font-semibold tracking-tight">{ui.kpiSection}</h2>
+      <p class="text-muted-foreground m-0 mt-0.5 text-sm leading-5" title={scope}>
+        {lead ? `${lead} · ` : ''}{ui.subtitle.replace('{time}', timeText)}{statsState.ready <
+          statsState.total && statsState.status === 'ready'
+          ? ` · ${scope}`
+          : ''}{moreForms ? ` · ${ui.scopeMore}` : ''}
+      </p>
+    </div>
     {#if anyError && !anyLoading && onreload}<Button variant="outline" onclick={onreload}
         >{ui.retryAll}</Button
       >{/if}
@@ -204,7 +189,7 @@
         value={convValue}
         format={fmtPercent}
         series={convSeries}
-        seriesLabel={describe(ui.kpiConversion, convSeries)}
+        seriesLabel={convSeries ? describe(ui.kpiConversion, convSeries) : ''}
         delta={visits && submits ? pointsDelta(conversionWeeks(visits, submits)) : null}
         reason={tileStatus === 'ready' ? ui.noConversion : undefined}
       />
@@ -215,7 +200,10 @@
         label={ui.kpiActive}
         hint={ui.hintActive}
         value={activeCount}
-        note={ui.activeOf.replace('{n}', String(forms.length))}
+        fraction={forms.length ? activeCount / forms.length : 0}
+        note={ui.activeOf
+          .replace('{active}', String(activeCount))
+          .replace('{n}', String(forms.length))}
       />
     </div>
   </div>
@@ -230,7 +218,12 @@
     </div>
     {#if showSetup}
       <div data-w="6">
-        <SetupProgress {tenant} {steps} loading={anyLoading && detailState.status === 'loading'} />
+        <SetupProgress
+          {tenant}
+          {steps}
+          {formNames}
+          loading={anyLoading && detailState.status === 'loading'}
+        />
       </div>
     {/if}
   </div>

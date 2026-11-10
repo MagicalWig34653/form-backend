@@ -32,6 +32,8 @@ export interface NavContext {
   manageTenant: string | undefined;
   systemAdministrator: boolean;
   opsVisible: boolean;
+  /** Open setup (done of total steps); adds the "continue setup" entry until the setup is finished. */
+  setup?: { done: number; total: number } | null;
 }
 
 /** What the user has to choose first; the target page shows a matching hint (see NeedHint). */
@@ -59,8 +61,7 @@ export function buildNav(c: NavContext): NavGroup[] {
       label: t.area.dashboard,
       href: dashboardHref,
       icon: 'dashboard',
-      active:
-        route.name === 'overview' || route.name === 'forms' || (onForm && route.tab !== 'entries'),
+      active: route.name === 'overview' || (onForm && route.tab !== 'entries'),
     },
     {
       id: 'entries',
@@ -77,13 +78,24 @@ export function buildNav(c: NavContext): NavGroup[] {
       active: false,
     },
   ];
+  if (c.setup && c.systemAdministrator)
+    areaItems.unshift({
+      id: 'setup',
+      label: t.installationPage.nav
+        .replace('{n}', String(c.setup.done))
+        .replace('{m}', String(c.setup.total)),
+      href: '/installation',
+      icon: 'setup',
+      active: route.name === 'installation',
+      hint: t.installationPage.navHint,
+    });
   const manage: NavItem[] = [
     {
       id: 'customers',
       label: t.shell.customers,
       href: '/t',
       icon: 'customers',
-      active: route.name === 'tenants' || route.name === 'members',
+      active: route.name === 'tenants' || route.name === 'forms' || route.name === 'members',
     },
     {
       id: 'forms',
@@ -109,7 +121,16 @@ export function buildNav(c: NavContext): NavGroup[] {
       icon: 'connections',
       active: route.name === 'connections',
     });
-  if (c.opsVisible)
+  if (c.systemAdministrator)
+    system.push({
+      id: 'accounts',
+      label: t.admin.nav.accounts,
+      href: '/accounts',
+      icon: 'members',
+      active: route.name === 'accounts',
+    });
+  // The operations page stays listed (and marked) while it is open, even before its access check ran.
+  if (c.opsVisible || route.name === 'ops')
     system.push({
       id: 'ops',
       label: t.ops.title,
@@ -126,13 +147,17 @@ export function buildNav(c: NavContext): NavGroup[] {
         icon: 'settings',
         active: route.name === 'settings',
       },
-      {
-        id: 'installation',
-        label: t.shell.setup,
-        href: '/installation',
-        icon: 'setup',
-        active: route.name === 'installation',
-      },
+      ...(c.setup
+        ? []
+        : [
+            {
+              id: 'installation',
+              label: t.shell.setup,
+              href: '/installation',
+              icon: 'setup',
+              active: route.name === 'installation',
+            },
+          ]),
       {
         id: 'migration',
         label: t.shell.migration,
@@ -177,14 +202,10 @@ export function crumbsFor(
     case 'overview':
       return [{ label: t.area.dashboard }];
     case 'forms':
-      return [
-        { label: tenantName(route.tenant), href: tenantPath(route.tenant) },
-        { label: t.shell.forms },
-      ];
+      return [{ label: t.shell.customers, href: '/t' }, { label: tenantName(route.tenant) }];
     case 'form': {
       const trail: Crumb[] = [
         { label: tenantName(route.tenant), href: tenantPath(route.tenant) },
-        { label: t.shell.forms, href: tenantPath(route.tenant) },
         route.tab === 'overview'
           ? { label: t.shell.pageForm }
           : { label: t.shell.pageForm, href: formPath(route.tenant, route.form) },
@@ -195,6 +216,7 @@ export function crumbsFor(
     }
     case 'members':
       return [
+        { label: t.shell.customers, href: '/t' },
         { label: tenantName(route.tenant), href: tenantPath(route.tenant) },
         { label: t.admin.nav.members },
       ];

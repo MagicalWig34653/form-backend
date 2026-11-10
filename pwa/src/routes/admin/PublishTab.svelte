@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Checkbox } from '$lib/components/ui/checkbox';
+  import { fieldList } from '$lib/draft/doc';
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
   import type { Editor } from '$lib/draft/editor.svelte';
@@ -31,11 +33,24 @@
   let confirmationId = '';
   let slow = $state(false);
   let reviewed = $state('');
-  const checks = $derived([
-    { label: t.formWork.fieldsCheck, target: 'fields' },
-    { label: t.formWork.mailCheck, target: 'mail' },
-    { label: t.formWork.integrationCheck, target: 'keys' },
+  // done: true = fine, false = open, null = cannot be derived from the draft (manual check).
+  const checks = $derived<{ label: string; target: string; done: boolean | null }[]>([
+    {
+      label: t.formWork.fieldsCheck,
+      target: 'fields',
+      done: editor.draft ? fieldList(editor.draft.document).length > 0 : false,
+    },
+    { label: t.formWork.mailCheck, target: 'mail', done: !!editor.detail?.mailConnectionId },
+    { label: t.formWork.integrationCheck, target: 'keys', done: null },
   ]);
+  const open = $derived(checks.filter((check) => check.done === false).length);
+  const summary = $derived(
+    open > 0
+      ? open === 1
+        ? t.formUi.checksOpenOne
+        : t.formUi.checksOpen.replace('{n}', String(open))
+      : t.formUi.checksClear,
+  );
   const stamp = $derived(
     editor.draft ? `${editor.draft.id}:${editor.draft.revision}:${editor.draft.hash}` : '',
   );
@@ -112,14 +127,9 @@
   }
 </script>
 
-<Panel title={t.formWork.publish} description={t.admin.publish.intro}>
-  <p class="text-muted-foreground max-w-prose text-sm">
-    {t.formWork.versionHint}
-  </p>
-</Panel>
 {#if editor.draft}
   <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-    <Panel title={t.formWork.checks} description={t.formWork.checkHint}>
+    <Panel title={t.formWork.checks} description={summary}>
       <ul class="divide-border -my-1 divide-y">
         {#each checks as check (check.target)}
           <li>
@@ -129,10 +139,20 @@
             >
               <span
                 aria-hidden="true"
-                class="bg-blue-500/10 text-blue-700 dark:text-blue-400 flex size-6 shrink-0 items-center justify-center rounded-full"
-                ><NavIcon name="info" size={13} /></span
+                class={`flex size-6 shrink-0 items-center justify-center rounded-full ${check.done ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : check.done === false ? 'bg-amber-500/10 text-amber-800 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}
+                ><NavIcon
+                  name={check.done ? 'check' : check.done === false ? 'warn' : 'info'}
+                  size={13}
+                /></span
               >
               <span class="min-w-0 flex-1 underline-offset-4">{check.label}</span>
+              <span class="text-muted-foreground shrink-0 text-sm"
+                >{check.done
+                  ? t.formUi.stateDone
+                  : check.done === false
+                    ? t.formUi.stateOpen
+                    : t.formUi.stateCheck}</span
+              >
               <span aria-hidden="true" class="text-muted-foreground"
                 ><NavIcon name="chevron" size={14} /></span
               >
@@ -141,29 +161,10 @@
         {/each}
       </ul>
     </Panel>
-    <Panel title={t.formUi.publishAction}>
+    <Panel title={t.formUi.publishAction} description={t.admin.publish.intro}>
       <div class="flex max-w-md flex-col gap-4">
-        {#if canBump}<div class="flex flex-col gap-1.5">
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={editor.saving || busy}
-                onclick={() => void bump()}>{t.admin.publish.bump}</Button
-              >
-            </div>
-            <p class="text-muted-foreground text-sm">
-              {t.admin.publish.bumpHint}
-            </p>
-          </div>
-        {/if}
         <label class="flex min-h-11 items-start gap-3 text-sm">
-          <input
-            type="checkbox"
-            bind:checked={confirmed}
-            disabled={busy || conflict}
-            class="mt-0.5 size-6 shrink-0 accent-[var(--ui-accent)] disabled:opacity-50"
-          />
+          <Checkbox bind:checked={confirmed} disabled={busy || conflict} class="mt-0.5" />
           <span class="pt-0.5">{t.formWork.review}</span>
         </label>
         <Notice
@@ -212,6 +213,20 @@
               >
                 {t.formUi.publishDisabledReason}
               </p>{/if}
+          </div>
+        {/if}
+        {#if canBump}<div class="flex flex-col gap-1">
+            <div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="-ml-2.5"
+                disabled={editor.saving || busy}
+                onclick={() => void bump()}>{t.admin.publish.bump}</Button
+              >
+            </div>
+            <p class="text-muted-foreground m-0 text-xs">{t.admin.publish.bumpHint}</p>
           </div>
         {/if}
       </div>

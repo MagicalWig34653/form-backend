@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts">
+  import { formatDateTime } from '$lib/format';
   import { t } from '$lib/i18n';
   import { router } from '$lib/router.svelte';
   import { formPath } from '$lib/routes';
@@ -32,12 +33,7 @@
   }
   let { tenant = '', rows, status, now = Date.now(), allFormId, allHref }: Props = $props();
   const ui = t.overview;
-  const absolute = (iso: string | null): string => {
-    const ms = iso ? Date.parse(iso) : NaN;
-    return Number.isNaN(ms)
-      ? ''
-      : new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(ms);
-  };
+  const absolute = (iso: string | null): string => (iso ? formatDateTime(iso) : '');
   const target = (row: RecentRow): string => formPath(row.tenant ?? tenant, row.formId, 'entries');
   const go = (row: RecentRow): void => router.navigate(target(row));
 </script>

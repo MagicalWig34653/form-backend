@@ -67,11 +67,16 @@
   }
 </script>
 
-<section class="border-border flex flex-col gap-4 rounded-lg border p-4" aria-label={c.title}>
+<section
+  class={security
+    ? 'flex flex-col items-start gap-4'
+    : 'border-border flex flex-col gap-4 rounded-lg border p-4'}
+  aria-label={c.title}
+>
   <h2 class="text-base font-semibold">{c.title}</h2>
   {#if keyring.recoveryCode}
     <p class="text-sm">{c.save}</p>
-    <p class="bg-amber-500/10 border-amber-500/50 rounded-md border px-3 py-2 text-sm">
+    <p class="bg-amber-500/10 ring-amber-500/50 rounded-md px-3 py-2 text-sm ring-1 ring-inset">
       {c.warning}
     </p>
     <p

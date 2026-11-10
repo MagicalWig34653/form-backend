@@ -3,6 +3,7 @@ import { router } from '$lib/router.svelte';
 import { matchRoute } from '$lib/routes';
 import { areaOf } from '$lib/area';
 import { session } from '$lib/session.svelte';
+import { onboarding } from '$lib/onboarding.svelte';
 import { accountItem, buildNav } from './nav';
 import { shellState } from './shell-state.svelte';
 
@@ -27,6 +28,10 @@ export function useNav() {
       manageTenant,
       systemAdministrator: session.me?.systemAdministrator === true,
       opsVisible: shellState.opsVisible,
+      setup:
+        onboarding.open && onboarding.ready
+          ? { done: onboarding.progress.done, total: onboarding.progress.total }
+          : null,
     }),
   );
   return {

@@ -6,11 +6,16 @@
   import Notice from '$lib/components/admin/Notice.svelte';
   import { describeError } from '$lib/admin/describe';
 
-  let { editor, children }: { editor: Editor; children: Snippet } = $props();
+  /** `hint` false where the page has its own save pattern (a save bar) and "saved immediately" would be wrong. */
+  let {
+    editor,
+    children,
+    hint = true,
+  }: { editor: Editor; children: Snippet; hint?: boolean } = $props();
 </script>
 
 {#if editor.draft}
-  <p class="text-muted-foreground text-sm">{t.admin.form.draftHint}</p>
+  {#if hint}<p class="text-muted-foreground text-sm">{t.admin.form.draftHint}</p>{/if}
   {@render children()}
 {:else}
   <p>{t.admin.form.noDraft}</p>

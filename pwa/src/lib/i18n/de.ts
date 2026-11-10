@@ -1,5 +1,11 @@
 /** All user-facing German UI texts. Code stays English (ADR 0001). */
 export const de = {
+  prfHint: {
+    title: 'Automatisches Freigeben nicht möglich',
+    reason:
+      'Ihr Browser oder Passkey stellt die WebAuthn-Erweiterung PRF (hmac-secret) nicht bereit, daher kann der Zugriff auf Einsendungen nicht automatisch freigegeben werden.',
+    way: 'Öffnen Sie den Zugriff unter Konto → Sicherheit mit Ihrem Wiederherstellungscode („Datenzugang öffnen“) oder melden Sie sich in einem Browser an, der PRF weitergibt, zum Beispiel Safari oder Chrome.',
+  },
   recovery: {
     title: 'Wiederherstellungscode sichern',
     save: 'Sichern Sie Ihren Wiederherstellungscode.',
@@ -27,13 +33,17 @@ export const de = {
   lists: {
     intro: 'Wählen Sie einen Kunden, um seine Formulare zu öffnen.',
     formsIntro: 'Veröffentlichung und Einrichtung Ihrer zugänglichen Formulare.',
+    customerIntro: 'Formulare und Mitglieder dieses Kunden.',
     searchCustomers: 'Name suchen',
     searchForms: 'Formulare suchen',
+    searchFormsPlaceholder: 'Formularname …',
+    searchCustomersPlaceholder: 'Kundenname …',
     status: 'Status',
     all: 'Alle zugänglichen',
-    active: 'Aktiv',
-    inactive: 'Inaktiv',
-    unpublished: 'Noch nicht veröffentlicht',
+    allStatus: 'Alle Status',
+    active: 'Live',
+    inactive: 'Pausiert',
+    unpublished: 'Entwurf',
     published: 'Veröffentlicht',
     publication: 'Veröffentlichung',
     draft: 'Entwurf',
@@ -46,8 +56,6 @@ export const de = {
     openOverview: 'Übersicht öffnen',
     unknown: 'Nicht verfügbar',
     detail: 'In der Übersicht prüfen',
-    metadataHint:
-      'Die Liste liefert keine Versionsnummern, Entwurfsstände oder Aufgaben. Verfügbare Details finden Sie in der Übersicht.',
     countHint: 'Formularanzahl und Einrichtungsstatus werden von der Kundenliste nicht geliefert.',
     noCustomers: 'Noch keine Kunden vorhanden.',
     noAccess: 'Für Ihr Konto ist noch kein Kunde freigegeben.',
@@ -76,7 +84,8 @@ export const de = {
     statsLabel: 'Statistik und letzte Aktivität',
   },
   overview: {
-    subtitle: 'Übersicht für die letzten 14 Tage · Stand {time}',
+    kpiSection: 'Kennzahlen',
+    subtitle: 'Letzte 14 Tage · Stand {time}',
     scope: 'Summe der geladenen Formulare ({n})',
     scopePartial: 'Summe von {ready} von {total} Formularen, der Rest ist nicht verfügbar',
     scopeMore:
@@ -89,7 +98,7 @@ export const de = {
     hintVisits: 'Seitenaufrufe der eingebundenen Formulare in den letzten 14 Tagen (UTC).',
     hintConversion: 'Einsendungen geteilt durch Besuche. Ohne Besuche nicht definiert.',
     hintActive: 'Formulare, die veröffentlicht und eingeschaltet sind.',
-    activeOf: 'von {n} geladenen',
+    activeOf: '{active} von {n} live',
     noData: 'Keine Daten',
     noConversion: 'Ohne Besuche nicht definiert',
     unavailable: 'Nicht verfügbar',
@@ -108,7 +117,7 @@ export const de = {
     attentionNone: 'Keine weiteren Hinweise.',
     attentionPartial: 'Weitere Hinweise folgen, sobald alle Daten geladen sind.',
     locked: 'Der Zugriff auf Einsendungen ist in diesem Browser gesperrt.',
-    lockedAction: 'Zugang prüfen',
+    lockedAction: 'Zugriff freigeben',
     noMail: '{form}: Keine Mail-Verbindung eingerichtet.',
     noMailAction: 'Mail einrichten',
     unpublished: '{form}: Noch nicht veröffentlicht, nimmt keine Einsendungen an.',
@@ -121,6 +130,7 @@ export const de = {
     setupCount: '{done} von {total} erledigt',
     setupProgress: 'Einrichtungsfortschritt',
     setupNext: 'Nächsten Schritt öffnen',
+    setupNextHint: 'Als Nächstes: {step} ({form})',
     setupComplete: 'Die Einrichtung ist abgeschlossen.',
     setupSteps: {
       form: 'Formular angelegt',
@@ -155,8 +165,11 @@ export const de = {
     intro:
       'Webhooks melden eine angenommene Einsendung signiert an Ihre Adresse. Es werden keine Inhalte übertragen, nur ein Hinweis mit Kennung.',
     target: 'Zieladresse (https)',
+    example: 'Zum Beispiel https://example.org/hook',
     add: 'Webhook anlegen',
     empty: 'Noch kein Webhook eingerichtet.',
+    emptyHint:
+      'Legen Sie unten eine Zieladresse an, um bei jeder angenommenen Einsendung benachrichtigt zu werden.',
     active: 'aktiv',
     inactive: 'pausiert',
     enable: 'Aktivieren',
@@ -167,6 +180,60 @@ export const de = {
       'Signaturschlüssel des Empfängers. Er wird nur jetzt angezeigt, bitte sicher beim Empfänger hinterlegen.',
     keySaved: 'Schlüssel gesichert',
   },
+  phpSdk: {
+    title: 'PHP einbinden',
+    description:
+      'So senden Sie Einsendungen Ihrer Webseite mit dem mitgelieferten PHP-SDK aus dem Repository.',
+    steps: [
+      {
+        title: 'Voraussetzungen prüfen',
+        text: 'PHP 8.2 oder neuer mit den Erweiterungen `sodium`, `curl`, `json` und `mbstring`.',
+      },
+      {
+        title: 'Zugangsdaten ausstellen',
+        text: 'Speichern Sie die Datei als `credentials.json` außerhalb des Web-Verzeichnisses und beschränken Sie den Zugriff mit `chmod 600`.',
+      },
+      {
+        title: 'SDK einbinden',
+        text: 'Per Composer oder eigenem Autoloader auf `sdk/php/src` (Namespace `FormBackend`).',
+      },
+      {
+        title: 'Einsendung senden',
+        text: 'Das Backend versiegelt die Daten beim Eingang; verwenden Sie ausschließlich HTTPS.',
+      },
+    ],
+    notes: 'Hinweise zu Adresse, Uhr und Wiederholung',
+    snippetLabel: 'Beispiel für PHP',
+    copy: 'Beispiel kopieren',
+    copied: 'Beispiel kopiert.',
+    urlNote:
+      'Ersetzen Sie `https://admin.example.org` durch die Adresse Ihres Backends. Mit signierter Endpunktliste in den Zugangsdaten übergeben Sie stattdessen `null`.',
+    clock: 'Bei Fehler 403 zuerst die Uhr Ihres Servers prüfen: Zeitstempel gelten nur ±5 Minuten.',
+    retry:
+      'Wiederholungen sind sicher: Bei einem Transportfehler dieselbe Anfrage mit demselben Idempotenzschlüssel erneut senden.',
+    docs: 'Vollständige Dokumentation: `sdk/php/README.md` im Repository.',
+    code: `<?php
+require __DIR__ . '/vendor/autoload.php';
+
+use FormBackend\\Client;
+use FormBackend\\Credentials;
+use FormBackend\\Exception\\RejectedException;
+use FormBackend\\Exception\\TransportException;
+
+$client = new Client('https://admin.example.org', Credentials::fromFile('/etc/myapp/credentials.json'));
+
+try {
+    $submission = $client->submit([
+        'name'      => $_POST['name'] ?? '',
+        'nachricht' => $_POST['nachricht'] ?? '',
+    ]);
+    echo 'Danke, Referenz: ', $submission->id;
+} catch (RejectedException $e) {
+    // Der Server hat abgelehnt: $e->status, $e->errorCode
+} catch (TransportException $e) {
+    // Keine Antwort: dieselbe Anfrage mit demselben Schlüssel wiederholen.
+}`,
+  },
   formWork: {
     title: 'Formular',
     configuration: 'Konfiguration',
@@ -176,10 +243,12 @@ export const de = {
     publish: 'Prüfen & veröffentlichen',
     statistics: 'Statistik',
     edit: 'Entwurf bearbeiten',
-    active: 'Aktiv',
-    inactive: 'Inaktiv',
+    editShort: 'Bearbeiten',
+    publishShort: 'Veröffentlichen',
+    active: 'Live',
+    inactive: 'Pausiert',
     unpublished: 'Noch nicht veröffentlicht. Dieses Formular nimmt noch keine Einsendungen an.',
-    saved: 'Entwurf: Stand {n}, gespeichert',
+    saved: 'Entwurf · Stand {n}',
     noDraft: 'Es gibt noch keinen Entwurf.',
     denied: 'Dafür fehlt Ihnen die Berechtigung.',
     unavailable: 'Diese Seite ist nicht verfügbar.',
@@ -207,10 +276,14 @@ export const de = {
     up: 'Nach oben',
     down: 'Nach unten',
     orderHint: 'Die Reihenfolge wird innerhalb der jeweiligen Ansichtssektion geändert.',
-    routeHint:
-      'Die Versandweg-Zuordnung wirkt unmittelbar im Betrieb. Vorlagenänderungen gelten erst nach Veröffentlichung.',
+    routeHint: 'Wirkt sofort im Betrieb.',
+    routeTitle: 'Versandweg',
+    behavior: 'Verhalten',
+    toConnections: 'Verbindungen öffnen',
+    insertInto: 'Einfügen in:',
     noRoute: 'Noch kein Versandweg zugewiesen.',
     contactAdmin: 'Wenden Sie sich für die Zuweisung an die berechtigte Administration.',
+    assignAdmin: 'Legen Sie unter System > Verbindungen einen Versandweg an und weisen Sie ihn zu.',
     saveRoute: 'Versandweg zuweisen',
     acceptedHint:
       'Vom Mailserver angenommen bedeutet nicht zugestellt. Wiederholungen erfolgen im Einsendungsdetail.',
@@ -229,7 +302,7 @@ export const de = {
     integrationCheck: 'Einbindung prüfen',
     checkHint:
       'Die verbindliche Prüfung erfolgt beim Veröffentlichen auf dem Server. Ein Versionsvergleich ist noch nicht verfügbar.',
-    sdk: 'PHP-SDK',
+    sdk: 'PHP einbinden',
     sdkIntro:
       'Stellen Sie die Einrichtungsdatei bewusst aus und übertragen Sie sie sicher an Ihre PHP-Anwendung.',
     issue: 'Einrichtungsdatei ausstellen',
@@ -246,14 +319,9 @@ export const de = {
       'Die Domainverwaltung ist in dieser Oberfläche noch nicht verfügbar. DNS, Proxy und TLS werden extern eingerichtet. Bestehende Zuordnungen bleiben an ihre Version gebunden.',
     webhooks: 'Webhooks',
     storage: 'Aufbewahrung',
-    storagePending:
-      'Die Aufbewahrung finden Sie derzeit unter Einsendungen. Die Speicherzuordnung ist in dieser Oberfläche noch nicht verfügbar.',
-    flow: 'Ablauf',
-    flowPending:
-      'Der Ablauf-Editor folgt später. Hier können noch keine Abläufe bearbeitet werden.',
   },
   area: {
-    label: 'Bereich',
+    label: 'Ansicht für',
     all: 'Gesamt',
     allHint: 'Alle Kunden und Formulare',
     customer: 'Kunde',
@@ -291,7 +359,7 @@ export const de = {
     forms: 'Formulare',
     entries: 'Einsendungen',
     statistics: 'Statistik',
-    tokens: 'Tokens / MCP',
+    tokens: 'API & MCP',
     appearance: 'Darstellung',
     mode: 'Design',
     light: 'Hell',
@@ -353,7 +421,7 @@ export const de = {
     loginIntro: 'Ihre Formulare. Ein übersichtlicher Arbeitsbereich.',
     setupIntro: 'Willkommen in Ihrer Formularverwaltung.',
     overview: 'Übersicht',
-    groups: { area: 'Bereich', manage: 'Verwalten', system: 'System' },
+    groups: { area: 'Arbeiten', manage: 'Verwalten', system: 'System' },
     search: 'Suchen …',
     searchHint: 'Seiten, Kunden und Formulare durchsuchen',
     navFilter: 'Navigation filtern',
@@ -375,7 +443,6 @@ export const de = {
     tabs: {
       overview: 'Übersicht',
       fields: 'Felder',
-      flow: 'Ablauf',
       entries: 'Einsendungen',
       mail: 'Mail',
       webhooks: 'Webhooks',
@@ -386,15 +453,70 @@ export const de = {
   },
   ui: {
     breadcrumbs: 'Brotkrumen',
+    back: 'Zurück zu',
     dismiss: 'Hinweis schließen',
     loading: 'Wird geladen …',
-    tone: { ok: 'In Ordnung', warn: 'Warnung', danger: 'Fehler', info: 'Hinweis', idle: 'Inaktiv' },
+    tone: { ok: 'In Ordnung', warn: 'Warnung', danger: 'Fehler', info: 'Hinweis', idle: 'Neutral' },
     pulseLive: 'läuft',
+  },
+  status: { draft: 'Entwurf', live: 'Live', paused: 'Pausiert' },
+  saveBar: {
+    label: 'Änderungen speichern',
+    unsaved: 'Ungespeicherte Änderungen',
+    save: 'Speichern',
+    discard: 'Verwerfen',
+    saved: 'Gespeichert',
+  },
+  retention: {
+    title: 'Aufbewahrung',
+    description: 'Wie lange Einsendungen dieses Formulars gespeichert bleiben.',
+    autoDelete: 'Einsendungen automatisch löschen',
+    autoDeleteOff: 'Aus: Einsendungen bleiben unbegrenzt gespeichert.',
+    days: 'Aufbewahrung in Tagen',
+    daysHint: 'Zwischen 1 und 3650 Tagen.',
+    presets: 'Vorgaben',
+    presetDays: '{n} Tage',
+    presetYear: '1 Jahr',
+    hint: 'Gehaltene Einsendungen (Löschschutz) bleiben erhalten. Eine Änderung gilt auch für vorhandene Einsendungen.',
+    current: 'Aktuell: Löschung nach {n} Tagen',
+    currentOff: 'Aktuell: keine automatische Löschung',
+    toEntries: 'Einsendungen verwalten',
+    loadFailed: 'Die Aufbewahrung konnte nicht geladen werden.',
+    invalid: 'Bitte eine ganze Zahl zwischen 1 und 3650 eingeben.',
+  },
+  rights: {
+    labels: {
+      'form.read': 'Lesen',
+      'form.create': 'Formulare anlegen',
+      'draft.write': 'Bearbeiten',
+      'draft.create': 'Entwürfe anlegen',
+      'draft.export': 'Entwurf exportieren',
+      'release.publish': 'Veröffentlichen',
+      'key.manage': 'Schlüssel',
+      'identity.manage': 'Mitglieder',
+      'account.manage': 'Konten verwalten',
+      'account.create': 'Konten anlegen',
+      'audit.read': 'Protokoll lesen',
+    },
+    hints: {
+      'form.read': 'Formulare, Einsendungen und Statistik ansehen.',
+      'form.create': 'Neue Formulare anlegen.',
+      'draft.write': 'Felder, Mail und Einstellungen im Entwurf ändern.',
+      'draft.create': 'Neue Entwürfe aus veröffentlichten Versionen beginnen.',
+      'draft.export': 'Entwürfe als Datei exportieren.',
+      'release.publish': 'Entwürfe veröffentlichen und Formulare pausieren.',
+      'key.manage': 'Schlüssel und Datenzugang verwalten.',
+      'identity.manage': 'Mitglieder und deren Rechte verwalten.',
+      'account.manage': 'Konten sperren und entsperren.',
+      'account.create': 'Neue Konten anlegen.',
+      'audit.read': 'Das Protokoll einsehen.',
+    },
   },
   directory: {
     title: 'Formulare',
     intro: 'Alle Formulare der Kunden, die Sie sehen dürfen.',
     search: 'Formulare suchen',
+    searchPlaceholder: 'Name oder Kunde …',
     customer: 'Kunde',
     form: 'Formular',
     status: 'Status',
@@ -566,7 +688,7 @@ export const de = {
     settings: {
       title: 'Einstellungen',
       precedence:
-        'Rangfolge: ENV > DB > Default. Bootstrap-Werte werden ausschließlich über ENV verwaltet.',
+        'Systemweite Werte. Es gilt der erste vorhandene Wert: ENV, dann Datenbank, dann Standard. Bootstrap-Werte setzen Sie nur über ENV.',
       source: 'Quelle',
       locked: 'Durch ENV gesperrt',
       restart: 'Neustart nötig',
@@ -576,22 +698,39 @@ export const de = {
       savedRestart: 'Gespeichert. Für einige Änderungen ist ein Neustart nötig.',
       conflict:
         'Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu laden und Änderungen erneut prüfen.',
-      noExistingEnv: 'In dieser Gruppe existiert derzeit keine geeignete ENV-Einstellung.',
+      noExistingTitle: 'Gruppen ohne überschreibbare Einstellungen',
+      reloadIcon: 'Einstellungen neu laden',
+      asOf: 'Stand {time}',
+      groupsLabel: 'Gruppen',
+      emptyTitle: 'Keine überschreibbaren Einstellungen',
+      emptyHint:
+        'Diese Installation stellt derzeit keine Werte zur Änderung bereit. Bootstrap-Werte setzen Sie über ENV.',
+      resetFilter: 'Filter zurücksetzen',
+      noExistingEnv: 'Für diese Gruppen gibt es derzeit keine geeignete ENV-Einstellung:',
     },
     tokens: {
       mcpNotAllowed:
         'Falls MCP für Ihr Konto noch nicht freigegeben ist, schaltet ein Administrator es unter Mitglieder mit „MCP erlauben“ frei.',
-      title: 'API-Tokens',
+      title: 'API & MCP',
       hint: 'Nur Konfiguration und Entwürfe. Keine Entschlüsselung oder Veröffentlichung. Maximal fünf aktive Tokens.',
       once: 'Jetzt sicher kopieren: Dieses Token wird nur einmal angezeigt.',
       hide: 'Ausblenden',
       label: 'Bezeichnung',
       tenant: 'Kunden-ID (UUID)',
+      tenantPick: 'Kunde',
+      tenantChoose: 'Kunde wählen',
+      formPick: 'Formular',
+      allForms: 'Alle Formulare des Kunden',
+      formsFailed: 'Die Formulare konnten nicht geladen werden.',
+      existing: 'Bestehende Tokens',
+      none: 'Noch keine Tokens',
+      noneHint: 'Tokens geben Werkzeugen und MCP-Clients Zugriff auf Konfiguration und Entwürfe.',
       form: 'Formular-ID (optional, UUID)',
       days: 'Gültigkeit in Tagen (1–90)',
       read: 'Konfiguration lesen',
       write: 'Entwürfe schreiben',
       create: 'Token anlegen',
+      newTokenHint: 'Das Token wird nach dem Anlegen nur einmal angezeigt.',
       expires: 'Ablauf',
       used: 'Letzter Gebrauch',
       revoked: 'Widerrufen',
@@ -606,6 +745,7 @@ export const de = {
     nav: {
       forms: 'Formulare',
       connections: 'Verbindungen',
+      accounts: 'Konten',
       account: 'Mein Konto',
       members: 'Mitglieder',
     },
@@ -618,13 +758,14 @@ export const de = {
       remove: 'Entfernen',
       removed: 'Der Passkey wurde entfernt.',
       lastOne: 'Der letzte Passkey kann nicht entfernt werden.',
+      lastOneLabel: 'Kann nicht entfernt werden (letzter Passkey)',
       unlocksKeys: 'entsperrt Datenschlüssel',
       removeWarn:
         'Dieser Passkey entsperrt Ihre Datenschlüssel. Ohne einen weiteren solchen Passkey brauchen Sie den Recovery-Code.',
       create: 'Neues Konto anlegen',
       username: 'Benutzername',
       password: 'Passwort (mind. 12 Zeichen)',
-      setPassword: 'Passwort für den Zugang mit Zweitfaktor setzen',
+      setPassword: 'Passwort festlegen',
       passwordTitle: 'Passwort',
       passwordIntro:
         'Ein Passwort dient nur als zusätzlicher Faktor neben dem Passkey, nie als alleinige Anmeldung.',
@@ -639,11 +780,19 @@ export const de = {
       title: 'Mitglieder und Rechte',
       intro:
         'Rechte gelten für den ganzen Kunden. Sie können nur Rechte vergeben oder entziehen, die Sie selbst haben, und nicht Ihre eigenen ändern.',
-      inherited: 'Zusätzlich (systemweit/Gruppe): {list}',
+      inherited: 'Zusätzlich über System oder Gruppe: {list}',
       save: 'Rechte speichern',
       saved: 'Die Rechte wurden gespeichert.',
       denied: 'Dafür fehlt Ihnen ein Recht.',
-      you: '(Sie)',
+      you: 'Sie',
+      add: 'Mitglied hinzufügen',
+      addPick: 'Konto wählen',
+      added: 'Das Mitglied wurde mit Leserecht hinzugefügt.',
+      toAccounts: 'Zu den Konten',
+      none: 'Noch keine Mitglieder',
+      noneHint:
+        'Mitglieder sehen und bearbeiten die Formulare dieses Kunden mit den Rechten, die Sie ihnen geben. Konten legt die Systemadministration unter System an.',
+      ownLocked: 'Ihre eigenen Rechte können Sie nicht ändern.',
     },
     loading: 'Wird geladen …',
     retry: 'Erneut versuchen',
@@ -708,9 +857,9 @@ export const de = {
       draft: 'Entwurf',
       noDraft: 'Es gibt noch keinen Entwurf.',
       createDraft: 'Entwurf anlegen',
-      newDraft: 'Neuen Entwurf aus der veröffentlichten Version beginnen',
+      newDraft: 'Neuen Entwurf beginnen',
       newDraftHint:
-        'Der bisherige Entwurf bleibt erhalten. Die Bearbeitung setzt auf dem neuen Entwurf fort.',
+        'Beginnt aus der veröffentlichten Version. Der bisherige Entwurf bleibt erhalten.',
       draftHint:
         'Änderungen werden sofort im Entwurf gespeichert. Erst „Veröffentlichen“ macht sie für Einsendungen wirksam.',
       title: 'Titel des Formulars',
@@ -750,28 +899,31 @@ export const de = {
       moveBlocked: '{label} steht bereits am Rand der Liste.',
       keyHint:
         'Mit Alt und Pfeil nach oben oder unten verschieben Sie das Feld der fokussierten Zeile.',
+      notes: 'Hinweise zu Feldern und Bedienung',
       sensitiveHint: 'Alle Felder werden verschlüsselt gespeichert.',
     },
     mail: {
       title: 'Mail-Versand',
+      templateTitle: 'Mail-Vorlage',
       intro:
-        'Beim Eingang einer Einsendung kann eine Mail an Ihr Team und eine Bestätigung an die einsendende Person gehen. Der Inhalt der Mail enthält die Feldwerte; er wird nur im Moment des Eingangs entschlüsselt.',
+        'Gilt erst nach der Veröffentlichung. Mail an das Team und Bestätigung an die einsendende Person bei jedem Eingang; Feldwerte werden nur im Moment des Eingangs entschlüsselt.',
+      templateDetails: 'Empfänger und Inhalt',
       connection: 'Versandverbindung',
       noConnection: 'Keine Verbindung ausgewählt',
       noConnections:
         'Diesem Kunden ist noch keine Verbindung zugewiesen. Ein Systemadministrator kann sie unter „Verbindungen“ zuweisen.',
       connectionSaved: 'Die Verbindung wurde gespeichert.',
       fromAddress: 'Absenderadresse',
-      fromName: 'Absendername (optional)',
+      fromName: 'Absendername',
       orgEnabled: 'Mail an das Team senden',
       orgTo: 'Empfänger (eine Adresse pro Zeile)',
-      orgBcc: 'Blindkopie (optional)',
-      replyTo: 'Antwort an Feld (optional)',
+      orgBcc: 'Blindkopie',
+      replyTo: 'Antwort an Feld',
       confEnabled: 'Bestätigung an die einsendende Person senden',
       confTo: 'Feld mit der Empfängeradresse',
       subject: 'Betreff',
       body: 'Inhalt',
-      bodyHint: 'Mit #=[feldname]=# fügen Sie den Wert eines Feldes ein (Betreff und Inhalt).',
+      bodyHint: 'Ein Klick fügt den Platzhalter in den Inhalt dieser Mail ein.',
       format: 'Format',
       formatText: 'Text',
       formatHtml: 'HTML',
@@ -819,8 +971,7 @@ export const de = {
     },
     publish: {
       title: 'Veröffentlichen',
-      intro:
-        'Die Veröffentlichung macht den aktuellen Entwurf zur gültigen Version. Sie erfordert eine frische Anmeldung (höchstens 5 Minuten alt) und Ihre Bestätigung.',
+      intro: 'Macht den aktuellen Entwurf zur gültigen Version.',
       bump: 'Versionsnummer erhöhen',
       bumpHint: 'Nötig, wenn schon eine Version mit dieser Nummer veröffentlicht wurde.',
       bumped: 'Die Versionsnummer wurde erhöht.',
@@ -830,7 +981,7 @@ export const de = {
       reauth: 'Zum Veröffentlichen müssen Sie sich erneut anmelden. Ihr Entwurf bleibt erhalten.',
       reauthButton: 'Erneut anmelden',
       conflictHint:
-        'Die Veröffentlichung wurde abgelehnt, weil sich Entwurf oder Version geändert haben. Erhöhen Sie ggf. die Versionsnummer und versuchen Sie es erneut.',
+        'Die Veröffentlichung wurde abgelehnt, weil sich Entwurf oder Version geändert haben. Erhöhen Sie ggf. die Versionsnummer und versuchen Sie es erneut. Für das Veröffentlichen ist eine frische Anmeldung nötig (höchstens 5 Minuten alt).',
       needDraft: 'Zum Veröffentlichen wird ein Entwurf benötigt.',
     },
     keyring: {
@@ -881,7 +1032,9 @@ export const de = {
       export: 'Exportieren',
       detail: 'Einsendungsdetail',
       filters: 'Filter',
-      search: 'Eingangsdatum (ISO-Datum)',
+      from: 'Eingang von (UTC)',
+      until: 'Eingang bis (UTC)',
+      rowActions: 'Aktionen für Einsendung vom {date}',
       protection: 'Löschschutz',
       all: 'Alle',
       held: 'Geschützt',
@@ -894,7 +1047,8 @@ export const de = {
       unknownDate: 'Datum unbekannt',
       opening: 'Einsendung wird geöffnet …',
       slow: 'Das Laden dauert länger. Bitte warten Sie einen Moment.',
-      noAccess: 'Für diese Einsendung ist Ihr Datenzugang noch nicht eingerichtet.',
+      noAccess:
+        'Für {n} Einsendungen ist Ihr Datenzugang noch nicht eingerichtet. Diese lassen sich nicht öffnen.',
       unholdWarning:
         'Die Aufbewahrungsfrist kann bereits abgelaufen sein. Nach dem Aufheben kann diese Einsendung automatisch gelöscht werden. Löschschutz aufheben?',
       deleteTitle: 'Einsendungen löschen',
@@ -918,11 +1072,20 @@ export const de = {
     },
     statisticsPage: {
       title: 'Statistik',
+      notes: 'Hinweise zur Statistik',
       scope: 'Produktion · UTC',
       empty: 'Keine erfassten Ereignisse im Zeitraum.',
       chart: 'Zeitreihe der erfassten Ereignisse',
       table: 'Datentabelle anzeigen',
-      period: 'Zeitraum: {from} bis {to} (UTC)',
+      period: '{period} (UTC)',
+      periodSwitch: 'Zeitraum der Statistik',
+      periodDays: '{n} Tage',
+      hints: {
+        visits: 'Aufrufe der eingebundenen Formulare im Zeitraum (UTC).',
+        begins: 'Besuche, in denen mit dem Ausfüllen begonnen wurde.',
+        submits: 'Angenommene Einsendungen im Zeitraum, nur Zählung ohne Inhalte.',
+        abandons: 'Besuche, in denen das Ausfüllen abgebrochen wurde.',
+      },
       explanation:
         'Besuche und Ereignisse zählen keine Personen. Abbrüche sind eigenständige Ereignisse, nicht Besuche minus Absenden.',
       instrumentation:
@@ -930,7 +1093,7 @@ export const de = {
     },
     stats: {
       title: 'Ereignisse pro Tag',
-      range: 'Letzte {n} Tage (UTC)',
+      range: 'Letzte {n} Tage',
       total: 'Insgesamt',
       none: 'Keine Ereignisse im Zeitraum.',
       visits: 'Besuche',
@@ -1027,7 +1190,9 @@ export const de = {
     connections: {
       title: 'Verbindungen',
       intro: 'Versandwege für Mails. Sie gelten systemweit und werden Kunden zugewiesen.',
-      none: 'Es gibt noch keine Verbindung.',
+      none: 'Noch keine Verbindung',
+      noneHint:
+        'Verbindungen sind Versandwege (SMTP-Server oder Mail-Proxy) für Mails. Legen Sie eine an und weisen Sie sie einem Kunden zu.',
       kind: 'Art',
       kinds: { smtp: 'SMTP-Server', 'mail-proxy': 'Mail-Proxy' },
       name: 'Name',
@@ -1050,8 +1215,19 @@ export const de = {
       testFailed: 'Test fehlgeschlagen ({code}).',
       assign: 'Kunden zuweisen',
       assigned: 'Zugewiesen.',
+      tested: 'Getestet · {time}',
+      testFailedChip: 'Test fehlgeschlagen',
+      untested: 'Nicht getestet',
+      assignedTo: 'Zugewiesen: {names}',
+      assignedNone: 'Zugewiesen: keine Kunden',
+      rowActions: 'Aktionen für {name}',
+      assignDescription: 'Wählen Sie die Kunden, die „{name}“ als Versandweg nutzen dürfen.',
+      assignConfirm: 'Zuweisen',
+      alreadyAssigned: 'bereits zugewiesen',
       hasCredential: 'Zugangsdaten hinterlegt',
       disabled: 'deaktiviert',
+      forbidden:
+        'Für die Verbindungen brauchen Sie das Recht der Systemadministration. Bitten Sie ein Konto mit diesem Recht um Zugriff.',
       freshHint:
         'Zum Anlegen und Testen ist eine frische Anmeldung nötig (höchstens 5 Minuten alt).',
     },
@@ -1072,6 +1248,10 @@ export const de = {
     wrong: 'Die Eingabe stimmt nicht mit dem angezeigten Code überein.',
     locked:
       'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben. Unterstützt dieses Gerät das nicht, öffnen Sie Konto → Sicherheit → Erweitert.',
+    lockedShort:
+      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben.',
+    release: 'Zugriff freigeben',
+    openAdvanced: 'Erweitert öffnen',
     updating: 'Zugriff auf Einsendungen wird aktualisiert …',
     security: 'Sicherheit',
     advanced: 'Erweitert: Zugriff auf Einsendungen',
@@ -1086,7 +1266,7 @@ export const de = {
       'Durchsuchen Sie die entschlüsselten Felder dieses Formulars. Suchbegriffe und Inhalte bleiben in diesem Browser. Ohne Zeitraum werden alle Einsendungen geprüft.',
     query: 'Person oder Suchbegriff',
     from: 'Von (UTC)',
-    until: 'Bis einschließlich (UTC)',
+    until: 'Bis (UTC)',
     search: 'Lokal durchsuchen',
     clear: 'Suchdaten verwerfen',
     invalidPeriod: 'Das Enddatum muss nach dem Startdatum liegen.',
@@ -1140,6 +1320,9 @@ export const de = {
     adsRetry: 'Erneut prüfen',
     publishDisabledReason: 'Bestätigen Sie zuerst, dass Sie die Änderungen geprüft haben.',
     publishAction: 'Veröffentlichung',
+    checksOpenOne: '1 Punkt offen, Veröffentlichen trotzdem möglich.',
+    checksOpen: '{n} Punkte offen, Veröffentlichen trotzdem möglich.',
+    checksClear: 'Keine offenen Punkte.',
     sdkTitle: 'Einrichtungsdatei',
     domainsTitle: 'Domainzuordnung',
     titlePanel: 'Formulartitel',
@@ -1148,26 +1331,118 @@ export const de = {
   installationPage: {
     title: 'Einrichtung',
     loading: 'Einrichtung wird geladen …',
-    intro: 'Richten Sie Ihr Formular-Backend ein.',
-    progress: 'Schritt {n} von 6',
+    intro:
+      'Arbeiten Sie diese Schritte der Reihe nach ab. Der Status jedes Schritts stammt aus Ihren tatsächlichen Daten; Sie kommen nach jeder Aktion hierher zurück.',
+    progress: '{done} von {total} Schritten erledigt',
+    progressSkipped: ', {n} auf später verschoben',
     stepsLabel: 'Einrichtungsschritte',
-    accountTitle: 'Ihr Administrationskonto einrichten',
-    accountBody:
-      'Ihr Konto und Passkey wurden über den installationsgebundenen Setup-Link eingerichtet.',
-    next: 'Weiter',
-    back: 'Zurück',
-    recoverySaved:
-      'Ihr Wiederherstellungscode ist gesichert. Fahren Sie mit Mail und Adressen fort.',
-    mail: 'Mail-Verbindung anlegen und testen',
-    addresses: 'Adressen & Betrieb prüfen',
-    migration: 'Daten übernehmen (optional)',
-    overview: 'Zur Übersicht',
+    stepOf: 'Schritt {n} von {m}',
+    optional: 'optional',
     retry: 'Erneut versuchen',
-    nextTitle: 'Nächste Schritte',
-    done: 'Die Einrichtung ist abgeschlossen oder Sie haben kein Systemrecht für die Einrichtung.',
-    errSettings: 'Bitte erneut anmelden, um die Einrichtung fortzusetzen.',
-    errLoad: 'Die Einrichtung konnte nicht geladen werden. Bitte erneut anmelden und versuchen.',
-    errSave: 'Der Fortschritt konnte nicht gespeichert werden. Bitte erneut laden.',
+    recheck: 'Status neu prüfen',
+    errLoad:
+      'Der Einrichtungsstand konnte nicht geladen werden. Bitte versuchen Sie es erneut oder melden Sie sich neu an.',
+    stepError: 'Der Status dieses Schritts konnte nicht ermittelt werden.',
+    states: { done: 'Erledigt', open: 'Offen', skipped: 'Später', error: 'Fehler' },
+    later: 'Später',
+    resume: 'Wieder aufnehmen',
+    current: 'Als Nächstes',
+    finishTitle: 'Einrichtung abschließen',
+    finishBody:
+      'Alle Schritte sind erledigt oder auf später verschoben. Mit dem Abschluss verschwindet der Hinweis in der Seitenleiste; die Einstellungen können Sie jederzeit weiter ändern.',
+    finishBlocked:
+      'Der Abschluss ist möglich, sobald kein Schritt mehr offen ist oder fehlschlägt.',
+    finish: 'Einrichtung abschließen',
+    finishing: 'Wird abgeschlossen …',
+    finishFresh:
+      'Zum Abschließen ist eine frische Anmeldung nötig. Sie kehren danach hierher zurück.',
+    finishFailed: 'Die Einrichtung konnte nicht abgeschlossen werden.',
+    finishConflict: 'Die Einstellungen wurden zwischenzeitlich geändert. Bitte laden Sie neu.',
+    steps: {
+      account: {
+        title: 'Konto und Passkey',
+        purpose:
+          'Ihr Administrationskonto ist durch einen Passkey (FIDO2/WebAuthn) geschützt, den Sie über den Setup-Link registriert haben.',
+        doneNote: 'Sie sind mit Ihrem Konto angemeldet.',
+        action: 'Passkeys verwalten',
+      },
+      recovery: {
+        title: 'Wiederherstellungscode sichern',
+        purpose:
+          'Der Wiederherstellungscode öffnet Ihren Datenschlüssel, wenn kein Passkey mehr verfügbar ist. Er wird nur einmal angezeigt; ohne ihn und ohne Passkey sind verschlüsselte Einsendungen nicht mehr lesbar.',
+        doneNote: 'Der Wiederherstellungscode ist gesichert.',
+      },
+      mail: {
+        title: 'Mail-Versandweg einrichten',
+        purpose:
+          'Eine Verbindung (SMTP-Server oder Mail-Proxy) versendet Benachrichtigungen und Bestätigungen. Legen Sie sie an und prüfen Sie sie dort mit „Testen“.',
+        doneNote: 'Mindestens eine aktive Mail-Verbindung ist vorhanden.',
+        action: 'Verbindung anlegen',
+        actionDone: 'Verbindungen ansehen',
+      },
+      addresses: {
+        title: 'Adressen und Einstellungen prüfen',
+        purpose:
+          'Origin (öffentliche Adresse dieser Installation) und RP-ID (Domain der Passkeys) müssen zur tatsächlichen Adresse passen, sonst schlagen Anmeldungen fehl. Sie kommen aus der Umgebung (ENV) oder aus den Einstellungen.',
+        doneNote: 'Origin und RP-ID sind gesetzt.',
+        action: 'Einstellungen öffnen',
+        actionDone: 'Einstellungen ansehen',
+      },
+      customer: {
+        title: 'Ersten Kunden anlegen',
+        purpose:
+          'Ein Kunde bündelt Formulare, Mitglieder und den Datenschlüssel, mit dem seine Einsendungen verschlüsselt werden.',
+        doneNote: 'Mindestens ein Kunde ist angelegt.',
+        nameLabel: 'Name des Kunden',
+        create: 'Kunden anlegen',
+        creating: 'Wird angelegt …',
+        created: 'Kunde „{name}“ ist angelegt.',
+        manage: 'Kunden ansehen',
+      },
+      form: {
+        title: 'Erstes Formular anlegen und veröffentlichen',
+        purpose:
+          'Erst eine Veröffentlichung (Release) macht ein Formular für Besucher nutzbar. Das Anlegen geschieht hier, Felder gestalten und Veröffentlichen auf der Formularseite.',
+        doneNote: 'Mindestens ein Formular ist veröffentlicht.',
+        needsCustomer: 'Legen Sie zuerst einen Kunden an.',
+        draftOnly: 'Es gibt Formulare, aber noch keines ist veröffentlicht.',
+        nameLabel: 'Name des Formulars',
+        customerLabel: 'Kunde',
+        create: 'Formular anlegen',
+        creating: 'Wird angelegt …',
+        publish: 'Formular veröffentlichen',
+        manage: 'Formulare ansehen',
+      },
+      migration: {
+        title: 'Daten aus dem alten System übernehmen',
+        purpose:
+          'Optional: Der Umstieg importiert Kunden, Formulare und Einsendungen aus einem Datenbank-Snapshot des Altsystems. Überspringen Sie ihn, wenn Sie neu beginnen.',
+        doneNote: 'Es gibt mindestens einen Importlauf.',
+        action: 'Umstieg öffnen',
+        actionDone: 'Importläufe ansehen',
+      },
+    },
+    complete: {
+      title: 'Die Einrichtung ist abgeschlossen',
+      body: 'Ihr Formular-Backend ist eingerichtet. Ab jetzt arbeiten Sie in der Übersicht.',
+      openHint:
+        'Offene Punkte einzelner Formulare, etwa ein fehlender Versandweg, zeigt die Übersicht unter „Auffälligkeiten“.',
+      noRight:
+        'Für die Einrichtung dieser Installation fehlt Ihrem Konto das Systemrecht. Bitten Sie eine Systemadministratorin oder einen Systemadministrator.',
+      overview: 'Zur Übersicht',
+      settings: 'Einstellungen',
+    },
+    bar: {
+      label: 'Einrichtung',
+      text: 'Einrichtung · Schritt {n} von {m}: {name}',
+      back: 'Zurück zur Einrichtung',
+      next: 'Weiter zum nächsten Schritt',
+      finish: 'Weiter zum Abschluss',
+      done: 'Dieser Schritt ist erledigt.',
+      hint: 'Dieser Schritt ist noch offen.',
+    },
+    nav: 'Einrichtung fortsetzen ({n} von {m})',
+    navHint: 'Die Einrichtung ist noch nicht abgeschlossen.',
   },
   listUi: {
     filter: 'Filter',
@@ -1178,6 +1453,7 @@ export const de = {
     noAccessShort: 'Datenzugang fehlt',
     noAccessBanner: 'Für diese Einsendung ist Ihr Datenzugang noch nicht eingerichtet.',
     dateFormat: 'TT.MM.JJJJ',
+    pickDate: 'Datum im Kalender wählen',
     dateInvalid: 'Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.',
     loaded: '{n} geladen',
     loadedMore: '{n} geladen, weitere verfügbar',
@@ -1215,24 +1491,33 @@ export const de = {
     operation: 'Operation',
     from: 'Von (UTC)',
     to: 'Bis (UTC)',
-    submission: 'Einsendung (Kennung)',
+    submission: 'Einsendung',
+    submissionShort: 'Einsendung',
+    targetShort: 'Ziel',
+    lastAlarm: 'Letzter Alarm: {outcome}',
     all: 'Alle',
     alarms: 'Nur aktuelle Alarme',
     apply: 'Anwenden',
     next: 'Weitere laden',
     loading: 'Betriebsdaten werden geladen …',
     empty: 'Keine passenden Ereignisse.',
+    emptyHint:
+      'Für die gewählten Filter liegen keine Ereignisse vor. Lockern Sie die Filter oder zeigen Sie alle Ereignisse.',
+    noForms: 'Keine Formulare für den Betrieb verfügbar',
+    noFormsHint:
+      'Der Betrieb zeigt Ereignisse je Formular. Sobald ein Formular zugänglich ist, erscheinen sie hier.',
+    filter: 'Ereignisse filtern',
     denied: 'Dafür fehlt Ihnen die Berechtigung.',
     retry: 'Erneut versuchen',
     time: 'Zeitpunkt (UTC)',
     priority: 'Priorität',
-    target: 'Versandziel (Verbindungskennung)',
+    target: 'Versandziel (Verbindung)',
     cleanup: 'Abgelaufene Einträge bereinigen',
     report: 'Ergebnis der Bereinigung',
     limit:
       'Je Datenart werden höchstens 1000 Einträge entfernt. Bei 1000 Treffern erneut ausführen.',
     settings:
-      'Alarmierung in den Systemeinstellungen: Empfänger, Absender, Verbindung, Schwelle und Drosselung.',
+      'Empfänger, Absender, Verbindung, Schwelle und Drosselung stellen Sie in den Systemeinstellungen ein.',
     events: {
       pending: 'Ausstehend',
       sending: 'Versand begonnen',
@@ -1276,7 +1561,14 @@ export const de = {
     password: 'Passwort',
     login: 'Mit Passwort und App-Code anmelden',
     username: 'Kontoname',
-    accounts: 'Kontozugänge verwalten',
+    accounts: 'Konten',
+    accountsIntro: 'Alle Konten im System: sperren, entsperren und MCP-Zugang steuern.',
+    accountsPage: 'Konten',
+    createAccount: 'Konto anlegen',
+    closeCreate: 'Schließen',
+    noAccounts: 'Noch keine Konten',
+    noAccountsHint: 'Legen Sie ein Konto an. Es erhält einen Einmal-Link zur Einrichtung.',
+    mcpOff: 'MCP gesperrt',
     lock: 'Konto sperren',
     unlock: 'Konto entsperren',
     allowMcp: 'MCP erlauben',
@@ -1289,7 +1581,10 @@ export const de = {
   },
   abuse: {
     title: 'Missbrauchsschutz',
-    help: 'Captcha-Einstellungen gelten nach Veröffentlichung. Das Secret wird verschlüsselt gespeichert und gilt sofort. Leeres Secret-Feld behält den bisherigen Wert. Blocklisten: Systemeinstellungen → Missbrauchsschutz. User-Agent-Muster sind Textausschnitte; Hashes sind SHA-256.',
+    help: 'Turnstile-Captcha gegen automatisierte Einsendungen. Die Einstellungen gelten nach der Veröffentlichung.',
+    detailsTitle: 'Details zu Secret und Blocklisten',
+    details:
+      'Das Secret wird verschlüsselt gespeichert und gilt sofort; ein leeres Secret-Feld behält den bisherigen Wert. Blocklisten pflegen Sie unter Systemeinstellungen → Missbrauchsschutz (User-Agent-Muster sind Textausschnitte, Hashes sind SHA-256).',
     siteKey: 'Turnstile Site-Key (leer: deaktiviert)',
     secret: 'Turnstile Secret ersetzen',
     closed: 'Bei Dienstausfall ablehnen (Standard: annehmen und markieren)',
@@ -1306,7 +1601,7 @@ export const de = {
   },
   adsStatistics: {
     title: 'Google Ads',
-    period: 'Produktion · UTC · letzte 30 Tage',
+    period: 'Produktion · UTC',
     segment: 'Herkunft',
     ads: 'Ads',
     nonAds: 'Ohne Ads',
@@ -1319,6 +1614,7 @@ export const de = {
   },
   formKit: {
     required: 'Pflichtfeld',
+    optional: 'optional',
     tokens: {
       newToken: 'Neues Token',
       scopes: 'Berechtigungen',
@@ -1329,6 +1625,7 @@ export const de = {
     stepOpen: 'offen',
     settings: {
       search: 'Einstellung suchen',
+      searchPlaceholder: 'Schlüssel oder ENV-Name …',
       searchHint: 'Nach Schlüssel oder Umgebungsvariable filtern.',
       source: 'Quelle',
       allSources: 'Alle Quellen',
@@ -1369,6 +1666,161 @@ export const de = {
       advancedHint: 'Nur für Verbindungen, Statistikbericht und öffentliche Schlüssel.',
       tlsVerify: 'Zertifikat und Host prüfen',
       tlsDisable: 'Ohne TLS (nur freigegebene Entwicklungsumgebung)',
+      flow: {
+        stepOf: 'Schritt {n} von {m}',
+        back: 'Zurück',
+        next: 'Weiter',
+        settings: 'Einstellungen öffnen',
+        netsPrefix: 'Private Netze geben Sie unter',
+        netsLink: 'in den Einstellungen frei',
+        loading: 'Läufe werden geladen …',
+        updated: 'Letzte Aktualisierung: {time}',
+        updatedPending: 'Wird geladen …',
+        retry: 'Erneut versuchen',
+        noRight: 'Keine Berechtigung oder der Umstieg ist deaktiviert.',
+        connection:
+          'Die Verbindung wurde unterbrochen oder die Prüfung ist fehlgeschlagen. Der bestätigte Fortschritt bleibt erhalten. Bitte Phase prüfen und erneut versuchen.',
+        planInvalid: 'Bitte Zuordnung und zusätzliche Planangaben prüfen.',
+        source: {
+          title: 'Quelle prüfen',
+          description:
+            'Geben Sie den nur lesenden Zugang zum eingefrorenen Snapshot an. Private Netze müssen ausdrücklich unter migration.allowedNets freigegeben sein.',
+          host: 'Host',
+          port: 'Port',
+          database: 'Datenbank',
+          user: 'Benutzer',
+          password: 'Passwort',
+          tls: 'TLS-Modus',
+          check: 'Verbindung prüfen',
+          checking: 'Verbindung wird geprüft …',
+          recheck: 'Erneut prüfen',
+          needCheck: 'Prüfen Sie zuerst die Verbindung, um fortzufahren.',
+          reportTitle: 'Prüfbericht der Quelle',
+          reportOk:
+            'Nur lesender Zugang geprüft. Die Werte unten wurden für den nächsten Schritt übernommen.',
+          schema: 'Schema-HMAC',
+          forms: 'Formulare in der Quelle',
+          counts: 'Bestand',
+        },
+        mapping: {
+          title: 'Zuordnung',
+          description:
+            'Ordnen Sie die Formulare der Quelle einem Kunden zu. Ein neuer Kunde wird inaktiv angelegt; bei bestehenden Kunden muss der Name exakt zum gespeicherten Plan passen. Vorhandene Fachobjekte werden nie überschrieben.',
+          adopted: 'Aus der Quellprüfung übernommen',
+          adoptedNone:
+            'Noch keine Quellprüfung in dieser Sitzung. Sie können die Werte auch von Hand eintragen.',
+          existing: 'Vorhandenen Kunden wählen',
+          newCustomer: 'Neuen Kunden zuordnen',
+          name: 'Kundenname',
+          forms: 'Formular-UUIDs dieses Kunden',
+          namespace: 'Quellnamespace',
+          namespaceHint: 'Bezeichnet die Herkunft der Daten im Altsystem.',
+          advanced: 'Erweitert',
+          customerId: 'Kunden-UUID (neu oder vorhanden)',
+          newId: 'Neue Kundenkennung',
+          snapshot: 'Dump-/Snapshot-SHA256',
+          schema: 'Erwarteter Schema-HMAC',
+          extra:
+            'Weitere bestätigte Planangaben als JSON (Verbindungen, Statistikbericht und öffentliche Schlüssel)',
+          extraHint: 'Nur für Verbindungen, Statistikbericht und öffentliche Schlüssel.',
+          addAssignment: 'Weitere Kunden-/Formularzuordnung hinzufügen',
+          assignments: 'Weitere Zuordnungen',
+          start: 'Prüflauf starten',
+          starting: 'Prüflauf wird gestartet …',
+          missing: 'Noch offen: {list}.',
+          issue: {
+            customer: 'Kunden-UUID',
+            name: 'Kundenname',
+            forms: 'Formular-UUIDs',
+            namespace: 'Quellnamespace',
+            snapshot: 'Snapshot-SHA256',
+            schema: 'Schema-HMAC',
+          },
+        },
+        run: {
+          title: 'Import',
+          description:
+            'Der Prüflauf wird vollständig zurückgerollt. Erst nach erfolgreicher Prüfung starten Sie den eigentlichen Import. Pause stoppt an der nächsten Objektgrenze; bestätigte Importe bleiben erhalten.',
+          emptyTitle: 'Noch kein Prüflauf gestartet',
+          emptyBody: 'Starten Sie im Schritt „Zuordnung“ einen Prüflauf.',
+          toMapping: 'Zur Zuordnung',
+          dry: 'Prüflauf',
+          real: 'Import',
+          phase: 'Phase: {phase}',
+          probe: 'Lokale Probe: {probe}; Testnachricht: {test}',
+          confirmed: 'bestätigt',
+          open: 'offen',
+          running: 'Import läuft',
+          failed: 'Phase {phase}: {error}. Zugang und Schema prüfen; denselben Lauf fortsetzen.',
+          pause: 'Sicher pausieren',
+          resume: 'Fortsetzen',
+          import: 'Import starten',
+          dryDone:
+            'Der Prüflauf ist abgeschlossen. Sehen Sie den Bericht durch und starten Sie dann den Import.',
+          report: 'Probleme ansehen und bestätigte Zähler',
+          download: 'Bericht herunterladen',
+          noReport: 'Der Lauf hat noch keinen Bericht geliefert.',
+        },
+        review: {
+          title: 'Prüfung',
+          description:
+            'Prüfen Sie den Import, bevor Sie umschalten: Bericht lesen, Entschlüsselung lokal testen, bei Bedarf Delta prüfen und Entwürfe erzeugen.',
+          emptyTitle: 'Noch kein Import zur Prüfung',
+          emptyBody:
+            'Sobald ein Import abgeschlossen ist und auf Prüfung wartet, erscheint er hier.',
+          toRun: 'Zum Import',
+          reportTitle: 'Prüfbericht',
+          probeTitle: 'Entschlüsselungsprobe',
+          probeLoad: 'Entschlüsselungsprobe laden',
+          probeSubmit: 'Probe lokal entschlüsseln',
+          probeCancel: 'Abbrechen',
+          probeHint:
+            'Nur migrierte :2-HPKE-Proben. Geben Sie den alten privaten X25519-Datenschlüssel als Base64url ein. Er bleibt flüchtig im Browser; RSA/CBC wird nicht unterstützt.',
+          probeKey: 'Privater Altschlüssel',
+          deltaTitle: 'Delta-Prüflauf',
+          deltaHash: 'Neuer Snapshot-SHA256 für Delta-Prüflauf',
+          deltaStart: 'Delta-Prüflauf starten',
+          deltaHint:
+            'Delta benötigt eine neue eingefrorene Quelle gleicher Struktur und Zuordnung. Bestehende Quell-IDs und Zielnachweise werden geprüft; nur neue Quell-IDs werden angelegt. Änderungen sind Konflikte, Löschungen Prüfbedarf. Keine Freigabe für eine laufend veränderte Quelle.',
+          draftTitle: 'Entwürfe',
+          draftHint:
+            'Erzeugt inaktive Entwurfsvorschläge aus den Altformularen samt Konverterbericht.',
+          draftStart: 'Entwürfe und Konverterbericht erstellen',
+        },
+        done: {
+          title: 'Umschaltung',
+          description:
+            'Die Umschaltung erfolgt außerhalb dieser Oberfläche. Hier schließen Sie den Umstieg ab, sobald alle Prüfungen bestanden sind.',
+          checklistTitle: 'Vor der Umschaltung prüfen',
+          checklist: [
+            'SDK vor dem DNS-Wechsel prüfen.',
+            'Finalen Delta- und Löschabgleich durchführen.',
+            'Stichproben der importierten Einsendungen prüfen.',
+            'Rückkehrplan bereithalten.',
+          ],
+          noteLead: 'Import geprüft bedeutet keine Umschaltfreigabe.',
+          rollbackTitle: 'Abbruch und Rückkehrplan',
+          rollback:
+            'Pause stoppt an der nächsten Objektgrenze; bestätigte Importe bleiben erhalten. Der Prüflauf wird vollständig zurückgerollt. Altzugriff entfernen löscht Zugangsdaten, keine importierten Einsendungen. Für einen vollständigen Rollback vor der Umschaltung stellen Sie die gesicherte Ziel-Datenbank wieder her; nach der Umschaltung sichern und gleichen Sie zuerst neue Einsendungen ab. Es gibt keine automatische Rückmigration.',
+          removeTitle: 'Altzugriff entfernen',
+          removeHint: 'Löscht die Zugangsdaten zur Quelle, keine importierten Einsendungen.',
+          remove: 'Altzugriff entfernen',
+          closed: 'Der Altzugriff wurde entfernt. Der Umstieg ist abgeschlossen.',
+          disable: 'Danach migration.enabled in den Einstellungen deaktivieren',
+          emptyTitle: 'Umschaltung noch nicht erreicht',
+          emptyBody: 'Schließen Sie zuerst Import und Prüfung ab.',
+        },
+        msg: {
+          probeOk:
+            'Lokale Entschlüsselung bestätigt und neue Testnachricht lokal verschlüsselt und geprüft. Nur Chiffrat-Hashes wurden übertragen.',
+          probeFailed:
+            'Probe fehlgeschlagen oder abgebrochen. Schlüssel und Paketformat prüfen. Es wurde kein Klartext übertragen.',
+          deltaHash: 'Neuen Snapshot-SHA256 angeben.',
+          formUuid: 'Formular-UUID prüfen.',
+          drafts:
+            'Inaktive Entwurfsvorschläge erstellt. Feld-, Mail-, Domain- und Berechtigungsprüfung bleiben erforderlich.',
+        },
+      },
     },
   },
   states: {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatPeriod } from '$lib/format';
   import type { AdsStatistics } from '$lib/api/admin';
   import { t } from '$lib/i18n';
   import { Table } from '$lib/components/ui/table';
@@ -10,7 +11,7 @@
 </script>
 
 <p class="text-muted-foreground text-sm">
-  {stats.from} – {stats.to} · {t.adsStatistics.period}
+  {formatPeriod(stats.from, stats.to)} · {t.adsStatistics.period}
 </p>
 {#if stats.groups.length}
   <div class="border-border overflow-hidden rounded-lg border">

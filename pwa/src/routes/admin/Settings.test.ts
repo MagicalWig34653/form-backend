@@ -56,7 +56,7 @@ it('zeigt ENV-Sperre und Neustart; sendet nur Änderungen mit Revision', async (
   await fireEvent.input(screen.getByLabelText('mcp.requestsPerMinute'), {
     target: { value: '90' },
   });
-  await fireEvent.submit(screen.getByText('Speichern').closest('form')!);
+  await fireEvent.submit(document.getElementById('settings-form')!);
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith('PUT', '/settings', {
       body: { revision: 'r1', values: { 'mcp.requestsPerMinute': '90' } },
@@ -69,7 +69,7 @@ it('überschreibt einen Konflikt nicht', async () => {
     target: { value: '90' },
   });
   request.mockResolvedValueOnce({ ok: false, error: { kind: 'http', status: 409 } });
-  await fireEvent.submit(screen.getByText('Speichern').closest('form')!);
+  await fireEvent.submit(document.getElementById('settings-form')!);
   expect((await screen.findByRole('alert')).textContent).toContain('zwischenzeitlich');
   expect((screen.getByLabelText('mcp.requestsPerMinute') as HTMLInputElement).value).toBe('90');
 });

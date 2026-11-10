@@ -7,6 +7,9 @@
   import Building from '@lucide/svelte/icons/building';
   import ChartColumn from '@lucide/svelte/icons/chart-column';
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+  import Calendar from '@lucide/svelte/icons/calendar';
+  import Copy from '@lucide/svelte/icons/copy';
+  import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
@@ -26,8 +29,12 @@
   import Menu from '@lucide/svelte/icons/menu';
   import Palette from '@lucide/svelte/icons/palette';
   import PanelLeft from '@lucide/svelte/icons/panel-left';
+  import ArrowUp from '@lucide/svelte/icons/arrow-up';
+  import ArrowDown from '@lucide/svelte/icons/arrow-down';
+  import Trash from '@lucide/svelte/icons/trash-2';
   import Percent from '@lucide/svelte/icons/percent';
   import Play from '@lucide/svelte/icons/play';
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Plug from '@lucide/svelte/icons/plug';
   import Search from '@lucide/svelte/icons/search';
   import Send from '@lucide/svelte/icons/send';
@@ -40,6 +47,9 @@
   let { name, size = 18 }: { name: string; size?: number } = $props();
   const icons: Record<string, Component<{ size?: number; 'aria-hidden'?: 'true' }>> = {
     dashboard: LayoutDashboard,
+    up: ArrowUp,
+    down: ArrowDown,
+    trash: Trash,
     updown: ChevronsUpDown,
     customers: Building,
     forms: FileText,
@@ -74,6 +84,10 @@
     key: KeyRound,
     locked: Lock,
     unlocked: LockOpen,
+    calendar: Calendar,
+    copy: Copy,
+    more: Ellipsis,
+    refresh: RefreshCw,
   };
   const Icon = $derived(icons[name] ?? FileText);
 </script>

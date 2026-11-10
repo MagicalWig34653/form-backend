@@ -38,7 +38,11 @@
   ]);
 </script>
 
-<PageHeader title={customer?.name ?? t.shell.customer} {description} {actions}>
+<PageHeader
+  title={customer?.name ?? t.shell.customer}
+  description={description ?? t.lists.customerIntro}
+  {actions}
+>
   {#snippet tabs()}
     <PageTabs label={t.shell.customerTabs} tabs={items} />
   {/snippet}

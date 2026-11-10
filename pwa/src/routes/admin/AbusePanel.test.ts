@@ -26,7 +26,7 @@ it('speichert Secret separat und nur die Policy im Entwurf', async () => {
   });
   await fireEvent.click(screen.getByLabelText('Testmodus'));
   expect(screen.getByText(/Testmodus: Captcha und IP-Regeln/)).toBeTruthy();
-  await fireEvent.submit(screen.getByText('Missbrauchsschutz speichern').closest('form')!);
+  await fireEvent.click(screen.getByRole('button', { name: 'Missbrauchsschutz speichern' }));
   await waitFor(() => expect(apply).toHaveBeenCalledOnce());
   expect(request).toHaveBeenCalledWith('PUT', '/tenants/tenant/forms/form/abuse-secret', {
     body: { secret: 'synthetic-secret' },

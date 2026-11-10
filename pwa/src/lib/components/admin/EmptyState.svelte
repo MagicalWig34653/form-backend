@@ -10,12 +10,27 @@
     icon?: string;
     /** Primary action (button or link). */
     action?: Snippet;
+    /** Smaller variant for empty lists inside a card that has more content around it. */
+    compact?: boolean;
     class?: string;
   }
-  let { title, description, icon = 'inbox', action, class: className }: Props = $props();
+  let {
+    title,
+    description,
+    icon = 'inbox',
+    action,
+    compact = false,
+    class: className,
+  }: Props = $props();
 </script>
 
-<div class={cn('flex flex-col items-center gap-2 px-6 py-10 text-center', className)}>
+<div
+  class={cn(
+    'flex flex-col items-center gap-2 px-6 text-center',
+    compact ? 'py-5' : 'py-10',
+    className,
+  )}
+>
   <span
     aria-hidden="true"
     class="bg-muted text-muted-foreground mb-1 flex size-12 items-center justify-center rounded-full"

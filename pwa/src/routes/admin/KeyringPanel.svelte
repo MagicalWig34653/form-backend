@@ -13,6 +13,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox';
   import Row from '$lib/components/admin/Row.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
+  import PrfHint from '$lib/crypto/PrfHint.svelte';
 
   let { tenant, keyId, onchange }: { tenant: string; keyId: string | null; onchange: () => void } =
     $props();
@@ -37,7 +38,9 @@
     else
       message =
         issue === 'unsupported'
-          ? k.noPrf
+          ? keyring.prfMissing
+            ? ''
+            : k.noPrf
           : issue === 'mismatch'
             ? k.mismatch
             : issue === 'no-account-key'
@@ -214,4 +217,5 @@
     </ul>
   {/if}
 {/if}
+{#if keyring.prfMissing && !keyring.unlocked}<PrfHint />{/if}
 <Notice message={message || ok} kind={message ? 'error' : 'ok'} />

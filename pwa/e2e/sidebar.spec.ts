@@ -59,7 +59,7 @@ async function mockApi(page: Page, tenants: boolean | State = true) {
 // Every sidebar entry must lead to its route and show its page heading, from several start pages and both layouts.
 const entries: [string, RegExp][] = [
   ['Kunden', /\/t$/],
-  ['Tokens / MCP', /\/api-tokens$/],
+  ['API & MCP', /\/api-tokens$/],
   ['Einstellungen', /\/settings$/],
   ['Einrichtung', /\/installation$/],
   ['Umstieg', /\/migration$/],
@@ -167,7 +167,7 @@ test('breadcrumb links and the command palette also lead somewhere', async ({ pa
   await page.goto(`/t/${T}/f/${F}/entries`);
   await page
     .getByRole('navigation', { name: 'Brotkrumen' })
-    .getByRole('link', { name: 'Formulare' })
+    .getByRole('link', { name: 'Kunde A' })
     .click();
   await expect(page).toHaveURL(new RegExp(`/t/${T}$`));
   await page.goto('/settings');
@@ -179,4 +179,27 @@ test('breadcrumb links and the command palette also lead somewhere', async ({ pa
   await page.getByRole('dialog').getByRole('combobox').fill('Gesamt');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/overview');
+});
+
+test('sidebar keeps Umstieg and the footer reachable at 800 and 560 px height', async ({
+  page,
+}) => {
+  await mockApi(page, 'one-with-forms');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/overview');
+  const aside = page.locator('aside');
+  const nav = aside.getByRole('navigation');
+  const last = aside.getByRole('link', { name: 'Umstieg', exact: true });
+  await expect(last).toBeVisible();
+  const inside = async () => {
+    const [n, l] = await Promise.all([nav.boundingBox(), last.boundingBox()]);
+    return !!n && !!l && l.y >= n.y - 1 && l.y + l.height <= n.y + n.height + 1;
+  };
+  // At 800 px the whole menu fits without being clipped.
+  await expect.poll(inside).toBe(true);
+  // At a very low height the menu scrolls and the footer stays in view.
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await last.scrollIntoViewIfNeeded();
+  await expect.poll(inside).toBe(true);
+  await expect(aside.getByRole('button', { name: 'Abmelden' })).toBeInViewport();
 });

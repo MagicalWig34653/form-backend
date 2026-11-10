@@ -12,13 +12,15 @@
   import FormDirectory from './FormDirectory.svelte';
   import FormPage from './FormPage.svelte';
   import Connections from './Connections.svelte';
+  import Accounts from './Accounts.svelte';
   import Account from './Account.svelte';
   import ApiTokens from './ApiTokens.svelte';
   import Settings from './Settings.svelte';
   import Ops from './Ops.svelte';
   import Installation from './Installation.svelte';
   import Migration from './Migration.svelte';
-  import { http } from '$lib/api';
+  import { onboarding } from '$lib/onboarding.svelte';
+  import SetupBar from '$lib/components/shell/SetupBar.svelte';
   import Members from './Members.svelte';
   import SidebarNav from '$lib/components/shell/SidebarNav.svelte';
   import VersionInfo from '$lib/components/shell/VersionInfo.svelte';
@@ -33,15 +35,11 @@
   onMount(() => {
     void session.load().then(async () => {
       if (session.status !== 'ready') return;
-      const r = await http.request<{ required: boolean }>('GET', '/setup-state');
-      if (
-        r.ok &&
-        r.data.required &&
-        !['installation', 'migration', 'connections', 'settings', 'account', 'apiTokens'].includes(
-          route.name,
-        )
-      )
-        router.navigate('/installation');
+      await onboarding.load();
+      // Only the start pages lead into an open setup, once and without a history entry; deep links stay where they are.
+      const start = matchRoute(router.path).name;
+      if (onboarding.open && (start === 'overview' || start === 'tenants'))
+        router.navigate('/installation', true);
     });
   });
 
@@ -113,10 +111,13 @@
       <SidebarNav onnavigate={() => (shellState.drawerOpen = false)} />
     </SheetContent>
   </Sheet>
-  <div class="min-h-dvh lg:pl-64">
+  <div class="flex min-h-dvh flex-col lg:pl-64">
     <TopBar />
     <CommandPalette />
-    <div class="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8">
+    <div
+      class="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8"
+    >
+      <SetupBar />
       {#if route.name === 'overview'}
         <Overview />
       {:else if route.name === 'tenants'}
@@ -131,6 +132,8 @@
             form={route.form}
             tab={route.tab}
           />{/key}
+      {:else if route.name === 'accounts'}
+        <Accounts />
       {:else if route.name === 'connections'}
         <Connections />
       {:else if route.name === 'apiTokens'}
@@ -152,7 +155,7 @@
       {/if}
     </div>
     <footer
-      class="text-muted-foreground mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-6 text-xs sm:px-7"
+      class="text-muted-foreground mx-auto mt-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-6 text-xs sm:px-7"
     >
       <span>{t.shell.footerLicense}</span><VersionInfo />
     </footer>

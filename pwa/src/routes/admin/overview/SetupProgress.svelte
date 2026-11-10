@@ -12,8 +12,10 @@
     tenant: string;
     steps: SetupStep[];
     loading?: boolean;
+    /** Form names by id, to say which form the next step concerns. */
+    formNames?: Record<string, string>;
   }
-  let { tenant, steps, loading = false }: Props = $props();
+  let { tenant, steps, loading = false, formNames = {} }: Props = $props();
 
   const ui = t.overview;
   const tabs: Record<SetupStepId, Tab> = {
@@ -27,15 +29,17 @@
   const percent = $derived(steps.length === 0 ? 0 : Math.round((doneCount / steps.length) * 100));
   const next = $derived(steps.find((s) => s.done === false && s.formId));
   const unknown = $derived(steps.some((s) => s.done === null));
+  const summary = $derived.by(() => {
+    const count = ui.setupCount
+      .replace('{done}', String(doneCount))
+      .replace('{total}', String(steps.length));
+    if (!next) return count;
+    const name = next.formId ? formNames[next.formId] : undefined;
+    return `${count} · ${ui.setupNextHint.replace('{step}', ui.setupSteps[next.id]).replace('{form}', name ?? '')}`;
+  });
 </script>
 
-<Panel
-  title={`${ui.setup} ${doneCount}/${steps.length}`}
-  description={ui.setupCount
-    .replace('{done}', String(doneCount))
-    .replace('{total}', String(steps.length))}
-  id="setup"
->
+<Panel title={ui.setup} description={summary} id="setup">
   <div aria-busy={loading}>
     {#if loading && steps.length === 0}
       <div class="flex flex-col gap-3" aria-hidden="true">
@@ -58,7 +62,7 @@
           style={`width:${percent}%`}
         ></div>
       </div>
-      <ul class="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+      <ul class="flex flex-col gap-2">
         {#each steps as step (step.id)}
           <li class="flex items-center gap-2">
             <span

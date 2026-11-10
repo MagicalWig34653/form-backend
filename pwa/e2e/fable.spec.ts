@@ -86,7 +86,7 @@ test('Menüs: Systemseiten nur für die Systemadministration', async ({ page }) 
   await mock(page, { admin: false });
   await page.goto('/overview');
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await expect(nav.getByRole('group', { name: 'Bereich' })).toBeVisible();
+  await expect(nav.getByRole('group', { name: 'Arbeiten' })).toBeVisible();
   await expect(nav.getByRole('group', { name: 'Verwalten' })).toBeVisible();
   await expect(nav.getByRole('group', { name: 'System' })).toHaveCount(0);
   await expect(nav.getByRole('link', { name: 'Einstellungen' })).toHaveCount(0);
@@ -112,14 +112,13 @@ test('Kunde: Reiter Formulare und Mitglieder, Mitglieder nur mit Recht', async (
   await expect(tabs.getByRole('link', { name: 'Mitglieder' })).toHaveCount(0);
 });
 
-test('Formular: neun Reiter in Arbeitsreihenfolge, jeder mit eigener Adresse', async ({ page }) => {
+test('Formular: acht Reiter in Arbeitsreihenfolge, jeder mit eigener Adresse', async ({ page }) => {
   await mock(page);
   await page.goto(`/t/${A}/f/${FA}`);
   const tabs = page.getByRole('navigation', { name: 'Bereiche des Formulars' });
   await expect(tabs.getByRole('link')).toHaveText([
     'Übersicht',
     'Felder',
-    'Ablauf',
     'Einsendungen',
     'Mail',
     'Webhooks',

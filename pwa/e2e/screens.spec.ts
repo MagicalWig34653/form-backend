@@ -1,4 +1,4 @@
-import { test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 // Visual review helper: SHOTS=dir npx playwright test e2e/screens.spec.ts (skipped otherwise).
 const out = process.env.SHOTS;
@@ -157,6 +157,19 @@ async function mock(page: Page) {
           ],
         }),
       );
+    if (p === `${f}/retention`) return r.fulfill(j({ days: 90 }));
+    if (p === `${f}/statistics/ads`)
+      return r.fulfill(
+        j({
+          from: '2026-10-03',
+          to: '2026-11-01',
+          available: false,
+          campaignsAvailable: false,
+          minimumGroupSize: 10,
+          suppressed: false,
+          groups: [],
+        }),
+      );
     if (p === '/settings')
       return r.fulfill(
         j({
@@ -174,9 +187,91 @@ async function mock(page: Page) {
               source: 'default',
               locked: false,
             },
+            {
+              definition: {
+                key: 'admin.origin',
+                group: 'Adressen',
+                envName: 'ADMIN_ORIGIN',
+                type: 'string',
+                restartRequired: false,
+              },
+              value: 'https://forms.example.org',
+              source: 'database',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'admin.rpID',
+                group: 'Adressen',
+                envName: 'ADMIN_RPID',
+                type: 'string',
+                restartRequired: false,
+              },
+              value: 'forms.example.org',
+              source: 'database',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'ingest.maxBodyBytes',
+                group: 'Einsendungen',
+                envName: 'INGEST_MAXBODYBYTES',
+                type: 'integer',
+                restartRequired: false,
+              },
+              value: '1048576',
+              source: 'default',
+              locked: false,
+            },
+            {
+              definition: {
+                key: 'mail.retryLimit',
+                group: 'Mail',
+                envName: 'MAIL_RETRYLIMIT',
+                type: 'integer',
+                restartRequired: false,
+              },
+              value: '5',
+              source: 'default',
+              locked: false,
+            },
           ],
         }),
       );
+    if (p === '/ops/access')
+      return r.fulfill(
+        j({
+          system: true,
+          cleanup: true,
+          alarm: { outcome: 'accepted', suppressed: 2 },
+          forms: [{ customer: T, id: F, name: 'Kontakt' }],
+        }),
+      );
+    if (p === '/ops')
+      return r.fulfill(
+        j({
+          items: [
+            {
+              id: 1,
+              event: 'accepted',
+              operation: 'mail',
+              priority: 1,
+              occurredAt: '2026-11-03T10:00:00Z',
+            },
+          ],
+        }),
+      );
+    if (p === '/accounts')
+      return r.fulfill(
+        j({
+          items: [
+            { id: 'a', username: 'admin', active: true, mcpAllowed: true },
+            { id: 'u2', username: 'erika', active: true, mcpAllowed: false },
+          ],
+        }),
+      );
+    if (p === `/tenants/${T}/connections`)
+      return r.fulfill(j({ items: [{ id: 'c1', kind: 'smtp', name: 'Mailserver' }] }));
     if (p === '/connections')
       return r.fulfill(
         j({
@@ -187,7 +282,7 @@ async function mock(page: Page) {
               name: 'Mailserver',
               enabled: true,
               hasCredential: false,
-              config: {},
+              config: { host: 'smtp.example.org' },
             },
           ],
         }),
@@ -202,8 +297,11 @@ const routes: [string, string][] = [
   ['formulare', `/t/${T}`],
   ['formular', `/t/${T}/f/${F}`],
   ['felder', `/t/${T}/f/${F}/fields`],
+  ['ablauf', `/t/${T}/f/${F}/flow`],
   ['einsendungen', `/t/${T}/f/${F}/entries`],
   ['mail', `/t/${T}/f/${F}/mail`],
+  ['webhooks', `/t/${T}/f/${F}/webhooks`],
+  ['aufbewahrung', `/t/${T}/f/${F}/storage`],
   ['veroeffentlichen', `/t/${T}/f/${F}/publish`],
   ['einbindung', `/t/${T}/f/${F}/keys`],
   ['mitglieder', `/t/${T}/members`],
@@ -211,6 +309,7 @@ const routes: [string, string][] = [
   ['tokens', '/api-tokens'],
   ['einstellungen', '/settings'],
   ['verbindungen', '/connections'],
+  ['konten', '/accounts'],
   ['einrichtung', '/installation'],
   ['umstieg', '/migration'],
   ['betrieb', '/ops'],
@@ -226,6 +325,8 @@ test.describe('screenshots', () => {
         test.setTimeout(240_000);
         await page.setViewportSize(viewport);
         await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+        const errors: string[] = [];
+        page.on('pageerror', (e) => errors.push(e.message));
         await mock(page);
         for (const [name, path] of routes) {
           await page.goto(path);
@@ -235,5 +336,6 @@ test.describe('screenshots', () => {
             fullPage: true,
           });
         }
+        expect(errors).toEqual([]);
       });
 });

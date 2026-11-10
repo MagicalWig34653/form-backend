@@ -49,7 +49,7 @@ const ctx = (route: Route) => ({
 
 it('nav model groups pages and only offers rights-based entries when allowed', () => {
   const plain = buildNav(ctx({ name: 'tenants' }));
-  expect(plain.map((g) => g.label)).toEqual(['Bereich', 'Verwalten']);
+  expect(plain.map((g) => g.label)).toEqual(['Arbeiten', 'Verwalten']);
   const ids = plain.flatMap((g) => g.items.map((i) => i.id));
   expect(ids).not.toContain('ops');
   expect(ids).not.toContain('connections');
@@ -59,7 +59,7 @@ it('nav model groups pages and only offers rights-based entries when allowed', (
     systemAdministrator: true,
     opsVisible: true,
   });
-  expect(full.map((g) => g.label)).toEqual(['Bereich', 'Verwalten', 'System']);
+  expect(full.map((g) => g.label)).toEqual(['Arbeiten', 'Verwalten', 'System']);
   const fullIds = full.flatMap((g) => g.items.map((i) => i.id));
   expect(fullIds).toEqual(
     expect.arrayContaining(['ops', 'connections', 'settings', 'installation', 'migration']),
@@ -126,7 +126,7 @@ it('no entry is dead or disabled and none carries a need hint', () => {
 it('breadcrumbs end on the current page', () => {
   const tenants = [{ id: 't1', name: 'Kunde A' }];
   const trail = crumbsFor({ name: 'form', tenant: 't1', form: 'f1', tab: 'entries' }, tenants, []);
-  expect(trail.map((c) => c.label)).toEqual(['Kunde A', 'Formulare', 'Formular', 'Einsendungen']);
+  expect(trail.map((c) => c.label)).toEqual(['Kunde A', 'Formular', 'Einsendungen']);
   expect(trail.at(-1)?.href).toBeUndefined();
   expect(crumbsFor({ name: 'notFound' }, tenants, [])).toEqual([]);
   expect(crumbsFor({ name: 'overview' }, tenants, []).map((c) => c.label)).toEqual(['Übersicht']);

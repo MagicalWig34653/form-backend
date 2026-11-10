@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { onboarding } from '$lib/onboarding.svelte';
 import Installation from './Installation.svelte';
 import Migration from './Migration.svelte';
 const request = vi.hoisted(() => vi.fn());
@@ -8,38 +9,59 @@ vi.mock('$lib/api', () => ({
   adminApi: {
     keyBundle: async () => ({ ok: true, data: { accountPublicKey: null, recovery: null } }),
     tenants: async () => ({ ok: true, data: { items: [] } }),
+    connections: async () => ({ ok: false, error: { kind: 'network', message: 'x' } }),
+    forms: async () => ({ ok: true, data: { items: [], nextCursor: null } }),
   },
 }));
-vi.mock('$lib/admin/guard.svelte', () => ({ reauthenticate: vi.fn() }));
+vi.mock('$lib/session.svelte', () => ({
+  session: { me: { id: 'a', systemAdministrator: true }, status: 'ready', tenants: [] },
+}));
+vi.mock('$lib/admin/guard.svelte', () => ({
+  reauthenticate: vi.fn(),
+  handleSessionError: vi.fn(() => false),
+}));
 beforeEach(() => {
   request.mockReset();
+  onboarding.reset();
 });
-it('zeigt sechs Schritte und speichert den Wechsel vor Recovery über die Settingsrevision', async () => {
-  request.mockImplementation(async (method, path) => {
+it('zeigt nur echte Schritte mit Status aus den Daten und verschiebt optionale', async () => {
+  request.mockImplementation(async (_method, path) => {
     if (path === '/setup-state') return { ok: true, data: { required: true } };
-    if (method === 'PUT') return { ok: true, data: { revision: 'r2' } };
-    return {
-      ok: true,
-      data: { revision: 'r1', items: [{ definition: { key: 'setup.step' }, value: '0' }] },
-    };
+    if (path === '/settings')
+      return {
+        ok: true,
+        data: {
+          revision: 'r1',
+          items: [
+            { definition: { key: 'admin.origin' }, value: 'https://a.example', source: 'db' },
+            { definition: { key: 'admin.rpID' }, value: 'a.example', source: 'db' },
+          ],
+        },
+      };
+    return { ok: false, error: { kind: 'network', message: 'x' } };
   });
   render(Installation);
-  await screen.findByText('Schritt 1 von 6');
-  expect(screen.getByLabelText('Einrichtungsschritte').querySelectorAll('li')).toHaveLength(6);
-  await fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-  await screen.findByRole('button', { name: 'Wiederherstellungscode vorbereiten' });
-  expect(request).toHaveBeenCalledWith('PUT', '/settings', {
-    body: { revision: 'r1', values: { 'setup.step': '1' } },
-  });
-  expect(screen.queryByRole('button', { name: 'Code gesichert' })).toBeNull();
+  const list = await screen.findByLabelText('Einrichtungsschritte');
+  await waitFor(() => expect(list.querySelector('[data-testid="step-addresses"]')).toBeTruthy());
+  // Konto und Adressen erledigt, Wiederherstellung offen, nicht ladbare Daten als Fehler.
+  expect(list.querySelectorAll('li')).toHaveLength(6);
+  expect(list.querySelector('[data-testid="step-account"]')?.getAttribute('data-state')).toBe(
+    'done',
+  );
+  expect(list.querySelector('[data-testid="step-addresses"]')?.getAttribute('data-state')).toBe(
+    'done',
+  );
+  expect(list.querySelector('[data-testid="step-mail"]')?.getAttribute('data-state')).toBe('error');
+  expect(list.querySelector('[aria-current="step"]')).toBeTruthy();
+  expect(screen.getByText(/2 von 6 Schritten erledigt/)).toBeTruthy();
+  // Es wird nichts mehr als Einrichtungsfortschritt gespeichert.
+  expect(request.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
 });
-it('zeigt ohne Systemrecht keinen Assistenten', async () => {
+it('zeigt nach Abschluss der Einrichtung die Übersicht statt einer leeren Seite', async () => {
   request.mockResolvedValue({ ok: true, data: { required: false } });
   render(Installation);
-  await screen.findByText(
-    'Die Einrichtung ist abgeschlossen oder Sie haben kein Systemrecht für die Einrichtung.',
-  );
-  expect(screen.queryByText('Passkey erstellen')).toBeNull();
+  await screen.findByText('Die Einrichtung ist abgeschlossen');
+  expect(screen.getByRole('button', { name: 'Zur Übersicht' })).toBeTruthy();
   expect(request).toHaveBeenCalledTimes(1);
 });
 it('zeigt bestätigte Zähler und verwendet beim Fortsetzen denselben Lauf', async () => {

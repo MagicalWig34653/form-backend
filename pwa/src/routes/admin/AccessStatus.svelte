@@ -1,6 +1,7 @@
 <script lang="ts">
   /** The "locked" notice is shown only where it matters (account page); elsewhere the top bar chip says it. */
-  let { showLocked = false }: { showLocked?: boolean } = $props();
+  let { showLocked = false, onadvanced }: { showLocked?: boolean; onadvanced?: () => void } =
+    $props();
   import { t } from '$lib/i18n';
   import { keyring } from '$lib/crypto/keyring.svelte';
   import { accessAutomation } from '$lib/crypto/automation.svelte';
@@ -8,7 +9,9 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import Banner from '$lib/components/admin/Banner.svelte';
+  import PrfHint from '$lib/crypto/PrfHint.svelte';
   import Row from '$lib/components/admin/Row.svelte';
+  import { router } from '$lib/router.svelte';
   let confirmation = $state('');
   let wrong = $state(false);
   function confirm(): void {
@@ -49,7 +52,22 @@
       </p>{/if}
   </section>
 {:else if showLocked && !keyring.unlocked}
-  <Banner tone="warn">{t.access.locked}</Banner>
+  <Banner tone="warn">
+    {onadvanced || router.path !== '/account' ? t.access.lockedShort : t.access.locked}
+    {#snippet action()}
+      {#if onadvanced}
+        <Button type="button" variant="outline" onclick={onadvanced}>{t.access.openAdvanced}</Button
+        >
+      {:else if router.path !== '/account'}
+        <Button type="button" variant="outline" onclick={() => router.navigate('/account')}
+          >{t.access.release}</Button
+        >
+      {/if}
+    {/snippet}
+  </Banner>
+{/if}
+{#if showLocked && !keyring.unlocked && keyring.prfMissing && !keyring.pendingCode}
+  <PrfHint />
 {/if}
 {#if accessAutomation.busy}
   <Banner tone="warn">{t.access.updating}</Banner>

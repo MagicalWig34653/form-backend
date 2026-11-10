@@ -14,6 +14,7 @@
   import { tick } from 'svelte';
   import { router } from '$lib/router.svelte';
   import { cn } from '$lib/utils';
+  import NavIcon from '$lib/components/shell/NavIcon.svelte';
 
   interface Props {
     /** Accessible name of the tab navigation. */
@@ -23,6 +24,24 @@
   }
   let { label, tabs, class: className }: Props = $props();
   let list = $state<HTMLElement | null>(null);
+  let more = $state({ left: false, right: false });
+  /** Shows a fade and arrow on the side where further tabs are hidden. */
+  function measure(): void {
+    if (!list) return;
+    const max = list.scrollWidth - list.clientWidth;
+    more = { left: list.scrollLeft > 4, right: list.scrollLeft < max - 4 };
+  }
+  function scrollBy(direction: 1 | -1): void {
+    list?.scrollBy?.({ left: direction * 160, behavior: 'smooth' });
+  }
+  $effect(() => {
+    void tabs.length;
+    if (!list) return;
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(list);
+    return () => observer?.disconnect();
+  });
 
   function go(event: MouseEvent, href: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -40,8 +59,12 @@
   });
 </script>
 
-<nav aria-label={label} class={cn('border-border -mb-px min-w-0 border-b', className)}>
-  <ul bind:this={list} class="m-0 flex list-none gap-1 overflow-x-auto p-0 pb-px">
+<nav aria-label={label} class={cn('border-border relative -mb-px min-w-0 border-b', className)}>
+  <ul
+    bind:this={list}
+    onscroll={measure}
+    class="m-0 flex list-none gap-1 overflow-x-auto p-0 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  >
     {#each tabs as tab (tab.id)}
       <li class="shrink-0">
         <a
@@ -62,4 +85,24 @@
       </li>
     {/each}
   </ul>
+  {#each [{ side: 'left', show: more.left, dir: -1 }, { side: 'right', show: more.right, dir: 1 }] as edge (edge.side)}
+    {#if edge.show}
+      <button
+        type="button"
+        tabindex="-1"
+        aria-hidden="true"
+        data-more={edge.side}
+        onclick={() => scrollBy(edge.dir as 1 | -1)}
+        class={cn(
+          'text-muted-foreground absolute inset-y-0 flex w-9 items-center lg:hidden',
+          edge.side === 'left'
+            ? 'from-background left-0 justify-start bg-gradient-to-r to-transparent'
+            : 'from-background right-0 justify-end bg-gradient-to-l to-transparent',
+        )}
+        ><span class={edge.side === 'left' ? 'rotate-180' : ''}
+          ><NavIcon name="chevron" size={18} /></span
+        ></button
+      >
+    {/if}
+  {/each}
 </nav>

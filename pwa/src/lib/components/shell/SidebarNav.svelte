@@ -49,7 +49,7 @@
     onnavigate();
   }
   const link =
-    'hover:bg-muted relative flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm lg:min-h-9 lg:py-1.5 focus-visible:outline-offset-[-2px]';
+    'hover:bg-muted relative flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm lg:min-h-9 lg:py-1.5 [@media(max-height:860px)]:lg:min-h-8 [@media(max-height:860px)]:lg:py-1 focus-visible:outline-offset-[-2px]';
 </script>
 
 {#snippet entry(item: NavItem)}
@@ -85,14 +85,14 @@
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <nav
     aria-label={t.shell.navigation}
-    class="min-h-0 flex-1 overflow-y-auto"
+    class="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
     bind:this={navEl}
     onkeydown={keydown}
   >
     {#each nav.groups as group (group.id)}
       <div
         id={`nav-heading-${group.id}`}
-        class="text-muted-foreground px-2.5 pt-4 pb-1.5 text-xs font-medium tracking-wide uppercase"
+        class="text-muted-foreground px-2.5 pt-4 pb-1.5 text-xs [@media(max-height:860px)]:pt-2.5 [@media(max-height:860px)]:pb-1 font-medium tracking-wide uppercase"
       >
         {group.label}
       </div>
@@ -101,7 +101,7 @@
       </div>
     {/each}
   </nav>
-  <div class="mt-auto border-t pt-3">
+  <div class="mt-auto border-t pt-2 [@media(min-height:861px)]:pt-3">
     {@render entry(nav.account)}
     <HelpDialog class={link} />
     <button type="button" class={link} onclick={() => void session.logout()}>

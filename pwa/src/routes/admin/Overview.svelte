@@ -20,12 +20,12 @@
   let ready = $state(false);
   const scope = $derived(scopeForms(session.tenants, formLists.states));
   const broken = $derived(failedForms(scope.forms, loader.snapshots));
-  const intro = $derived(
+  const lead = $derived(
     ready
-      ? `${t.area.pageIntro} ${t.area.scopeCustomers
+      ? t.area.scopeCustomers
           .replace('{customers}', String(session.tenants.length))
-          .replace('{forms}', String(scope.forms.length))}.`
-      : t.area.pageIntro,
+          .replace('{forms}', String(scope.forms.length))
+      : '',
   );
   let run = 0;
 
@@ -52,7 +52,7 @@
 </script>
 
 <section class="flex min-w-0 flex-col gap-4" data-testid="overall-overview">
-  <PageHeader title={t.area.pageTitle} description={intro} />
+  <PageHeader title={t.area.pageTitle} description={t.area.pageIntro} />
   <AccessStatus />
   {#if !ready}
     <div class="tile-grid" aria-busy="true">
@@ -94,6 +94,7 @@
         locked={!keyring.unlocked}
         moreForms={scope.more}
         showSetup={false}
+        {lead}
         recentLimit={10}
         onreload={() => void reload(true)}
       />

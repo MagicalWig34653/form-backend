@@ -24,6 +24,7 @@ import {
   openAccountRecovery,
   normalizeRecovery,
 } from './keys';
+import { prfWasMissing } from './prfSupport';
 import { KeyOperation } from './operation';
 import { identity, randomBytes, hkdf, bytes } from './packageV2';
 
@@ -37,6 +38,8 @@ export type KeyringIssue =
 
 class Keyring {
   unlocked = $state(false);
+  /** This session saw a passkey ceremony without PRF output (hint only, never persisted). */
+  prfMissing = $state(false);
   /** kid -> private data key (32 bytes) */
   private data = new Map<string, Uint8Array>();
   kids = $state<string[]>([]);
@@ -113,6 +116,7 @@ class Keyring {
       this.preparedRecovery = null;
       this.recoveryCode = '';
       this.unlocked = true;
+      this.prfMissing = false;
       this.armIdle();
       return null;
     } catch {
@@ -164,6 +168,7 @@ class Keyring {
       this.recoveryRevision = r.revision;
       for (const [kid, data] of opened) this.remember(kid, data.slice());
       this.unlocked = true;
+      this.prfMissing = false;
       this.armIdle();
       return null;
     } catch {
@@ -357,7 +362,10 @@ class Keyring {
     if (b.data.accountPublicKey) return 'mismatch';
     const salt = loginPrf ? LOGIN_PRF_SALT : randomBytes(32);
     const prf = loginPrf ?? (await requestPrf(b.data.rpId, { salt }));
-    if (!prf) return 'unsupported';
+    if (!prf) {
+      if (prfWasMissing()) this.prfMissing = true;
+      return 'unsupported';
+    }
     const pair = await generateKeyPair();
     const w = await wrapAccountKey(pair.secret, prf.output, prf.credentialId);
     prf.output.fill(0);
@@ -379,6 +387,7 @@ class Keyring {
     this.localPublicKey = toBase64Url(pair.publicKey);
     this.rpId = b.data.rpId;
     this.unlocked = true;
+    this.prfMissing = false;
     this.armIdle();
     return null;
   }
@@ -391,7 +400,10 @@ class Keyring {
     this.touch();
     const salt = randomBytes(32);
     const prf = await requestPrf(this.rpId, { salt });
-    if (!prf) return 'unsupported';
+    if (!prf) {
+      if (prfWasMissing()) this.prfMissing = true;
+      return 'unsupported';
+    }
     if (e !== this.epoch) {
       prf.output.fill(0);
       return 'locked';
@@ -433,7 +445,10 @@ class Keyring {
       : await requestPrf(b.data.rpId, {
           byCredential: wraps.map((w) => ({ credentialId: w.credentialId, salt: w.salt })),
         });
-    if (!prf) return 'unsupported';
+    if (!prf) {
+      if (prfWasMissing()) this.prfMissing = true;
+      return 'unsupported';
+    }
     const used = wraps.find((w) => toBase64Url(w.credentialId) === toBase64Url(prf.credentialId));
     if (!used) return 'mismatch';
     let account: Uint8Array;
@@ -479,6 +494,7 @@ class Keyring {
     }
     for (const [kid, k] of opened) this.remember(kid, k);
     this.unlocked = true;
+    this.prfMissing = false;
     this.armIdle();
     return null;
   }

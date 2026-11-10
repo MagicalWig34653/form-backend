@@ -9,6 +9,8 @@
   import Notice from '$lib/components/admin/Notice.svelte';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Banner from '$lib/components/admin/Banner.svelte';
+  import RichText from '$lib/components/admin/RichText.svelte';
+  import { scrollHint } from '$lib/scrollHint';
 
   let {
     editor,
@@ -29,6 +31,16 @@
     }
     slow = false;
   });
+
+  let snippetCopied = $state('');
+  async function copySnippet(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(t.phpSdk.code);
+      snippetCopied = t.phpSdk.copied;
+    } catch {
+      sdkMessage = t.formWork.copyError;
+    }
+  }
 
   const file = $derived(creds ? JSON.stringify(creds, null, 2) + '\n' : '');
 
@@ -74,52 +86,101 @@
   });
 </script>
 
-<Panel title={t.formWork.sdk} description={t.formWork.sdkIntro}>
-  <div class="flex flex-col gap-3">
-    {#if creds}
-      <Banner tone="warn">{t.formWork.once}</Banner>
-      <label for="creds-file" class="text-sm font-medium">{t.formWork.file}</label>
-      <textarea
-        id="creds-file"
-        readonly
-        rows="12"
-        class="border-border bg-muted/60 max-w-2xl rounded-lg border p-3 font-mono text-xs"
-        value={file}></textarea>
-      <div class="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" onclick={() => void copy()}>{t.admin.copy}</Button>
-        <Button type="button" variant="outline" onclick={download}>{t.formWork.download}</Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onclick={() => {
-            creds = null;
-            copied = '';
-          }}>{t.formWork.forget}</Button
-        >
-      </div>
-      <Notice message={copied} kind="ok" />
-    {:else}
-      <p class="text-muted-foreground text-sm">{t.formWork.notConfigured}</p>
-      {#if !canIssue}<Banner tone="danger">{t.formWork.denied}</Banner>{/if}
-      {#if canIssue}<div>
+{#snippet step(n: number, title: string)}
+  <span
+    aria-hidden="true"
+    class="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-medium"
+    >{n}</span
+  >
+  <h3 class="m-0 text-base font-semibold">{title}</h3>
+{/snippet}
+
+<Panel title={t.phpSdk.title} description={t.phpSdk.description}>
+  <ol class="m-0 flex list-none flex-col gap-6 p-0">
+    <li class="flex flex-col gap-2">
+      <div class="flex items-center gap-3">{@render step(1, t.phpSdk.steps[0].title)}</div>
+      <p class="text-muted-foreground m-0 text-sm"><RichText text={t.phpSdk.steps[0].text} /></p>
+    </li>
+    <li class="flex flex-col gap-3">
+      <div class="flex items-center gap-3">{@render step(2, t.phpSdk.steps[1].title)}</div>
+      <p class="text-muted-foreground m-0 text-sm"><RichText text={t.phpSdk.steps[1].text} /></p>
+      {#if creds}
+        <Banner tone="warn">{t.formWork.once}</Banner>
+        <label for="creds-file" class="text-sm font-medium">{t.formWork.file}</label>
+        <textarea
+          id="creds-file"
+          readonly
+          rows="12"
+          class="border-border bg-muted/60 max-w-2xl rounded-lg border p-3 font-mono text-xs"
+          value={file}></textarea>
+        <div class="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onclick={() => void copy()}>{t.admin.copy}</Button
+          >
+          <Button type="button" variant="outline" onclick={download}>{t.formWork.download}</Button>
           <Button
             type="button"
-            disabled={busy || !canIssue || !editor.detail?.currentReleaseId}
-            aria-describedby={!editor.detail?.currentReleaseId ? 'issue-reason' : undefined}
-            onclick={() => void createCredentials()}>{t.formWork.issue}</Button
+            variant="ghost"
+            onclick={() => {
+              creds = null;
+              copied = '';
+            }}>{t.formWork.forget}</Button
           >
-          {#if !editor.detail?.currentReleaseId}<p
-              id="issue-reason"
-              class="text-muted-foreground mt-2 text-sm"
+        </div>
+        <Notice message={copied} kind="ok" />
+      {:else}
+        {#if !canIssue}<Banner tone="danger">{t.formWork.denied}</Banner>{/if}
+        {#if canIssue}<div>
+            <Button
+              type="button"
+              disabled={busy || !canIssue || !editor.detail?.currentReleaseId}
+              aria-describedby={!editor.detail?.currentReleaseId ? 'issue-reason' : undefined}
+              onclick={() => void createCredentials()}>{t.formWork.issue}</Button
             >
-              {t.formWork.needsRelease}
-            </p>{/if}
-        </div>{/if}
-    {/if}
-    <Notice message={sdkMessage} />
-    {#if busy}<p role="status" aria-busy="true" class="text-muted-foreground text-sm">
-        {slow ? t.formWork.slow : t.admin.loading}
-      </p>{/if}
-  </div>
+            {#if !editor.detail?.currentReleaseId}<p
+                id="issue-reason"
+                class="text-muted-foreground mt-2 text-sm"
+              >
+                {t.formWork.needsRelease}
+              </p>{/if}
+          </div>{/if}
+      {/if}
+      <Notice message={sdkMessage} />
+      {#if busy}<p role="status" aria-busy="true" class="text-muted-foreground text-sm">
+          {slow ? t.formWork.slow : t.admin.loading}
+        </p>{/if}
+    </li>
+    <li class="flex flex-col gap-2">
+      <div class="flex items-center gap-3">{@render step(3, t.phpSdk.steps[2].title)}</div>
+      <p class="text-muted-foreground m-0 text-sm"><RichText text={t.phpSdk.steps[2].text} /></p>
+    </li>
+    <li class="flex flex-col gap-2">
+      <div class="flex items-center gap-3">{@render step(4, t.phpSdk.steps[3].title)}</div>
+      <p class="text-muted-foreground m-0 text-sm"><RichText text={t.phpSdk.steps[3].text} /></p>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span id="php-snippet-label" class="text-sm font-medium">{t.phpSdk.snippetLabel}</span>
+        <Button type="button" variant="outline" onclick={() => void copySnippet()}
+          >{t.phpSdk.copy}</Button
+        >
+      </div>
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <pre
+        use:scrollHint
+        tabindex="0"
+        aria-labelledby="php-snippet-label"
+        class="border-border bg-muted/60 focus-visible:ring-ring/50 m-0 max-w-full overflow-x-auto rounded-lg border p-3 font-mono text-xs leading-5 whitespace-pre focus-visible:ring-3 focus-visible:outline-none"><code
+          >{t.phpSdk.code}</code
+        ></pre>
+      <Notice message={snippetCopied} kind="ok" />
+      <details class="text-muted-foreground text-sm">
+        <summary class="min-h-8 cursor-pointer py-1 font-medium">{t.phpSdk.notes}</summary>
+        <ul class="m-0 mt-1 flex list-disc flex-col gap-1 pl-5">
+          <li><RichText text={t.phpSdk.urlNote} /></li>
+          <li><RichText text={t.phpSdk.clock} /></li>
+          <li><RichText text={t.phpSdk.retry} /></li>
+          <li><RichText text={t.phpSdk.docs} /></li>
+        </ul>
+      </details>
+    </li>
+  </ol>
 </Panel>
 <Panel title={t.formWork.domains} description={t.formWork.domainsPending} />

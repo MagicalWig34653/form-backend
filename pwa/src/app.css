@@ -31,13 +31,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-control: var(--control);
   --color-sidebar: var(--sidebar);
   --color-brand: var(--ui-accent, var(--primary));
   --color-brand-ink: var(--ui-accent-ink, var(--foreground));
   --color-brand-soft: var(--ui-accent-soft, var(--muted));
   --color-popover: var(--background);
   --color-popover-foreground: var(--foreground);
-  --color-card: var(--background);
+  --color-card: var(--card);
   --color-card-foreground: var(--foreground);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -49,6 +50,7 @@
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
+  --card: var(--background);
   --foreground: oklch(0.141 0.005 285.823);
   --primary: #0f766e;
   --primary-foreground: #ffffff;
@@ -60,6 +62,8 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: #0f766e;
+  /* Rahmen von Bedienelementen (Checkbox, Schalter): mindestens 3:1 auf dem Hintergrund */
+  --control: oklch(0.55 0.012 286);
   --destructive: oklch(0.577 0.245 27.325);
   --chart-1: #2563eb;
   --chart-2: #f59e0b;
@@ -76,15 +80,17 @@
 }
 .dark {
   --background: oklch(0.141 0.005 285.823);
+  --card: oklch(0.19 0.006 285.9);
   --foreground: oklch(0.985 0 0);
   --secondary: oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
   --accent: oklch(0.274 0.006 286.033);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 22%);
   --destructive: oklch(0.704 0.191 22.216);
+  --control: oklch(0.62 0.012 286);
   --chart-1: #60a5fa;
   --chart-3: #34d399;
   --chart-4: #fbbf24;

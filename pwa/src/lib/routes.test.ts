@@ -45,11 +45,10 @@ describe('matchRoute', () => {
     ])
       expect(matchRoute(p).name, p).toBe('notFound');
   });
-  it('knows all nine form tabs in working order', () => {
+  it('knows all eight form tabs in working order', () => {
     expect(TABS).toEqual([
       'overview',
       'fields',
-      'flow',
       'entries',
       'mail',
       'webhooks',
@@ -59,6 +58,9 @@ describe('matchRoute', () => {
     ]);
     for (const tab of TABS)
       expect(matchRoute(formPath(T, F, tab)), tab).toMatchObject({ name: 'form', tab });
+  });
+  it('opens the overview for the former flow address', () => {
+    expect(matchRoute(`/t/${T}/f/${F}/flow`)).toMatchObject({ name: 'form', tab: 'overview' });
   });
   it('builds the paths it matches', () => {
     expect(matchRoute(formPath(T, F, 'keys'))).toMatchObject({ tab: 'keys' });

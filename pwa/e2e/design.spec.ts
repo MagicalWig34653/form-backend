@@ -126,7 +126,7 @@ test('menu groups are fixed headings with their entries (no collapsing)', async 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/settings');
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await expect(nav.getByRole('group', { name: 'Bereich' })).toBeVisible();
+  await expect(nav.getByRole('group', { name: 'Arbeiten' })).toBeVisible();
   await expect(nav.getByRole('group', { name: 'Verwalten' })).toBeVisible();
   const admin = nav.getByRole('group', { name: 'System' });
   await expect(admin.getByRole('link', { name: 'Einstellungen' })).toHaveAttribute(
