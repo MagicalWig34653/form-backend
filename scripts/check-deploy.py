@@ -22,7 +22,8 @@ import json, os, pathlib, sys
 args=sys.argv[1:]
 base=pathlib.Path(os.environ['MOCK_STATE'])
 name=pathlib.Path(sys.argv[0]).name
-with (base/'commands').open('a') as f: f.write(json.dumps([name]+args)+'\n')
+if not (name=='curl' and any('ghcr.io' in x for x in args)):
+ with (base/'commands').open('a') as f: f.write(json.dumps([name]+args)+'\n')
 if name in ('curl','sleep'): sys.exit(0)
 a=' '.join(args)
 if args[:2]==['info','--format']: print('true')
@@ -161,7 +162,7 @@ with tempfile.TemporaryDirectory(prefix='form-deploy-check-') as tmp:
         path = bindir / name
         path.write_text(MOCK)
         path.chmod(0o755)
-    env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'], MOCK_STATE=str(state), DB_PRECHECK='1')
+    env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'], MOCK_STATE=str(state), DB_PRECHECK='1', FORM_TAG_LOOKUP='0')
     for mode in ('swarm', 'compose'):
         env['MOCK_MODE'] = mode
         folder = copy / 'deploy' / mode
@@ -651,6 +652,27 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
                 assert result.stdout == '' and secret_value not in result.stderr
                 result = settings(mode, envfile, '--set', f'{secret_key}={secret_value}', ok=False, extra_env=leaked)
                 assert secret_value not in result.stdout + result.stderr
+            # Automatischer Tag: der Commit-Tag mit dem Digest von latest wird gewählt und gespeichert (Registry per curl-Double)
+            tagdir = work / 'tagbin'; tagdir.mkdir()
+            sha_new, sha_old = 'c' * 40, 'd' * 40
+            (tagdir / 'curl').write_text('''#!/usr/bin/env bash
+case "$*" in
+  *token*) echo '{"token":"t"}' ;;
+  *api.github.com*) printf '[\\n  {\\n    "sha": "%s",\\n    "parents": [{"sha": "%s"}]\\n  },\\n  {\\n    "sha": "%s"\\n  }\\n]\\n' ;;
+  *manifests/latest*|*manifests/%s*) printf 'HTTP/2 200\\r\\ndocker-content-digest: sha256:%s\\r\\n\\r\\n' ;;
+  *manifests/*) printf 'HTTP/2 200\\r\\ndocker-content-digest: sha256:%s\\r\\n\\r\\n' ;;
+esac
+''' % (sha_old, 'e' * 40, sha_new, sha_new, '1' * 64, '2' * 64))
+            (tagdir / 'curl').chmod(0o755)
+            auto = work / 'auto.env'
+            shutil.copy(work / 'seed.env', auto); auto.chmod(0o600)
+            out = run(['bash', '-c', 'MODE=$1 ACTION=update BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; echo "TAG=$FORM_IMAGE_TAG"; save_config',
+                       'auto', mode, str(ROOT / 'deploy' / mode), str(auto)], dict(env, PATH=str(tagdir) + os.pathsep + env['PATH'], FORM_TAG_LOOKUP='1')).stdout
+            assert f'TAG={sha_new}' in out and 'Neuester Image-Tag' in out, out
+            assert f'FORM_IMAGE_TAG="{sha_new}"' in auto.read_text()
+            out = run(['bash', '-c', 'MODE=$1 ACTION=update BASE=$2; source "$BASE/../swarm/lib.sh"; initialize --dry-run --non-interactive --env-file "$3"; echo "TAG=$FORM_IMAGE_TAG"',
+                       'auto', mode, str(ROOT / 'deploy' / mode), str(auto)], dict(env, PATH=str(tagdir) + os.pathsep + env['PATH'], FORM_IMAGE_TAG='mein-tag', FORM_TAG_LOOKUP='1')).stdout
+            assert 'TAG=mein-tag' in out, out
             # Altlast FORM_HTTP_PORT: update/setup lesen die Datei weiter, settings.sh warnt und entfernt die Zeile
             legacy = work / 'legacy.env'
             legacy.write_text(envfile.read_text() + 'FORM_HTTP_PORT="8081"\n'); legacy.chmod(0o600)
