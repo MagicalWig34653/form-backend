@@ -186,18 +186,16 @@
 </script>
 
 <AuthShell title={t.login.title} description={t.login.description} intro={t.shell.loginIntro}>
-  <div class="min-h-6">
-    {#if message}
-      <p
-        role="alert"
-        class="bg-destructive/10 border-destructive/40 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-      >
-        <span aria-hidden="true" class="text-red-700 dark:text-destructive mt-0.5 shrink-0"
-          ><NavIcon name="danger" size={16} /></span
-        >{message}
-      </p>
-    {/if}
-  </div>
+  {#if message}
+    <p
+      role="alert"
+      class="bg-destructive/10 border-destructive/40 flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+    >
+      <span aria-hidden="true" class="text-red-700 dark:text-destructive mt-0.5 shrink-0"
+        ><NavIcon name="danger" size={16} /></span
+      >{message}
+    </p>
+  {/if}
 
   {#if step === 'recovery'}
     {#if !keyring.unlocked}<p>{t.recovery.fallback}</p>{/if}
@@ -219,12 +217,10 @@
   {:else if step === 'unavailable'}
     <Button type="button" onclick={() => void load()}>{t.login.retry}</Button>
   {:else if step === 'passkey'}
-    <p class="text-sm font-medium">{t.login.passkeyStep}</p>
     <Button type="button" class="w-full" disabled={busy} onclick={() => void startPasskey()}
       >{t.login.passkeyButton}</Button
     >
-    <p class="text-muted-foreground text-xs leading-[18px]">{t.auth.passkeyHint}</p>
-    <p class="text-muted-foreground text-xs leading-[18px]">{t.auth.passkeyNote}</p>
+    <p class="text-muted-foreground m-0 text-center text-sm">{t.auth.passkeyHint}</p>
   {:else if step === 'password'}
     <form class="flex flex-col gap-5" onsubmit={(e) => void submitPassword(e)}>
       <p class="text-sm font-medium">{t.login.passwordStep}</p>
@@ -284,7 +280,12 @@
   <Dialog>
     <DialogTrigger>
       {#snippet child({ props })}
-        <Button {...props} type="button" variant="ghost" class="self-center">{t.login.help}</Button>
+        <Button
+          {...props}
+          type="button"
+          variant="ghost"
+          class="text-muted-foreground -mb-2 self-center">{t.login.help}</Button
+        >
       {/snippet}
     </DialogTrigger>
     <DialogContent title={t.login.helpTitle} description={t.login.helpBody}>
