@@ -68,8 +68,16 @@ Verification; `FORM_INTERNAL_SECOND_FACTOR=1` verlangt auch dort das Passwort.
 Sitzungstoken wird mit einer festen Listener-Domäne gehasht (v2); ein interner
 Token gilt öffentlich auch bei gleicher Origin nicht. Die Policy wird zusätzlich
 beim Sitzungszugriff geprüft. Alte v1-Sitzungen sind damit ungültig.
-Fresh-Login bleibt 5 Minuten: PWA beendet die Sitzung und führt den vollständigen
-Login erneut aus, intern standardmäßig allein mit UV-Passkey. Zählervergleich
+Fresh-Login gilt standardmäßig 30 Minuten (Einstellung `auth.freshLoginMinutes`, 1–120, im UI
+änderbar; frühere feste Grenze: 5 Minuten). Beschlossen mit ADR 0037: Die PWA fragt bei
+`reauthentication_required` auf der aktuellen Seite einen UV-Passkey desselben Kontos ab
+(`POST /auth/reauth/options|verify`, Challenge-Zweck `fresh-auth`, an Sitzung und Konto
+gebunden, einmalig, 120 s); Erfolg setzt nur `authenticated_at` dieser Sitzung, ohne
+neuen Token, ohne Rotation und ohne Rechteänderung, Audit `auth.reauth`. Verlangt der
+Listener Passwort/Zweitfaktor, lehnt der Server mit 409 `second_factor_required` ab und
+die PWA führt wie bisher den vollständigen Login erneut aus (ebenso ohne Passkey-Support
+im Browser). Frische gilt für verändernde und sensible Aktionen; ohne Frische lesbar sind
+`GET /migration/jobs` und `GET /settings` (Liste und Begründung in ADR 0037). Zählervergleich
 bleibt atomar; Bestandsausnahme 0→0 für synchronisierte Passkeys bleibt erhalten.
 Passwort bei Kontoanlage intern optional (leerer Hash = kein Passwort), öffentlich
 bzw. mit internem Zweitfaktor erforderlich. Eigenes Passwort unter `PUT /me/password`
@@ -123,8 +131,8 @@ standardmäßig aus, keine Wildcard mit Credentials. Fetch-Metadata nur ergänze
 | Login/Challenge/Tokenendpoint zusätzlich | 10 Requests/IP/60s; gilt vor Kontoauflösung |
 | Tests, Debugstart, Exporte, Resend zusätzlich | 10 Starts/Konto/60s; fachliche Batchgrenzen bleiben separat |
 | Anonyme/Faktor-Zwischensitzung | Absolut 5 min, keine Verlängerung durch Polling |
-| Authentifizierte Sitzung | Idle 30 min, absolut 12h; „angemeldet bleiben“ zunächst keine Fristverlängerung |
-| Frische Authentifizierung für H-Aktionen | Höchstens 5 min; zweckgebundene Veröffentlichungsgenehmigung siehe MCP-Vertrag |
+| Authentifizierte Sitzung | Idle standardmäßig 120 min (Einstellung `auth.sessionIdleMinutes`, 5–720, im UI änderbar; früher fest 30 min), absolut 12h; „angemeldet bleiben“ zunächst keine Fristverlängerung |
+| Frische Authentifizierung für H-Aktionen | Höchstens `auth.freshLoginMinutes` (Standard 30, 1–120 min); zweckgebundene Veröffentlichungsgenehmigung siehe MCP-Vertrag |
 | Bestätigungsfehlversuche | 5/Konto und IP/15 min, danach 15 min Sperre |
 
 Sliding Windows und `nextAllowedAt` in DB atomar aktualisieren; keine blockierenden

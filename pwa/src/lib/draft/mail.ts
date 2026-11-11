@@ -198,7 +198,8 @@ export function validateMailForm(f: MailForm, fieldNames: string[]): MailErrors 
   const text = (t: MailTemplateForm, subject: string, body: string) => {
     if (t.subject.trim() === '' || t.subject.length > 300 || /[\r\n]/.test(t.subject))
       e[subject] = 'subject';
-    if (t.body.trim() === '' || new TextEncoder().encode(t.body).length > 100_000) e[body] = 'body';
+    if (t.body.trim() === '') e[body] = 'body';
+    else if (new TextEncoder().encode(t.body).length > 100_000) e[body] = 'bodySize';
   };
   if (f.organisation.enabled) {
     const to = parseAddressLines(f.organisation.to),

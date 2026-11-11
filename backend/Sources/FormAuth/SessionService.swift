@@ -75,14 +75,15 @@ public struct SessionService: Sendable {
             struct A: Decodable { let active: Int }
             guard try await sql.raw("SELECT active FROM accounts WHERE id = \(bind: account)").first(decoding: A.self)?.active == 1 else { return nil }
         }
+        let idleWindow = state == .authenticated ? await idleLifetime() : policy.idle
         if state == .authenticated {
             try await sql.raw("""
                 UPDATE sessions SET last_seen_at = \(bind: ts),
-                  idle_expires_at = LEAST(absolute_expires_at, \(bind: DB.time(now().addingTimeInterval(policy.idle))))
+                  idle_expires_at = LEAST(absolute_expires_at, \(bind: DB.time(now().addingTimeInterval(idleWindow))))
                 WHERE id = \(bind: DB.bin(id))
                 """).run()
         }
-        let expires = state == .authenticated ? min(row.idle_expires_at, now().addingTimeInterval(policy.idle)) : row.idle_expires_at
+        let expires = state == .authenticated ? min(row.idle_expires_at, now().addingTimeInterval(idleWindow)) : row.idle_expires_at
         return SessionRecord(id: id, state: state, accountID: row.account_id.flatMap { DB.uuid($0.data) },
                              authMethod: row.auth_method, rightsVersion: row.rights_version, expiresAt: expires)
     }
@@ -95,7 +96,8 @@ public struct SessionService: Sendable {
         precondition(state == .factorPending || state == .authenticated)
         let t = now()
         let intermediate = state == .factorPending
-        let idle = t.addingTimeInterval(intermediate ? policy.intermediateLifetime : policy.idle)
+        let idleWindow = intermediate ? policy.intermediateLifetime : await idleLifetime()
+        let idle = t.addingTimeInterval(idleWindow)
         let abs = t.addingTimeInterval(intermediate ? policy.intermediateLifetime : policy.absolute)
         let created = try await prepare(state: state, accountID: accountID, method: method, rightsVersion: rightsVersion,
                                         at: t, idle: idle, absolute: abs,
@@ -123,6 +125,20 @@ public struct SessionService: Sendable {
                 """).run()
         }
         return (created.token, created.session)
+    }
+
+    /// Idle time after which a signed-in session ends: setting `auth.sessionIdleMinutes` (5...720, default 120, editable in the UI), never beyond
+    /// the absolute limit of the session. Falls back to the policy value (30 min) if the setting cannot be read.
+    func idleLifetime() async -> TimeInterval {
+        guard let value = try? await SystemSettings.value("auth.sessionIdleMinutes", sql: sql), let minutes = Int(value), (5...720).contains(minutes) else { return policy.idle }
+        return TimeInterval(minutes * 60)
+    }
+
+    /// How long a completed login counts as "fresh" for sensitive actions: setting `auth.freshLoginMinutes` (1...120, default 30, editable in the UI).
+    /// Falls back to the former fixed 5 minutes if the setting cannot be read, never to something longer.
+    public func freshWindow() async -> TimeInterval {
+        guard let value = try? await SystemSettings.value("auth.freshLoginMinutes", sql: sql), let minutes = Int(value), (1...120).contains(minutes) else { return 300 }
+        return TimeInterval(minutes * 60)
     }
 
     /// `authenticated_at` of the session (nil if unknown): when both factors were last completed.

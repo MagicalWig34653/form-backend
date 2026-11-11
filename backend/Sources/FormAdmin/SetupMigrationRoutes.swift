@@ -36,18 +36,20 @@ public enum SetupMigrationRoutes {
                 "migrationEnabled": try await SystemSettings.value("migration.enabled", sql: sql) == "true"])
         }
         let root = app.grouped("admin", "api", "v1", "migration")
-        // All controls share live permission checks, fresh cookie authentication and mutation protection.
-        func authorize(_ req: Request, mutation: Bool) async throws -> UUID {
+        // All controls share live permission checks and mutation protection. Fresh authentication (contracts/auth/anmeldung.md,
+        // "Frische Authentifizierung") is required for every mutation and for the probe read (migrated ciphertext, audited);
+        // only the plain status list GET /migration/jobs (explicit allowlist, no secrets) works without it.
+        func authorize(_ req: Request, mutation: Bool, fresh: Bool) async throws -> UUID {
             let session = try await guardian.requireAuthenticated(req, mutation: mutation)
             try await guardian.budget(req)
-            try await guardian.requireFreshAuthentication(session, now: Date())
+            if fresh || mutation { try await guardian.requireFreshAuthentication(session, now: Date()) }
             try await PermissionService(sql: sql).authorize(account: session.accountID!, "migration.run", on: .system)
             guard try await SystemSettings.value("migration.enabled", sql: sql) == "true" else { throw Abort(.forbidden) }
             return session.accountID!
         }
-        MigrationVerificationRoutes.register(root, service: service, authorize: authorize)
+        MigrationVerificationRoutes.register(root, service: service, authorize: { req, mutation in try await authorize(req, mutation: mutation, fresh: true) })
         root.post("test") { req async throws -> Response in
-            let actor = try await authorize(req, mutation: true)
+            let actor = try await authorize(req, mutation: true, fresh: true)
             let input: MigrationSource = try decode(req, allowed: ["host", "port", "database", "username", "password", "tls"])
             let key = try await service.key()
             // Shared with jobs: strict migration.allowedNets check and a pinned socket, even for source tests.
@@ -74,7 +76,7 @@ public enum SetupMigrationRoutes {
             return try response(inventory)
         }
         root.on(.POST, "jobs", body: .collect(maxSize: "1mb")) { req async throws -> Response in
-            let actor = try await authorize(req, mutation: true)
+            let actor = try await authorize(req, mutation: true, fresh: true)
             struct Input: Decodable { let source: MigrationSource; let plan: ImportPlan; let expectedSchema: String; let dryRun: Bool }
             let input: Input = try decode(req, allowed: ["source", "plan", "expectedSchema", "dryRun"])
             guard input.dryRun else { throw Abort(.unprocessableEntity) }
@@ -107,7 +109,7 @@ public enum SetupMigrationRoutes {
             return try response(["id": id.uuidString.lowercased()])
         }
         root.get("jobs") { req async throws -> Response in
-            _ = try await authorize(req, mutation: false)
+            _ = try await authorize(req, mutation: false, fresh: false)
             let jobs = try await sql.raw("SELECT * FROM migration_jobs ORDER BY created_at DESC LIMIT 50").all(decoding: MigrationJob.self)
             // Explicit allowlist: no source refs, plan names, source keys or raw issues.
             let items: [[String: Any]] = try jobs.map { job in
@@ -119,7 +121,7 @@ public enum SetupMigrationRoutes {
             return try response(["items": items])
         }
         root.post("jobs", ":jobId", ":action") { req async throws -> Response in
-            let actor = try await authorize(req, mutation: true)
+            let actor = try await authorize(req, mutation: true, fresh: true)
             let id = try FormAdmin.uuidParam(req, "jobId"), action = req.parameters.get("action") ?? ""
             guard ["pause", "resume", "import", "delta", "remove-source"].contains(action) else { throw Abort(.notFound) }
             try await db.transaction { conn in

@@ -17,6 +17,12 @@ export interface SessionState {
   expiresAt: string;
 }
 
+export interface ReauthResult {
+  status: 'fresh';
+  authenticatedAt: string;
+  freshUntil: string;
+}
+
 export interface AuthApiOptions extends HttpOptions {
   /** Share one transport (and thus one CSRF token) with the admin API. */
   http?: Http;
@@ -56,6 +62,11 @@ export function createAuthApi(options: AuthApiOptions = {}) {
       call<CreationOptions>('POST', '/auth/passkeys/options', undefined, signal),
     addPasskeyVerify: (body: RegistrationBody, signal?: AbortSignal) =>
       call<{ status: string }>('POST', '/auth/passkeys/verify', body, signal),
+    /** Step-up (ADR 0037): renews the fresh authentication of this session with a passkey; no new token. */
+    reauthOptions: (signal?: AbortSignal) =>
+      call<PasskeyOptions>('POST', '/auth/reauth/options', undefined, signal),
+    reauthVerify: (body: PasskeyCredentialBody, signal?: AbortSignal) =>
+      call<ReauthResult>('POST', '/auth/reauth/verify', body, signal),
     logout: (signal?: AbortSignal) => call<void>('POST', '/auth/logout', undefined, signal),
   };
 }

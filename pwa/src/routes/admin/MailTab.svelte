@@ -33,6 +33,7 @@
   import Textarea from '$lib/components/admin/Textarea.svelte';
   import Notice from '$lib/components/admin/Notice.svelte';
   import DraftGate from './DraftGate.svelte';
+  import MailBodyEditor from '$lib/components/mail/MailBodyEditor.svelte';
 
   let {
     editor,
@@ -96,12 +97,6 @@
     deliveryLoading = false;
     if (d.ok) deliveries = d.data.items;
     else if (!handleSessionError(d.error)) deliveryError = describeError(d.error);
-  }
-  /** Body that receives a chosen placeholder: the one edited last. */
-  let target = $state<'organisation' | 'confirmation'>('organisation');
-  function insert(name: string): void {
-    f[target].body += '#=[' + name + ']=#';
-    changed = true;
   }
   function goConnections(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -234,28 +229,6 @@
   </div>
 </Panel>
 
-{#snippet chips(kind: 'organisation' | 'confirmation')}
-  <div class="flex flex-col gap-1.5" role="group" aria-label={t.formWork.insert}>
-    <span class="text-sm leading-5 font-medium">{t.formWork.insert}</span>
-    <div class="flex flex-wrap gap-1.5">
-      {#each [...names, ...derivedNames] as name (name)}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onclick={() => {
-            target = kind;
-            insert(name);
-          }}>{name}</Button
-        >
-      {:else}
-        <span class="text-muted-foreground text-sm">{t.admin.mail.none}</span>
-      {/each}
-    </div>
-    <p class="text-muted-foreground m-0 text-xs">{t.admin.mail.bodyHint}</p>
-  </div>
-{/snippet}
-
 <DraftGate {editor} hint={false}>
   <Panel
     title={t.admin.mail.templateTitle}
@@ -359,17 +332,6 @@
                     bind:value={f.organisation.subject}
                   /></Row
                 >
-                {@render chips('organisation')}
-                <Row id="org-body" label={t.admin.mail.body} error={problem('orgBody')}
-                  ><Textarea
-                    id="org-body"
-                    aria-invalid={!!problem('orgBody')}
-                    aria-describedby={problem('orgBody') ? 'org-body-error' : undefined}
-                    bind:value={f.organisation.body}
-                    onfocus={() => (target = 'organisation')}
-                    class="min-h-40"
-                  /></Row
-                >
                 <Row id="org-format" label={t.admin.mail.format}>
                   <Select id="org-format" bind:value={f.organisation.format}>
                     <option value="text">{t.admin.mail.formatText}</option><option value="html"
@@ -377,6 +339,15 @@
                     >
                   </Select>
                 </Row>
+                <MailBodyEditor
+                  id="org-body"
+                  label={t.admin.mail.body}
+                  bind:value={f.organisation.body}
+                  format={f.organisation.format}
+                  names={[...names, ...derivedNames]}
+                  error={problem('orgBody')}
+                  onedit={() => (changed = true)}
+                />
               </div>
             </details>
           {/if}
@@ -501,17 +472,6 @@
                     bind:value={f.confirmation.subject}
                   /></Row
                 >
-                {@render chips('confirmation')}
-                <Row id="conf-body" label={t.admin.mail.body} error={problem('confBody')}
-                  ><Textarea
-                    id="conf-body"
-                    aria-invalid={!!problem('confBody')}
-                    aria-describedby={problem('confBody') ? 'conf-body-error' : undefined}
-                    bind:value={f.confirmation.body}
-                    onfocus={() => (target = 'confirmation')}
-                    class="min-h-40"
-                  /></Row
-                >
                 <Row id="conf-format" label={t.admin.mail.format}>
                   <Select id="conf-format" bind:value={f.confirmation.format}>
                     <option value="text">{t.admin.mail.formatText}</option><option value="html"
@@ -519,6 +479,15 @@
                     >
                   </Select>
                 </Row>
+                <MailBodyEditor
+                  id="conf-body"
+                  label={t.admin.mail.body}
+                  bind:value={f.confirmation.body}
+                  format={f.confirmation.format}
+                  names={[...names, ...derivedNames]}
+                  error={problem('confBody')}
+                  onedit={() => (changed = true)}
+                />
               </div>
             </details>
           {/if}

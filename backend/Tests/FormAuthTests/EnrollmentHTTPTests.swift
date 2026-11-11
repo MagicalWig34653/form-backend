@@ -51,6 +51,9 @@ final class EnrollmentHTTPTests: XCTestCase {
         try await DBFixture.with { f in
             try HTTPSetup.configure(f.app)
             let clock = Clock()
+            // These tests simulate "stale but still signed in" by advancing the clock by 301 s, so they pin the window to 5 minutes
+            // (the default is 30 min, and an authenticated session already idles out after 30 min).
+            try await SystemSettings.write(f.app.db(.mysql) as! SQLDatabase, key: "auth.freshLoginMinutes", value: "5", at: DB.time(Date()))
             var cfg = AuthConfig(relyingParty: RelyingParty(rpID: rpID, origin: origin), clientIP: { $0.headers.first(name: "X-Test-IP") ?? "unknown" })
             cfg.secondFactorRequired = true
             cfg.requestBudget = (100_000, 60); cfg.loginBudget = (100_000, 60)

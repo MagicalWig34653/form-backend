@@ -52,7 +52,7 @@ test('Fortschritt und sicherer Fehler bleiben beim Fortsetzen am selben Lauf', a
   });
   await page.goto('/migration');
   await expect(page.getByRole('heading', { name: 'Import: Pausiert' })).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText('interrupted');
+  await expect(page.getByRole('alert')).toContainText('Pausiert');
   await page.getByRole('button', { name: 'Fortsetzen', exact: true }).click();
   await expect.poll(() => resumed).toBe(true);
 });

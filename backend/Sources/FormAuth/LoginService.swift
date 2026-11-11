@@ -83,6 +83,90 @@ public struct LoginService: Sendable {
         }
     }
 
+    // MARK: step-up (fresh authentication of an existing session)
+
+    /// Step-up options: a `fresh-auth` challenge bound to this authenticated session and its account, plus the account's own
+    /// credential ids (allowCredentials). Refused under a listener policy that demands a second factor: a passkey alone must not
+    /// renew what was established with passkey + password (the client then falls back to the full login).
+    public func beginReauth(session: SessionRecord) async throws -> (challenge: IssuedChallenge, credentialIDs: [Data]) {
+        guard !secondFactorRequired else { throw StepUpUnavailable() }
+        guard session.state == .authenticated, let account = session.accountID else { throw AuthenticationFailed.translate(SecondFactorError.wrongState) }
+        let challenge = Data.random(32)
+        let t = now()
+        let ts = DB.time(t)
+        let id = UUID()
+        try await db.transaction { conn in
+            let tx = conn as! SQLDatabase
+            try await tx.raw("UPDATE auth_challenges SET revoked_at = \(bind: ts) WHERE session_id = \(bind: DB.bin(session.id)) AND purpose = 'fresh-auth' AND consumed_at IS NULL AND revoked_at IS NULL").run()
+            try await tx.raw("""
+                INSERT INTO auth_challenges (id, session_id, account_id, purpose, challenge_hash, factor_method, created_at, expires_at)
+                VALUES (\(bind: DB.bin(id)), \(bind: DB.bin(session.id)), \(bind: DB.bin(account)), 'fresh-auth', \(bind: Blob(Data(SHA256.hash(data: challenge)))), 'passkey',
+                  \(bind: ts), \(bind: DB.time(t.addingTimeInterval(Self.challengeLifetime))))
+                """).run()
+        }
+        struct R: Decodable { let credential_id: Blob }
+        let ids = try await sql.raw("SELECT credential_id FROM passkeys WHERE account_id = \(bind: DB.bin(account)) ORDER BY created_at LIMIT 100").all(decoding: R.self).map(\.credential_id.data)
+        return (IssuedChallenge(id: id, challenge: challenge, expiresAt: t.addingTimeInterval(Self.challengeLifetime)), ids)
+    }
+
+    /// Verifies a step-up assertion and sets `authenticated_at` of THIS session to now. Token, CSRF secret, state, method and
+    /// rights version stay unchanged (no privilege change, no rotation). The passkey must belong to the session's account;
+    /// a foreign, unknown or replayed credential gets the same neutral `authentication_failed` as any other failure.
+    /// Returns the new `authenticated_at`.
+    public func finishReauth(session: SessionRecord, challengeID: UUID, input: AssertionInput, clientIP: String) async throws -> Date {
+        guard !secondFactorRequired else { throw StepUpUnavailable() }
+        guard session.state == .authenticated, let account = session.accountID else { throw AuthenticationFailed.translate(SecondFactorError.wrongState) }
+        let accountKey = "reauth|\(account.uuidString.lowercased())|\(clientIP)"
+        try await throttles.ensureNotLocked(.ip, clientIP)
+        try await throttles.ensureNotLocked(.account, accountKey)
+        do {
+            // 1. consume first, in its own committed transaction (session + purpose + account bound): never revived by a later failure
+            let challengeHash = try await consumeChallenge(session: session, challengeID: challengeID, purpose: "fresh-auth", account: account)
+            // 2. the credential must exist AND belong to this account; otherwise the same work on a fixed dummy key
+            guard let stored = try await loadPasskey(credentialID: input.credentialID), stored.accountID == account else {
+                _ = try? AssertionVerifier(relyingParty: relyingParty).verify(input, stored: Self.dummyPasskey, expectedChallengeSHA256: challengeHash ?? Data())
+                throw PasskeyError.unknownCredential
+            }
+            guard let challengeHash else {
+                _ = try? AssertionVerifier(relyingParty: relyingParty).verify(input, stored: stored.passkey, expectedChallengeSHA256: Data())
+                throw PasskeyError.challengeInvalid
+            }
+            let result = try AssertionVerifier(relyingParty: relyingParty).verify(input, stored: stored.passkey, expectedChallengeSHA256: challengeHash)
+            guard try await advanceCounter(credentialID: input.credentialID, to: result.newSignCount) else { throw PasskeyError.counterRegression }
+            let t = now()
+            let ts = DB.time(t)
+            try await db.transaction { conn in
+                let tx = conn as! SQLDatabase
+                struct Active: Decodable { let active: Int }
+                guard try await tx.raw("SELECT active FROM accounts WHERE id = \(bind: DB.bin(account)) FOR UPDATE").first(decoding: Active.self)?.active == 1 else { throw SecondFactorError.accountInactive }
+                // Only this session, only while it is still the same live authenticated session of this account (row locked, so a
+                // concurrent logout/revocation either wins before this check or waits for the commit).
+                struct Live: Decodable { let id: Blob }
+                guard try await tx.raw("""
+                    SELECT id FROM sessions
+                    WHERE id = \(bind: DB.bin(session.id)) AND account_id = \(bind: DB.bin(account)) AND state = 'authenticated' AND revoked_at IS NULL
+                      AND idle_expires_at > \(bind: ts) AND absolute_expires_at > \(bind: ts)
+                    FOR UPDATE
+                    """).first(decoding: Live.self) != nil else { throw SecondFactorError.noSession }
+                try await tx.raw("UPDATE sessions SET authenticated_at = \(bind: ts) WHERE id = \(bind: DB.bin(session.id))").run()
+                try await tx.raw("""
+                    INSERT INTO audit_events (id, actor_id, actor_kind, category, action_code, subject_id, occurred_at, safe_details_json)
+                    VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(account)), 'human', 'auth', 'auth.reauth', \(bind: DB.bin(session.id)), \(bind: ts), '{"method":"passkey"}')
+                    """).run()
+            }
+            try? await throttles.clear(.account, accountKey)
+            return t
+        } catch let e as PasskeyError {
+            try? await throttles.recordFailure(.ip, clientIP, policy: .passwordPerIP)
+            try? await throttles.recordFailure(.account, accountKey, policy: .secondFactor)
+            throw AuthenticationFailed.translate(e)
+        } catch let e as SecondFactorError {
+            try? await throttles.recordFailure(.ip, clientIP, policy: .passwordPerIP)
+            try? await throttles.recordFailure(.account, accountKey, policy: .secondFactor)
+            throw AuthenticationFailed.translate(e)
+        }
+    }
+
     // MARK: second factor
 
     /// Password as second factor of a `factor_pending` session. Success rotates into `authenticated`.
@@ -112,15 +196,18 @@ public struct LoginService: Sendable {
 
     /// Marks the newest unrevoked login challenge of the session consumed (FOR UPDATE, committed on its own).
     /// Returns its hash only while it is unexpired; an expired one is consumed and yields nil.
-    private func consumeChallenge(session: SessionRecord, challengeID: UUID?) async throws -> Data? {
+    /// `purpose` is a fixed literal of this type, never client input. With `account`, the challenge must be bound to that account.
+    private func consumeChallenge(session: SessionRecord, challengeID: UUID?, purpose: String = "passkey-login", account: UUID? = nil) async throws -> Data? {
         struct R: Decodable { let id: Blob; let challenge_hash: Blob; let expires_at: Date }
+        precondition(purpose == "passkey-login" || purpose == "fresh-auth")
         let t = now()
         return try await db.transaction { conn -> Data? in
             let tx = conn as! SQLDatabase
             guard let r = try await tx.raw("""
                 SELECT id, challenge_hash, expires_at FROM auth_challenges
-                WHERE session_id = \(bind: DB.bin(session.id)) AND purpose = 'passkey-login' AND consumed_at IS NULL AND revoked_at IS NULL
+                WHERE session_id = \(bind: DB.bin(session.id)) AND purpose = \(bind: purpose) AND consumed_at IS NULL AND revoked_at IS NULL
                   AND (\(bind: challengeID.map(DB.bin)) IS NULL OR id = \(bind: challengeID.map(DB.bin)))
+                  AND (\(bind: account.map(DB.bin)) IS NULL OR account_id = \(bind: account.map(DB.bin)))
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE
                 """).first(decoding: R.self) else { return nil }
             try await tx.raw("UPDATE auth_challenges SET consumed_at = \(bind: DB.time(t)) WHERE id = \(bind: r.id)").run()

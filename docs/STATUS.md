@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## Darstellungsoptionen im Konto (11.11.2026, Worktree-Branch `worktree-agent-a0cc94f17870fdab5`, lokal committet, ungemergt)
+
+- Backend: `GET/PUT /admin/api/v1/me/preferences` (`backend/Sources/FormAdmin/AccountPreferenceRoutes.swift`) auf der vorhandenen Tabelle `account_preferences`, keine Migration. Nur eigenes Konto, PUT mit Origin/CSRF, keine frische Anmeldung, kein Audit. Allowlist `theme` light/dark/system, `accent` = 20 IDs aus `pwa/src/lib/accents.ts`, `glow` 0–6; sonst 422 „Ungültige Darstellungsoption.“ Vertrag: `contracts/auth/p5-implementiert.openapi.yaml`. Neue Akzentfarben müssen in beiden Allowlists ergänzt werden.
+- PWA: `lib/appearance.ts` (Regeln), `lib/appearanceSync.svelte.ts` (Laden nach Anmeldung, Konto gewinnt; leeres Konto übernimmt den Browserwert nur, wenn er diesem Konto oder niemandem gehört; Cache-Besitzer `appearance-account`, nicht gesendete Änderung `appearance-dirty`; Speichern entprellt 600 ms, Fehlerhinweis im Menü, Wiederholung nach 30 s). localStorage bleibt Cache für ersten Paint und Login/Setup.
+- Geprüft: Swift `AccountPreferenceTests` 3/3 gegen Wegwerf-MariaDB; svelte-check 0, eslint, prettier, vitest 373, Playwright 178 bestanden/9 übersprungen. `contracts/auth/validate.py` scheitert bereits vorher an der Rechte-Katalog-Prüfung (Zeile 233, unabhängig von dieser Änderung).
+- Übergabe: `docs/handoffs/Darstellung-im-Konto.md`.
+
 ## PWA-Oberfläche: Stand 11.11.2026 (maßgeblich)
 
 - Alle unten aufgeführten PWA-Durchgänge (Bereichsauswahl, Fable-Struktur, Einrichtungsfluss, UI-Durchgänge 1–5, PRF-Hinweis, Verbindungen-Fix) sind in `main` gemergt und im öffentlichen Repo (`dba3dd0`). Die Zusätze „Worktree-Branch … ungemergt“ in den folgenden Abschnitten sind überholt.
@@ -9,6 +16,19 @@
 - Offene Restpunkte (bewusst nicht gebaut): Greifmodus/zweispaltiger Feldeditor, Tabellenregeln (Sortierung/URL), gemeinsame Massenleiste, gemeinsamer Entsperr-/Sitzungsablauf-Dialog, Fokus nach Alt+Pfeil auf Felder mobil, Restmängel aus `shots-review6/BEWERTUNG.md` (Einstellungen: Alarm-Verbindung als Auswahl; Formular: Checklisten-Begriffe; Mein Konto: Aktionen im Kartenkopf).
 - Konzeptentwürfe (Fable 5.2 bevorzugt, weitere Modelle) liegen unter `docs/ux/konzepte/` (nur privates Repo).
 - Nächster Schritt: Image `latest` aktualisieren (`git pull` im Deploy-Branch, `bash deploy/compose/update.sh`, Browser hart neu laden) und Oberfläche im echten Betrieb abnehmen.
+
+## Passkey-Bestätigung auf der Seite (Step-up, ADR 0037) (11.11.2026, Worktree-Branch `worktree-agent-abe0a58be23a139d1`, lokal committet, ungemergt)
+
+- Nutzerwunsch: keine erneute Anmeldung für sensible Aktionen. Backend `POST /auth/reauth/{options,verify}` setzt nur `authenticated_at` der eigenen Sitzung (UV-Passkey desselben Kontos, Challenge `fresh-auth`, einmalig, CSRF, Drosselung, Audit `auth.reauth`); mit Zweitfaktor-Policy 409 `second_factor_required` → PWA fällt auf den vollen Login zurück. `GET /migration/jobs` und `GET /settings` ohne Frische lesbar.
+- PWA: zentraler `ReauthDialog` (Controller `lib/admin/stepup.svelte.ts`, eingehängt in `guard.svelte.ts`/`App.svelte`), ein Vorgang für parallele Anfragen, nach Abbruch erst bei Nutzeraktion wieder.
+- Commits 20b3dee (Backend, Vertrag, ADR), 5fcf2f3 (PWA). Geprüft: komplette Swift-Suite gegen echte MariaDB (Container `dbg-reauth-mariadb`, entfernt) 439 Tests, 0 Fehler, 5 übersprungen, inkl. 7 neue `ReauthHTTPTests`; PWA svelte-check 0, eslint/prettier, vitest 377, Playwright 177 grün (9 übersprungen). `contracts/auth/validate.py` scheitert bereits vorher (Rechtekatalog `migration.run`/`system.settings` fehlt im Entwurfs-Enum), unabhängig von dieser Änderung.
+- Offen: echter Browser/Authenticator (Safari-Geste, Passkey-Auswahl mit allowCredentials), unabhängiges Sicherheitsreview. Übergabe: `docs/handoffs/Passkey-Step-up.md`.
+
+## PWA: HTML-E-Mail-Builder im Mail-Reiter (11.11.2026, Worktree-Branch `worktree-agent-aafdd4bb248d0ad0a`, lokal committet, ungemergt)
+
+- Design (MJML-Bausteine, `mjml-browser` 4.18.0 nachgeladen), Einfach (eigener Rich-Text-Editor), Quelltext; Speicherformat wie Altsystem (`<!--kubus-mail-quelle:…-->`), keine Backend-/Vertragsänderung. Entscheidung: `docs/decisions/0037-html-mail-builder.md`, Übergabe: `docs/handoffs/Mail-Builder.md`.
+- Geprüft: svelte-check 0, eslint, prettier, vitest 383, Playwright 182 bestanden/9 übersprungen (7 neu inkl. echter CSP, axe, 320 px hell/dunkel).
+- Offen: Review, Merge, Testversand an Outlook/Gmail; Bild-Upload und Vorlagenbibliothek bewusst nicht gebaut.
 
 ## PWA: UI-Bewertung fünfter Durchgang 4,4/5, Umsetzung (11.11.2026, Worktree-Branch `worktree-agent-a6d1e84b67f09cce1`, lokal committet, ungemergt)
 

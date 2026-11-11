@@ -1531,11 +1531,111 @@ test('Verbindungen: vorhandene Verbindung wird gelistet, Rendern wirft keinen Fe
   expect(errors.filter((m) => /props_invalid_value/.test(m))).toEqual([]);
 });
 
-test('403 reauthentication_required: Umstiegsseite führt zur Passkey-Bestätigung statt zur Pauschalmeldung', async ({
+// Passkey step-up on the current page (ADR 0037): a stubbed authenticator answers navigator.credentials.get.
+async function stubAuthenticator(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const bytes = (n: number[]) => new Uint8Array(n).buffer;
+    (window as unknown as { PublicKeyCredential: unknown }).PublicKeyCredential ??= class {};
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: {
+        get: async () => ({
+          id: 'AQID',
+          rawId: bytes([1, 2, 3]),
+          type: 'public-key',
+          response: {
+            authenticatorData: bytes([1]),
+            clientDataJSON: bytes([2]),
+            signature: bytes([3]),
+            userHandle: null,
+          },
+          getClientExtensionResults: () => ({}),
+        }),
+      },
+    });
+  });
+}
+
+const reauthRequired = {
+  status: 403,
+  contentType: 'application/json',
+  body: JSON.stringify({
+    message: 'Bitte erneut anmelden, um diese Aktion zu bestätigen.',
+    requestId: 'x',
+    code: 'reauthentication_required',
+  }),
+};
+const reauthOptions = {
+  status: 200,
+  contentType: 'application/json',
+  body: JSON.stringify({
+    challengeId: '7d4a1c8e-0000-4000-8000-000000000001',
+    publicKey: {
+      challenge: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      rpId: 'localhost',
+      timeout: 120000,
+      userVerification: 'required',
+      allowCredentials: [{ type: 'public-key', id: 'AQID' }],
+    },
+    expiresAt: 'x',
+  }),
+};
+
+test('403 reauthentication_required: Passkey-Bestätigung erscheint auf derselben Seite, danach wird der Aufruf wiederholt', async ({
   page,
 }) => {
   await mock(page);
-  let calls = 0;
+  await stubAuthenticator(page);
+  let fresh = false;
+  let jobCalls = 0;
+  let loggedOut = false;
+  const verifyBodies: unknown[] = [];
+  await page.route('**/admin/api/v1/auth/logout', (r) => {
+    loggedOut = true;
+    return r.fulfill({ status: 204 });
+  });
+  await page.route('**/admin/api/v1/migration/jobs', (r) => {
+    jobCalls += 1;
+    return r.fulfill(
+      fresh
+        ? { status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }
+        : reauthRequired,
+    );
+  });
+  await page.route('**/admin/api/v1/auth/reauth/options', (r) => r.fulfill(reauthOptions));
+  await page.route('**/admin/api/v1/auth/reauth/verify', (r) => {
+    verifyBodies.push(r.request().postDataJSON());
+    fresh = true;
+    return r.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'fresh', authenticatedAt: 'x', freshUntil: 'y' }),
+    });
+  });
+  await page.goto('/migration');
+  const dialog = page.getByRole('alertdialog', { name: 'Bestätigung erforderlich' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Mit Passkey bestätigen' })).toBeFocused();
+  const before = jobCalls;
+  await dialog.getByRole('button', { name: 'Mit Passkey bestätigen' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/migration$/);
+  expect(verifyBodies).toHaveLength(1);
+  expect((verifyBodies[0] as { challengeId: string }).challengeId).toBe(
+    '7d4a1c8e-0000-4000-8000-000000000001',
+  );
+  await expect.poll(() => jobCalls).toBeGreaterThan(before);
+  expect(loggedOut).toBe(false);
+  await expect(page.getByText(/Keine Berechtigung oder der Umstieg ist deaktiviert/)).toHaveCount(
+    0,
+  );
+});
+
+test('Step-up abgelehnt (Zweitfaktor verlangt): Rückfall auf die vollständige Anmeldung', async ({
+  page,
+}) => {
+  await mock(page);
+  await stubAuthenticator(page);
   let loggedOut = false;
   await page.route('**/admin/api/v1/auth/logout', (r) => {
     loggedOut = true;
@@ -1550,22 +1650,46 @@ test('403 reauthentication_required: Umstiegsseite führt zur Passkey-Bestätigu
         })
       : r.fallback(),
   );
-  await page.route('**/admin/api/v1/migration/jobs', (r) => {
-    calls += 1;
-    return r.fulfill({
-      status: 403,
+  await page.route('**/admin/api/v1/migration/jobs', (r) => r.fulfill(reauthRequired));
+  await page.route('**/admin/api/v1/auth/reauth/options', (r) =>
+    r.fulfill({
+      status: 409,
       contentType: 'application/json',
-      body: JSON.stringify({
-        message: 'Bitte erneut anmelden, um diese Aktion zu bestätigen.',
-        requestId: 'x',
-        code: 'reauthentication_required',
-      }),
-    });
+      body: JSON.stringify({ code: 'second_factor_required', message: 'x', requestId: 'x' }),
+    }),
+  );
+  await page.goto('/migration');
+  const dialog = page.getByRole('alertdialog', { name: 'Bestätigung erforderlich' });
+  await dialog.getByRole('button', { name: 'Mit Passkey bestätigen' }).click();
+  await expect(page).toHaveURL(/\/login\?next=%2Fmigration&reauth=1/);
+  expect(loggedOut).toBe(true);
+});
+
+test('Abbrechen: Hintergrundabfragen öffnen den Dialog nicht erneut (kein Dialog-Spam beim Polling)', async ({
+  page,
+}) => {
+  await mock(page);
+  await stubAuthenticator(page);
+  let jobCalls = 0;
+  let optionCalls = 0;
+  await page.route('**/admin/api/v1/migration/jobs', (r) => {
+    jobCalls += 1;
+    return r.fulfill(reauthRequired);
+  });
+  await page.route('**/admin/api/v1/auth/reauth/options', (r) => {
+    optionCalls += 1;
+    return r.fulfill(reauthOptions);
   });
   await page.goto('/migration');
-  await expect(page).toHaveURL(/\/login\?next=%2Fmigration&reauth=1/);
-  await expect(page.getByText(/Keine Berechtigung oder der Umstieg ist deaktiviert/)).toHaveCount(
-    0,
-  );
-  expect(calls).toBeGreaterThan(0);
+  const dialog = page.getByRole('alertdialog', { name: 'Bestätigung erforderlich' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(dialog).toBeHidden();
+  const after = jobCalls;
+  // Two polling periods (3 s) pass without user action.
+  await page.waitForTimeout(6_500);
+  await expect(dialog).toBeHidden();
+  expect(jobCalls).toBe(after);
+  expect(optionCalls).toBe(0);
+  await expect(page).toHaveURL(/\/migration$/);
 });

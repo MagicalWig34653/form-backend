@@ -85,6 +85,7 @@ final class LoginDBTests: XCTestCase {
 
     func testInternalPasskeyAloneAndFreshLoginExpiry() async throws {
         try await withEnv(vector: "es256_ok_counter_0_0", passwordHash: "", secondFactor: false) { e, v in
+            try await SystemSettings.write(e.f.app.db(.mysql) as! SQLDatabase, key: "auth.freshLoginMinutes", value: "5", at: DB.time(Date()))
             let (_, anon) = try await e.sessions.createAnonymous()
             try await installChallenge(e, v, session: anon)
             let (token, auth) = try await e.login.finishPasskey(session: anon, input: input(e, v), clientIP: ip)

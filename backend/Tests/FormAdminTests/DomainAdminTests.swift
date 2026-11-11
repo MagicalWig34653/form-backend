@@ -49,7 +49,7 @@ final class DomainAdminTests: XCTestCase {
             try await w.client.get("domains?tenantId=\(other)") { XCTAssertEqual($0.status, .notFound) }
             try await w.client.post("domains", body(w), csrf: false) { XCTAssertEqual($0.status, .forbidden) }
             try await w.client.post("domains", body(w, enabled: true, production: true)) { XCTAssertEqual($0.status.code, 422) }
-            try await f.sql.raw("UPDATE sessions SET authenticated_at=DATE_SUB(NOW(),INTERVAL 10 MINUTE) WHERE account_id=\(bind: DB.bin(w.user))").run()
+            try await f.sql.raw("UPDATE sessions SET authenticated_at=DATE_SUB(NOW(),INTERVAL 45 MINUTE) WHERE account_id=\(bind: DB.bin(w.user))").run()
             try await w.client.post("domains", body(w)) { XCTAssertEqual($0.status.code, 403) }
         }
     }

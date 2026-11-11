@@ -67,6 +67,8 @@ public enum SettingsRegistry {
         .init("setup.step", "Einrichtung", "integer", "0", "", min: 0, max: 5, restart: false),
         .init("setup.mailPending", "Einrichtung", "boolean", "true", "", restart: false),
         .init("setup.completed", "Einrichtung", "boolean", "false", "", restart: false),
+        .init("auth.freshLoginMinutes", "Anmeldung", "integer", "30", "", min: 1, max: 120, restart: false),
+        .init("auth.sessionIdleMinutes", "Anmeldung", "integer", "120", "", min: 5, max: 720, restart: false),
         .init("migration.enabled", "Umstieg", "boolean", "true", "", restart: false),
         .init("migration.allowedNets", "Umstieg", "cidrs", "", "FORM_MIGRATION_ALLOWED_NETS", restart: false),
         .init("mail.allowedNets", "Mail-Netze", "cidrs", "", "FORM_MAIL_ALLOWED_NETS"),

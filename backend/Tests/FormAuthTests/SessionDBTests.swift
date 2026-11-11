@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import Crypto
+import FormCore
 import FormPersistence
 import Foundation
 import SQLKit
@@ -46,6 +47,8 @@ final class SessionDBTests: XCTestCase {
 
     func testRotationRevokesOldSessionAndChallengesAndAllowsNewToken() async throws {
         try await DBFixture.with { f in
+            // This test walks through the 30 minute idle window; the default is now 120 minutes (setting auth.sessionIdleMinutes).
+            try await SystemSettings.write(f.sql, key: "auth.sessionIdleMinutes", value: "30", at: DB.time(Date()))
             let clock = Clock(); let s = service(f, clock)
             let account = try await f.account()
             let (oldToken, old) = try await s.createAnonymous()
@@ -80,6 +83,33 @@ final class SessionDBTests: XCTestCase {
             clock.t.addTimeInterval(31 * 60)
             let idleGone = try await s.resolve(token: authToken)
             XCTAssertNil(idleGone)
+        }
+    }
+
+    func testIdleWindowDefaultsToTwoHoursIsConfigurableAndNeverWidensOnBadValues() async throws {
+        try await DBFixture.with { f in
+            let clock = Clock()
+            let s = service(f, clock)
+            let account = try await f.account()
+            let (_, anon) = try await s.createAnonymous()
+            let (token, _) = try await s.rotate(from: anon, to: .authenticated, accountID: account, method: "passkey", rightsVersion: 1)
+            // Default 120 minutes: still signed in after 100 minutes of inactivity (the former fixed limit was 30), gone after 2 h 1 min.
+            clock.t.addTimeInterval(100 * 60)
+            let at100 = try await s.resolve(token: token)
+            XCTAssertNotNil(at100)
+            clock.t.addTimeInterval(121 * 60)
+            let at221 = try await s.resolve(token: token)
+            XCTAssertNil(at221)
+            // Configurable down to 10 minutes.
+            try await SystemSettings.write(f.sql, key: "auth.sessionIdleMinutes", value: "10", at: DB.time(Date()))
+            let (_, anon2) = try await s.createAnonymous()
+            let (token2, _) = try await s.rotate(from: anon2, to: .authenticated, accountID: account, method: "passkey", rightsVersion: 1)
+            clock.t.addTimeInterval(11 * 60)
+            let gone = try await s.resolve(token: token2)
+            XCTAssertNil(gone)
+            // Out-of-range values are rejected by the registry, so they can never widen the window.
+            XCTAssertThrowsError(try SettingsRegistry.entries.first { $0.key == "auth.sessionIdleMinutes" }!.validate("4"))
+            XCTAssertThrowsError(try SettingsRegistry.entries.first { $0.key == "auth.sessionIdleMinutes" }!.validate("721"))
         }
     }
 

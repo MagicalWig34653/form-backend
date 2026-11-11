@@ -14,6 +14,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { Dialog, DialogTrigger, DialogClose, DialogContent } from '$lib/components/ui/dialog';
   import NavIcon from './NavIcon.svelte';
+  import { appearanceSync } from '$lib/appearanceAccount';
   const modes: Mode[] = ['light', 'dark', 'system'];
   let preview = $state(true);
 </script>
@@ -93,6 +94,15 @@
         <Badge>{t.shell.preview}</Badge>
         <Switch bind:checked={preview} tabindex={-1} />
       </div>
+      {#if appearanceSync.account && appearanceSync.saveFailed}
+        <p class="text-destructive m-0 text-xs" role="status" data-testid="appearance-save-failed">
+          {t.shell.appearanceSaveFailed}
+        </p>
+      {:else}
+        <p class="text-muted-foreground m-0 text-xs" data-testid="appearance-storage">
+          {appearanceSync.account ? t.shell.appearanceAccount : t.shell.appearanceDevice}
+        </p>
+      {/if}
     </div>
     <DialogClose
       >{#snippet child({ props })}<Button {...props} variant="outline">{t.shell.close}</Button

@@ -5396,10 +5396,12 @@ components:
       - identity.manage
       - key.manage
       - privacy.manage
+      - migration.run
       - release.publish
       - statistics.delete
       - statistics.read
       - system.manage
+      - system.settings
       - test-target.manage
       - test.run
       - token.manage

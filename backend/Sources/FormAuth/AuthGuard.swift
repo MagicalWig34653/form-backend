@@ -96,9 +96,12 @@ public struct AuthGuard: Sendable {
               try await sessions.verifyCSRF(req.headers.first(name: "X-CSRF-Token"), for: session) else { throw CSRFInvalid() }
     }
 
-    /// Sensitive actions need a recent login (`maxAge`, default 5 min, anmeldung.md); otherwise `reauthentication_required`.
-    public func requireFreshAuthentication(_ session: SessionRecord, maxAge: TimeInterval = 300, now: Date) async throws {
-        guard let at = try await sessions.authenticatedAt(session), now.timeIntervalSince(at) <= maxAge else { throw ReauthenticationRequired() }
+    /// Sensitive actions need a recent login or passkey step-up (`maxAge`, default: setting `auth.freshLoginMinutes`, 30 min; anmeldung.md);
+    /// otherwise `reauthentication_required`.
+    public func requireFreshAuthentication(_ session: SessionRecord, maxAge: TimeInterval? = nil, now: Date) async throws {
+        let window: TimeInterval
+        if let maxAge { window = maxAge } else { window = await sessions.freshWindow() }
+        guard let at = try await sessions.authenticatedAt(session), now.timeIntervalSince(at) <= window else { throw ReauthenticationRequired() }
     }
 
     /// A fully authenticated session (both factors); for mutations also Origin + CSRF. 401 otherwise.

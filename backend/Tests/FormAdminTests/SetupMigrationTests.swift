@@ -3,6 +3,7 @@
 import FormAuth
 import FormCore
 import FormMail
+import FormMigration
 import FormPersistence
 import Foundation
 import SQLKit
@@ -102,7 +103,11 @@ final class SetupMigrationTests: XCTestCase {
                 do {
                     try await service.withSource(source) { _ in XCTFail("Disallowed source opened") }
                     XCTFail("Public migration source accepted")
-                } catch { XCTAssertEqual(error as? HostGuard.Failure, .blocked) }
+                } catch {
+                    // Still refused before any connection; the answer now names the setting to change instead of a bare 500.
+                    let failure = try XCTUnwrap(error as? ValidationFailed, "expected ValidationFailed, got \(error)")
+                    XCTAssertTrue(failure.detail.contains("migration.allowedNets"))
+                }
             }
         }
     }
@@ -143,7 +148,77 @@ final class SetupMigrationTests: XCTestCase {
             try await user.send(.POST, "migration/jobs/\(missingJob)/verify", body: "{}", csrf: false) { XCTAssertEqual($0.status, .forbidden) }
             try await user.send(.POST, "migration/test", body: "{}", csrf: false) { XCTAssertEqual($0.status, .forbidden) }
             try await fx.sql.raw("UPDATE sessions SET authenticated_at='2000-01-01' WHERE account_id=\(bind: DB.bin(actor))").run()
-            try await user.get("migration/jobs") { XCTAssertEqual($0.status, .forbidden) }
+            // Status list is a plain read without secrets: no fresh login needed (contracts/auth/anmeldung.md, Frische-Liste).
+            try await user.get("migration/jobs") { XCTAssertEqual($0.status, .ok) }
+            // Everything that changes state, tests the source or reads migrated ciphertext still needs a fresh login.
+            func reauth(_ res: XCTHTTPResponse) {
+                XCTAssertEqual(res.status, .forbidden)
+                XCTAssertTrue(res.body.string.contains("reauthentication_required"), res.body.string)
+            }
+            try await user.get("migration/jobs/\(missingJob)/probe") { reauth($0) }
+            try await user.send(.POST, "migration/jobs/\(missingJob)/verify", body: "{\"hash\":\"abc\",\"success\":true}") { reauth($0) }
+            try await user.send(.POST, "migration/jobs/\(missingJob)/pause", body: "{}") { reauth($0) }
+            try await user.send(.POST, "migration/test", body: "{}") { reauth($0) }
+            try await user.send(.POST, "migration/jobs", body: "{}") { reauth($0) }
+        }
+    }
+    func testSourceOutsideAllowedNetworksIsRejectedWithExplanation() async throws {
+        try await AdminFixture.with { fx in
+            let secrets = try SecretStore(db: fx.app.db(.mysql), keys: StaticServerKey(Data(repeating: 31, count: 32)))
+            SetupMigrationRoutes.register(fx.app, guardian: fx.guardian, secrets: secrets, startWorker: false)
+            let actor = try await fx.account(), user = try await fx.login(actor)
+            try await fx.grant(actor, "migration.run", system: true, by: actor)
+            // Default: migration.allowedNets is empty, so every source is outside the allowlist. The answer must say so (not a bare 500).
+            let body = "{\"host\":\"127.0.0.1\",\"port\":3306,\"database\":\"old\",\"username\":\"ro\",\"password\":\"x\",\"tls\":\"verify\"}"
+            try await user.send(.POST, "migration/test", body: body) {
+                XCTAssertEqual($0.status, .unprocessableEntity)
+                XCTAssertTrue($0.body.string.contains("migration.allowedNets"), $0.body.string)
+                XCTAssertFalse($0.body.string.contains("127.0.0.1"), "the answer must not echo the source")
+            }
+        }
+    }
+    func testJobErrorCodeKeepsTheCauseWithoutAnySourceValue() {
+        // Before: every failure was stored as "migration_failed". Now the code names reason and column (VARCHAR(40), ascii).
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidSourceAt(table: "anfragen", column: "time", reason: .invalidTimestamp)), "invalidTimestamp@time")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidSourceAt(table: "stored_objects", column: "kid", reason: .unknownKeyGeneration)), "unknownKeyGeneration@kid")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.conflict), "conflict")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidPlan), "invalid_plan")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidSource), "invalid_source")
+        // An unknown error (may carry SQL values) is never described, only generic.
+        struct Foreign: Error, CustomStringConvertible { let description = "SELECT secret FROM x" }
+        XCTAssertEqual(MigrationService.errorCode(for: Foreign()), "migration_failed")
+        // A hostile column name cannot leak into the code or overflow the column.
+        let hostile = MigrationService.errorCode(for: ImportFailure.invalidSourceAt(table: "t", column: "x'; DROP TABLE a;--", reason: .invalidInteger))
+        XCTAssertEqual(hostile, "invalidInteger@column")
+        let long = MigrationService.errorCode(for: ImportFailure.invalidSourceAt(table: "t", column: String(repeating: "a", count: 64), reason: .unknownKeyGeneration))
+        XCTAssertLessThanOrEqual(long.utf8.count, 40)
+    }
+    func testFreshLoginWindowIsConfigurableAndDefaultsToThirtyMinutes() async throws {
+        try await AdminFixture.with { fx in
+            let secrets = try SecretStore(db: fx.app.db(.mysql), keys: StaticServerKey(Data(repeating: 31, count: 32)))
+            SetupMigrationRoutes.register(fx.app, guardian: fx.guardian, secrets: secrets, startWorker: false)
+            let actor = try await fx.account(), user = try await fx.login(actor)
+            try await fx.grant(actor, "migration.run", system: true, by: actor)
+            // GET jobs is readable without freshness since ADR 0037; the probe download still demands it (404 = passed the gate, job unknown).
+            let missing = UUID().uuidString
+            func age(_ minutes: Int) async throws {
+                try await fx.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL \(unsafeRaw: String(minutes)) MINUTE) WHERE account_id=\(bind: DB.bin(actor))").run()
+            }
+            // Default 30 min: a 10 minute old login is still fresh (it was rejected under the former fixed 5 minutes), 40 minutes is not.
+            try await age(10)
+            try await user.get("migration/jobs/\(missing)/probe") { XCTAssertEqual($0.status, .notFound) }
+            try await age(40)
+            try await user.get("migration/jobs/\(missing)/probe") { XCTAssertEqual($0.status, .forbidden); XCTAssertTrue($0.body.string.contains("reauthentication_required")) }
+            // Configurable: 5 minutes restores the old strictness, 60 minutes accepts the 40 minute old login.
+            try await SystemSettings.write(fx.sql, key: "auth.freshLoginMinutes", value: "5", at: DB.time(Date()))
+            try await age(10)
+            try await user.get("migration/jobs/\(missing)/probe") { XCTAssertEqual($0.status, .forbidden) }
+            try await SystemSettings.write(fx.sql, key: "auth.freshLoginMinutes", value: "60", at: DB.time(Date()))
+            try await age(40)
+            try await user.get("migration/jobs/\(missing)/probe") { XCTAssertEqual($0.status, .notFound) }
+            // An invalid stored value never widens the window: back to 5 minutes.
+            XCTAssertThrowsError(try SettingsRegistry.entries.first { $0.key == "auth.freshLoginMinutes" }!.validate("0"))
+            XCTAssertThrowsError(try SettingsRegistry.entries.first { $0.key == "auth.freshLoginMinutes" }!.validate("121"))
         }
     }
 }

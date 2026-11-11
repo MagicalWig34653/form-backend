@@ -4,6 +4,8 @@
 # (backend/Sources/FormAdmin); dieses Dokument ist ein Abbild, KEIN geprüfter Vertrag (Status VORGESCHLAGEN).
 # Basis: /admin/api/v1. Alle Operationen: Sitzungscookie, bei Mutationen Origin + X-CSRF-Token; 401 ohne Sitzung,
 # 404 für nicht sichtbare Objekte, 403 bei fehlendem Recht, 403 mit Code reauthentication_required bei veralteter Anmeldung (>5 min).
+# Frische (<= 5 min, Login oder Passkey-Step-up /auth/reauth/*, ADR 0037) gilt für verändernde und sensible Operationen;
+# ohne Frische lesbar: GET /migration/jobs (Statusliste) und GET /settings (sensible Werte maskiert).
 openapi: 3.1.0
 info:
   title: Formular-Backend Admin-API - umgesetzte P5-Operationen
@@ -68,6 +70,14 @@ components:
         keyId: { type: string }
         format: { type: string, const: 'KUBUS-AEAD:2' }
         package: { type: string }
+    AccountPreferences:
+      type: object
+      description: 'Darstellungsoptionen des eigenen Kontos (account_preferences). Nicht gesetzte Schlüssel fehlen. Allowlist wie pwa/src/lib/accents.ts.'
+      additionalProperties: false
+      properties:
+        theme: { type: string, enum: [light, dark, system] }
+        accent: { type: string, enum: [tuerkis, blau, violett, orange, rot, gruen, gelb, bernstein, limette, smaragd, cyan, himmelblau, indigo, purpur, magenta, pink, rose, koralle, braun, schiefer] }
+        glow: { type: integer, minimum: 0, maximum: 6 }
 paths:
   /me:
     get:
@@ -308,3 +318,80 @@ paths:
       description: 'Recht system.manage. Body {kind, name, config, credential}; Zugangsdaten werden verschlüsselt abgelegt.'
       security: [{ Session: [] }]
       responses: { '201': { description: Angelegt. } }
+  /me/preferences:
+    get:
+      operationId: getOwnPreferences
+      description: 'Gespeicherte Darstellungsoptionen des eigenen Kontos (Konto aus der Sitzung, kein Parameter). Keine frische Anmeldung, kein Audit. no-store.'
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Optionen.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccountPreferences' } } }
+        '401': { description: Sitzung fehlt. }
+    put:
+      operationId: setOwnPreferences
+      description: 'Setzt eine nichtleere Teilmenge (Upsert je Schlüssel, modified_at = jetzt); übrige Schlüssel bleiben. Origin + CSRF, keine frische Anmeldung, kein Audit. Unbekannter Schlüssel oder Wert außerhalb der Allowlist: 422 validation_failed „Ungültige Darstellungsoption.“; doppelte Schlüssel/ungültiges JSON 400. Antwort: vollständiger Stand. no-store.'
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AccountPreferences', minProperties: 1 } } }
+      responses:
+        '200':
+          description: Vollständiger Stand nach dem Speichern.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccountPreferences' } } }
+        '401': { description: Sitzung fehlt. }
+        '403': { description: CSRF oder Origin ungültig. }
+        '422': { description: Unbekannter Schlüssel oder ungültiger Wert. }
+  /auth/reauth/options:
+    post:
+      operationId: reauthPasskeyOptions
+      description: 'ADR 0037. Umsetzung des Entwurfs reauthenticatePasskeyOptions (ohne Recht account.manage). Nur authentifizierte Cookie-Sitzung mit Konto, Origin + X-CSRF-Token, Login-Budget. Erzeugt eine einmalige Challenge (auth_challenges.purpose fresh-auth, an Sitzung und Konto gebunden, 120 s, nur SHA-256 gespeichert) und widerruft ältere offene Step-up-Challenges der Sitzung. allowCredentials nur mit Credential-IDs des eigenen Kontos. no-store.'
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Optionen für navigator.credentials.get.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, publicKey, expiresAt]
+                properties:
+                  challengeId: { type: string, format: uuid }
+                  expiresAt: { type: string, format: date-time }
+                  publicKey:
+                    type: object
+                    required: [challenge, rpId, timeout, userVerification, allowCredentials]
+                    properties:
+                      challenge: { type: string, description: base64url }
+                      rpId: { type: string }
+                      timeout: { type: integer }
+                      userVerification: { type: string, const: required }
+                      allowCredentials:
+                        type: array
+                        items: { type: object, required: [type, id], properties: { type: { type: string, const: public-key }, id: { type: string } } }
+        '401': { description: 'Keine authentifizierte Sitzung (anonym, factor_pending, abgelaufen, Bearer).' }
+        '403': { description: 'csrf_invalid (Origin/CSRF).' }
+        '409': { description: 'second_factor_required: Der Listener verlangt Passwort/Zweitfaktor; der Client führt den vollständigen Login aus.' }
+        '429': { description: 'rate_limited mit Retry-After.' }
+  /auth/reauth/verify:
+    post:
+      operationId: reauthPasskeyVerify
+      description: 'ADR 0037. Umsetzung des Entwurfs reauthenticate. Body wie /auth/passkey/verify ({challengeId, credential}). Challenge wird vor der Prüfung atomar verbraucht (kein Replay, auch nicht nach Fehlschlag). Der Passkey muss zum Sitzungskonto gehören, UV ist Pflicht, Zählerregel atomar wie beim Login. Erfolg setzt nur sessions.authenticated_at dieser Sitzung; kein Set-Cookie, kein neuer CSRF-Token, keine Rechteänderung; Audit auth.reauth. Fehlversuche zählen je IP (passwordPerIP) und je Konto+IP (5/15 min, Backoff, 15 min Sperre). no-store.'
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Frisch bestätigt.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, authenticatedAt, freshUntil]
+                properties:
+                  status: { type: string, const: fresh }
+                  authenticatedAt: { type: string, format: date-time }
+                  freshUntil: { type: string, format: date-time, description: 'authenticatedAt + 300 s' }
+        '400': { description: Syntax. }
+        '401': { description: 'authentication_failed (einheitlich für ungültig, abgelaufen, verbraucht, fremde Sitzung, fremdes Konto, Zählerrückschritt) oder keine authentifizierte Sitzung.' }
+        '403': { description: 'csrf_invalid.' }
+        '409': { description: 'second_factor_required (siehe Optionen).' }
+        '429': { description: 'rate_limited mit Retry-After.' }

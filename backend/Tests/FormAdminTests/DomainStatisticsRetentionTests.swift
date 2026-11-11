@@ -57,7 +57,7 @@ final class DomainStatisticsRetentionTests: XCTestCase {
             try await f.grant(user, "statistics.delete", customer: tenant, by: root)
             let other = try await f.customer()
             try await c.send(.DELETE, "tenants/\(other)/forms/\(form)/statistics") { XCTAssertEqual($0.status, .notFound) }
-            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE account_id = \(bind: DB.bin(user))").run()
+            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(), INTERVAL 45 MINUTE) WHERE account_id = \(bind: DB.bin(user))").run()
             try await c.send(.DELETE, path) { XCTAssertEqual($0.status, .forbidden) }
             let fresh = try await f.login(user)
             try await fresh.send(.DELETE, path) { XCTAssertEqual($0.status, .ok); XCTAssertEqual(jsonObject($0)["deleted"] as? Int, 6) }

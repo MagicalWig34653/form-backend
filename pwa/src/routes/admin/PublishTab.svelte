@@ -114,8 +114,9 @@
   }
 
   function fail(e: Parameters<typeof describeError>[0]): void {
+    // The passkey dialog already appeared (central handler); after a cancel the banner offers it again.
     if (needsFreshLogin(e)) {
-      void reauthenticate(router.path);
+      needLogin = true;
       return;
     }
     if (handleSessionError(e)) return;

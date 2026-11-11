@@ -83,3 +83,24 @@ export function countRows(counts: Record<string, number>): ReportRow[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => ({ key, value: String(value) }));
 }
+
+/**
+ * Plain-language cause for the error code of a failed run. The server stores either a fixed code
+ * (e.g. conflict) or `<reason>@<column>` for a value in the source that could not be taken over
+ * (never the value itself). Unknown codes are shown as they are.
+ */
+export function describeJobError(
+  code: string,
+  texts: { reasons: Record<string, string>; codes: Record<string, string>; column: string },
+): string {
+  const known = texts.codes[code];
+  if (known) return known;
+  const at = code.indexOf('@');
+  if (at > 0) {
+    const reason = code.slice(0, at);
+    const column = code.slice(at + 1);
+    const text = texts.reasons[reason];
+    if (text) return `${text} (${texts.column} ${column})`;
+  }
+  return code;
+}

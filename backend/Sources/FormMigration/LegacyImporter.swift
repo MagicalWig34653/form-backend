@@ -23,7 +23,7 @@ public struct ImportPlan: Codable {
     }
 }
 public enum SourceFailureReason: String, Sendable {
-    case missingColumn, missingValue, invalidHex, invalidUTF8, invalidUUID, invalidIdentifier, invalidCursor, invalidProjection, invalidInteger, invalidBoolean, invalidTimestamp, countMismatch
+    case missingColumn, missingValue, invalidHex, invalidUTF8, invalidUUID, invalidIdentifier, invalidCursor, invalidProjection, invalidInteger, invalidBoolean, invalidTimestamp, countMismatch, unknownKeyGeneration
 }
 
 public enum ImportFailure: Error, CustomStringConvertible {

@@ -7,12 +7,13 @@
   import { http, adminApi } from '$lib/api';
   import type { Tenant } from '$lib/api/admin';
   import { createImportPlan, migrationStates } from '$lib/setup';
-  import { reauthenticate } from '$lib/admin/guard.svelte';
+  import { reauthenticate, stepUp } from '$lib/admin/guard.svelte';
   import { needsFreshLogin } from '$lib/admin/describe';
   import {
     MIGRATION_STEPS,
     canAdvance,
     countRows,
+    describeJobError,
     isSha256,
     mappingIssues,
     landingStep,
@@ -129,7 +130,12 @@
       await reauthenticate('/migration');
       return;
     }
-    error = r.error.status === 403 ? f.noRight : f.connection;
+    error =
+      r.error.status === 403
+        ? f.noRight
+        : r.error.status === 422 && r.error.detail
+          ? r.error.detail
+          : f.connection;
   }
   async function load() {
     if (!tenants.length) {
@@ -145,7 +151,10 @@
   }
   onMount(() => {
     void load();
-    const timer = setInterval(() => void load(), 3000);
+    // No background poll while the passkey dialog is open or after it was cancelled (no dialog spam, ADR 0037).
+    const timer = setInterval(() => {
+      if (!stepUp.open && !stepUp.suppressed) void load();
+    }, 3000);
     return () => {
       clearInterval(timer);
       password = '';
@@ -628,7 +637,14 @@
               {#if job.state === 'review' && job.dryRun}<Banner tone="info">{f.run.dryDone}</Banner
                 >{/if}
               {#if job.error}<p role="alert" class="text-red-700 dark:text-destructive m-0 text-sm">
-                  {f.run.failed.replace('{phase}', job.phase).replace('{error}', job.error)}
+                  {f.run.failed.replace('{phase}', job.phase).replace(
+                    '{error}',
+                    describeJobError(job.error, {
+                      reasons: f.run.errorReasons,
+                      codes: f.run.errorCodes,
+                      column: f.run.errorColumn,
+                    }),
+                  )}
                 </p>{/if}
               {@render report(job)}
               <div class="flex flex-wrap gap-2">

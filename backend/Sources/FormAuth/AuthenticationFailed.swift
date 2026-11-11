@@ -49,6 +49,15 @@ public struct ServiceUnavailable: PublicProblemError {
     public var extraHeaders: [(name: String, value: String)] { retryAfter.map { [("Retry-After", String($0))] } ?? [] }
 }
 
+/// 409: the passkey step-up is not available under this listener policy (password/second factor required); the client
+/// falls back to the full login. Says nothing about the account or credential.
+public struct StepUpUnavailable: PublicProblemError {
+    public init() {}
+    public var statusCode: UInt { 409 }
+    public var code: String { "second_factor_required" }
+    public var message: String { "Bitte melden Sie sich erneut vollständig an." }
+}
+
 /// 403: the action needs a fresh authentication (<= 5 min, anmeldung.md); the client must re-authenticate first.
 public struct ReauthenticationRequired: PublicProblemError {
     public init() {}

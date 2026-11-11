@@ -411,8 +411,11 @@ try {
     glowSteps: ['Aus', 'Zart', 'Fein', 'Mittel', 'Deutlich', 'Kräftig', 'Intensiv'],
     glowHint:
       'Ein dezentes Leuchten in der Akzentfarbe. Aus ist die Vorgabe; es verschiebt nichts im Layout.',
-    appearanceIntro:
-      'Hell, dunkel oder wie das Gerät; Akzentfarbe und Leuchten gelten nur für diesen Browser.',
+    appearanceIntro: 'Hell, dunkel oder wie das Gerät, dazu Akzentfarbe und Leuchten.',
+    appearanceAccount: 'Wird in Ihrem Konto gespeichert.',
+    appearanceDevice: 'Gilt für diesen Browser. Nach der Anmeldung gelten die Werte Ihres Kontos.',
+    appearanceSaveFailed:
+      'Konnte nicht im Konto gespeichert werden. Ihre Wahl bleibt in diesem Browser und wird erneut gesendet.',
     skipToContent: 'Zum Inhalt',
     openGroup: 'Gruppe öffnen',
     closeGroup: 'Gruppe schließen',
@@ -564,6 +567,19 @@ try {
     count: '{n} Formulare',
     countOne: '1 Formular',
     more: 'Von {name} werden nur die ersten Formulare angezeigt. Öffnen Sie den Kunden für die vollständige Liste.',
+  },
+  reauth: {
+    title: 'Bestätigung erforderlich',
+    description:
+      'Bitte bestätigen Sie mit Ihrem Passkey. Die letzte Anmeldung ist länger als 5 Minuten her; Ihre Eingaben auf dieser Seite bleiben erhalten.',
+    confirm: 'Mit Passkey bestätigen',
+    retry: 'Erneut versuchen',
+    cancel: 'Abbrechen',
+    working: 'Warte auf Ihren Passkey …',
+    cancelled: 'Die Passkey-Abfrage wurde abgebrochen oder ist abgelaufen.',
+    failed: 'Die Bestätigung ist fehlgeschlagen. Bitte versuchen Sie es erneut.',
+    rateLimited:
+      'Zu viele Versuche. Bitte warten Sie einige Minuten und versuchen Sie es dann erneut.',
   },
   confirm: {
     cancel: 'Abbrechen',
@@ -983,6 +999,7 @@ try {
         recipients: 'Bitte 1 bis 20 gültige Adressen angeben.',
         subject: 'Bitte einen einzeiligen Betreff eingeben.',
         body: 'Bitte einen Inhalt eingeben.',
+        bodySize: 'Der Inhalt ist größer als 100 kB. Bitte kürzen Sie ihn.',
         field: 'Bitte ein vorhandenes Feld wählen.',
         derived:
           'Abgeleitete Werte: Name (Buchstaben, Ziffern, _; nicht wie ein Feld), vorhandene Felder und ein Format angeben.',
@@ -1016,6 +1033,137 @@ try {
         pending: 'Ausstehend',
       },
       kinds: { organisation: 'An das Team', confirmation: 'Bestätigung' },
+      builder: {
+        modes: 'Bearbeitungsart',
+        design: 'Design',
+        simple: 'Einfach',
+        source: 'Quelltext',
+        loading: 'Editor wird geladen …',
+        loadFailed:
+          'Der Editor konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
+        size: 'Größe: {kb} kB von 100 kB',
+        tooLarge:
+          'Die Vorlage ist größer als 100 kB und kann so nicht gespeichert werden. Entfernen Sie z. B. eingebettete Bilder.',
+        sourceKept:
+          'Die Design-Quelle bleibt erhalten. Änderungen hier ersetzt das Design, wenn Sie wieder dorthin wechseln.',
+        sourceLabel: 'HTML-Quelltext',
+        simpleLabel: 'Inhalt (Einfach)',
+        preview: 'Vorschau mit Beispielwerten',
+        previewHint:
+          'Platzhalter stehen hier als „Beispiel Feldname“. Externe Bilder erscheinen in der Vorschau nicht, in der Mail schon.',
+        previewTitle: 'Vorschau der Mail mit Beispielwerten',
+        example: 'Beispiel',
+        mobileHint:
+          'Der Design-Modus ist für größere Bildschirme gedacht. Bearbeiten Sie die Mail am besten am Desktop oder nutzen Sie „Einfach“ oder „Quelltext“.',
+        questions: {
+          foreignToDesign: {
+            title: 'Mit Design-Vorlage beginnen?',
+            description:
+              'Der vorhandene Quelltext lässt sich nicht in MJML zurückverwandeln. Das Design startet mit einer Vorlage und ersetzt den bisherigen Inhalt.',
+            confirm: 'Mit Vorlage beginnen',
+          },
+          foreignToSimple: {
+            title: 'Als Rich-Text übernehmen?',
+            description:
+              'Der vorhandene Quelltext wird als Rich-Text übernommen. Layout, Farben und Tabellen gehen dabei verloren.',
+            confirm: 'Als Rich-Text übernehmen',
+          },
+          handEditsLost: {
+            title: 'Handänderungen ersetzen?',
+            description:
+              'Das HTML wurde im Quelltext von Hand geändert. Der Editor erzeugt es neu aus seiner Quelle; die Handänderungen gehen verloren.',
+            confirm: 'Handänderungen ersetzen',
+          },
+          designLost: {
+            title: 'Design-Quelle verwerfen?',
+            description:
+              'Im Modus „Einfach“ bleiben nur Texte und Links erhalten. Layout, Farben, Bilder und die MJML-Quelle gehen verloren.',
+            confirm: 'Design verwerfen',
+          },
+        },
+        rich: {
+          toolbar: 'Textformat',
+          bold: 'Fett',
+          italic: 'Kursiv',
+          underline: 'Unterstrichen',
+          heading: 'Zwischenüberschrift',
+          bullet: 'Aufzählung',
+          ordered: 'Nummerierte Liste',
+          link: 'Link einfügen',
+          unlink: 'Link entfernen',
+          clear: 'Formatierung entfernen',
+          linkUrl: 'Linkadresse (https:// oder mailto:)',
+          linkApply: 'Link setzen',
+          linkCancel: 'Abbrechen',
+          linkInvalid: 'Bitte eine Adresse mit https://, http:// oder mailto: angeben.',
+        },
+        blocks: {
+          title: 'Bausteine',
+          add: 'Baustein hinzufügen',
+          addHint:
+            'Ein Klick fügt den Baustein nach dem ausgewählten ein. Sie können Bausteine auch in die Liste ziehen.',
+          list: 'Aufbau der Mail',
+          listHint:
+            'Mit Alt und Pfeil nach oben oder unten verschieben Sie den ausgewählten Baustein.',
+          empty: 'Noch keine Bausteine. Fügen Sie oben einen hinzu.',
+          types: {
+            text: 'Text',
+            button: 'Schaltfläche',
+            image: 'Bild',
+            divider: 'Trennlinie',
+            spacer: 'Abstand',
+            raw: 'MJML',
+          },
+          select: '{label} bearbeiten',
+          up: '{label} nach oben',
+          down: '{label} nach unten',
+          remove: '{label} entfernen',
+          drag: '{label} ziehen',
+          moved: '{label}, Position {n} von {total}',
+          added: '{label} hinzugefügt, Position {n} von {total}',
+          removed: '{label} entfernt',
+          newText: 'Ihr Text.',
+          newButton: 'Mehr erfahren',
+          greeting: 'Guten Tag,<br><br>Ihr Text.',
+        },
+        props: {
+          title: 'Eigenschaften',
+          none: 'Wählen Sie einen Baustein in der Liste aus.',
+          text: 'Text',
+          textColor: 'Textfarbe',
+          fontSize: 'Schriftgröße',
+          align: 'Ausrichtung',
+          alignLeft: 'Links',
+          alignCenter: 'Mittig',
+          alignRight: 'Rechts',
+          label: 'Beschriftung',
+          href: 'Linkadresse (https:// oder mailto:)',
+          hrefOptional: 'Linkadresse beim Klick auf das Bild',
+          hrefInvalid:
+            'Nur Adressen mit https://, http:// oder mailto: werden übernommen. Ein Platzhalter darf nicht am Anfang stehen.',
+          background: 'Hintergrundfarbe',
+          src: 'Bildadresse (https://)',
+          srcInvalid:
+            'Bitte eine Bildadresse mit https:// angeben. Bilder werden nicht hochgeladen, sondern nur verlinkt.',
+          alt: 'Alternativtext',
+          width: 'Breite in Pixeln (leer = volle Breite)',
+          dividerColor: 'Linienfarbe',
+          height: 'Höhe in Pixeln',
+          raw: 'MJML-Quelltext des Bausteins',
+          rawHint:
+            'Für Elemente, die der Editor nicht als Baustein kennt. Wird unverändert übernommen.',
+          frame: 'Rahmen der Mail',
+          bodyColor: 'Hintergrund außen',
+          cardColor: 'Hintergrund des Inhalts',
+        },
+        fullscreen: 'Vollbild',
+        exitFullscreen: 'Vollbild beenden',
+        compileErrors: 'MJML-Hinweise: {n}',
+        compileFailed:
+          'Das MJML konnte nicht übersetzt werden. Die gespeicherte Vorlage bleibt unverändert.',
+        unreadable:
+          'Die gespeicherte Design-Quelle konnte nicht gelesen werden. Bearbeiten Sie die Mail im Quelltext.',
+      },
     },
     publish: {
       title: 'Veröffentlichen',
@@ -1026,8 +1174,9 @@ try {
       confirm: 'Ich habe den Entwurf geprüft und möchte ihn veröffentlichen.',
       action: 'Jetzt veröffentlichen',
       done: 'Veröffentlicht: Version {version}.',
-      reauth: 'Zum Veröffentlichen müssen Sie sich erneut anmelden. Ihr Entwurf bleibt erhalten.',
-      reauthButton: 'Erneut anmelden',
+      reauth:
+        'Zum Veröffentlichen ist eine Bestätigung mit Ihrem Passkey nötig. Ihr Entwurf bleibt erhalten.',
+      reauthButton: 'Mit Passkey bestätigen',
       conflictHint:
         'Die Veröffentlichung wurde abgelehnt, weil sich Entwurf oder Version geändert haben. Erhöhen Sie ggf. die Versionsnummer und versuchen Sie es erneut. Für das Veröffentlichen ist eine frische Anmeldung nötig (höchstens 5 Minuten alt).',
       needDraft: 'Zum Veröffentlichen wird ein Entwurf benötigt.',
@@ -1927,6 +2076,14 @@ try {
           title: 'Einrichtung abgeschlossen',
           hint: 'Wird beim Abschluss der Einrichtung gesetzt.',
         },
+        'auth.sessionIdleMinutes': {
+          title: 'Abmeldung bei Inaktivität (Minuten)',
+          hint: 'Nach dieser Zeit ohne Aktivität wird die Sitzung beendet (5 bis 720, Standard 120). Die Höchstdauer einer Sitzung bleibt 12 Stunden.',
+        },
+        'auth.freshLoginMinutes': {
+          title: 'Gültigkeit der Bestätigung (Minuten)',
+          hint: 'So lange nach der Anmeldung gelten sensible Aktionen als bestätigt, danach wird der Passkey erneut abgefragt (1 bis 120, Standard 30). Kürzer ist sicherer.',
+        },
         'migration.enabled': {
           title: 'Umstieg aktiv',
           hint: 'Schaltet den Umstieg aus dem Altsystem frei.',
@@ -2099,7 +2256,35 @@ try {
           confirmed: 'bestätigt',
           open: 'offen',
           running: 'Import läuft',
-          failed: 'Phase {phase}: {error}. Zugang und Schema prüfen; denselben Lauf fortsetzen.',
+          failed: 'Phase {phase}: {error}. Danach denselben Lauf fortsetzen.',
+          errorColumn: 'Spalte',
+          errorCodes: {
+            migration_failed:
+              'Unbekannter Fehler (Details stehen im Server-Log unter „migration job failed“)',
+            invalid_source: 'Ein Wert der Quelle konnte nicht übernommen werden',
+            invalid_plan: 'Der Plan passt nicht zu den Quelldaten (Zuordnung prüfen)',
+            conflict: 'Das Ziel enthält schon abweichende Daten für diese Quelle',
+            missing_target: 'Ein Ziel der Zuordnung existiert nicht',
+            database: 'Datenbankfehler beim Schreiben ins Ziel',
+            lock: 'Ein anderer Import läuft bereits',
+            interrupted: 'Pausiert',
+          },
+          errorReasons: {
+            missingColumn: 'Spalte fehlt in der Quelle',
+            missingValue: 'Pflichtwert fehlt',
+            invalidHex: 'Ungültiger Hex-Wert',
+            invalidUTF8: 'Kein gültiger UTF-8-Text',
+            invalidUUID: 'Keine gültige UUID',
+            invalidIdentifier: 'Ungültiger Bezeichner',
+            invalidCursor: 'Ungültige Position beim Lesen',
+            invalidProjection: 'Ungültige Spaltenauswahl',
+            invalidInteger: 'Keine gültige Ganzzahl',
+            invalidBoolean: 'Kein gültiger Ja/Nein-Wert (erwartet 0 oder 1)',
+            invalidTimestamp: 'Kein gültiger Zeitstempel (erwartet Unix-Sekunden)',
+            countMismatch: 'Zeilenzahl weicht ab',
+            unknownKeyGeneration:
+              'Der Schlüssel (kid) ist im Ziel nicht vorhanden; Schlüsselgenerationen und Kundenzuordnung im Plan prüfen',
+          },
           pause: 'Sicher pausieren',
           resume: 'Fortsetzen',
           import: 'Import starten',

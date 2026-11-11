@@ -150,6 +150,18 @@ conservatively.
 | tabbable | 6.5.1 | MIT | https://github.com/focus-trap/tabbable | runtime (bundled) |
 | @lucide/svelte | 1.57.0 | ISC | https://github.com/lucide-icons/lucide | runtime (bundled), icons; notice in `LICENSES/ISC-lucide.txt` |
 | tailwind-merge | 3.7.0 | MIT | https://github.com/dcastil/tailwind-merge | runtime (bundled) |
+| mjml-browser | 4.18.0 | MIT | https://github.com/mjmlio/mjml (packages/mjml-browser) | runtime (separate lazy chunk, mail builder only); prebuilt bundle of mjml-core 4.18.0 incl. juice, cheerio, htmlparser2, dom-serializer, lodash, mensch, slick, he, @babel/runtime (MIT) and css-select, css-what, cheerio-select, domhandler, domutils, domelementtype, entities, nth-check (BSD-2-Clause), boolbase (ISC); notices in `LICENSES/MIT.txt` and `LICENSES/mjml-browser-bundled-BSD-2-Clause-ISC.txt` |
+
+Mail builder (2026-11-11): `mjml-browser` 4.18.0 is the only added package. It
+has no npm dependencies (self-contained bundle, no `eval` in normal use; only
+guarded `Function("return this")` global probes) and `npm audit` reports no
+advisory for it. `mjml-browser` 5.x was not taken: it requires `cheerio` as an
+external at runtime. Quill 2.0.3 (BSD-3-Clause) was evaluated and rejected:
+open advisory GHSA-v3m3-f69x-jf25 (XSS via HTML export, no patched release)
+and no release since 2025-01; the rich-text editing is own code
+(`pwa/src/lib/components/mail/`). GrapesJS/grapesjs-mjml (BSD-3-Clause) were
+not taken: they inject `<style>` elements (blocked by the app CSP
+`style-src 'self'`) and their canvas is not keyboard accessible.
 
 Notices: `LICENSES/MIT.txt` (MIT), `LICENSES/Apache-2.0.txt` (aria-query,
 axobject-query: Apache-2.0; copyright of these two is held by the A11yance

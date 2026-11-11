@@ -15,7 +15,9 @@ enum SettingsRoutes {
             app.on(method, "admin", "api", "v1", "settings", body: .collect(maxSize: "32kb")) { req async throws -> Response in
                 let s = try await guardian.requireAuthenticated(req, mutation: method == .PUT)
                 try await guardian.budget(req)
-                try await guardian.requireFreshAuthentication(s, now: now())
+                // Reading needs no fresh authentication: sensitive entries are never returned (SettingsRegistry.resolve masks them,
+                // value nil). Changing settings does (contracts/auth/anmeldung.md, "Frische Authentifizierung").
+                if method == .PUT { try await guardian.requireFreshAuthentication(s, now: now()) }
                 let snapshot = try await db.transaction { conn -> Snapshot in
                     let sql = conn as! SQLDatabase
                     try await PermissionService(sql: sql).authorize(account: s.accountID!, "system.settings", on: .system)

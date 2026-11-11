@@ -345,7 +345,7 @@ final class PrivacyTests: XCTestCase {
             let details = try await f.sql.raw("SELECT safe_details_json FROM audit_events WHERE action_code = 'content.export.local'").all(decoding: Details.self)
             XCTAssertTrue(details.allSatisfy { $0.safe_details_json == "{}" })
             try await f.grant(w.user, "content.decrypt", customer: w.tenant, by: w.root)
-            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(6), INTERVAL 10 MINUTE) WHERE account_id = \(bind: DB.bin(w.user)) AND state = 'authenticated'").run()
+            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(6), INTERVAL 45 MINUTE) WHERE account_id = \(bind: DB.bin(w.user)) AND state = 'authenticated'").run()
             try await w.admin.post(base + "/export/audit", "{}") {
                 XCTAssertEqual(obj($0)["code"] as? String, "reauthentication_required")
             }

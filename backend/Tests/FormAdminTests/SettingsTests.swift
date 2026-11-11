@@ -57,7 +57,17 @@ final class SettingsTests: XCTestCase {
             XCTAssertTrue(audit.details.contains("mcp.requestsPerMinute"))
             XCTAssertFalse(audit.details.contains("70"))
             try await fx.sql.raw("UPDATE sessions SET authenticated_at = '2000-01-01' WHERE account_id = \(bind: DB.bin(account))").run()
-            try await user.get("settings") { XCTAssertEqual($0.status, .forbidden) }
+            // Reading stays possible without a fresh login (sensitive entries are masked); changing needs one.
+            try await user.get("settings") { res in
+                XCTAssertEqual(res.status, .ok)
+                let data = try JSONSerialization.jsonObject(with: Data(buffer: res.body)) as! [String: Any]
+                revision = data["revision"] as! String
+            }
+            let stale = "{\"revision\":\"\(revision)\",\"values\":{\"mcp.requestsPerMinute\":\"71\"}}"
+            try await user.send(.PUT, "settings", body: stale) { res in
+                XCTAssertEqual(res.status, .forbidden)
+                XCTAssertTrue(res.body.string.contains("reauthentication_required"), res.body.string)
+            }
         }
     }
 }

@@ -137,6 +137,7 @@ public enum FormAdmin {
         AbuseRoutes.register(tenants, guardian: guardian, db: db, secrets: secrets, now: now)
         if guardian.config.listener == "internal" { LegacyConversionRoutes.register(app, guardian: guardian, db: db, now: now) }
         SettingsRoutes.register(app, guardian: guardian, db: db, now: now)
+        AccountPreferenceRoutes.register(root: app.grouped("admin", "api", "v1"), guardian: guardian, db: db, now: now)
         OAuthRoutes.registerInternal(app, guardian: guardian, db: db, now: now)
         if includePublicRoutes { OAuthRoutes.registerPublic(app, guardian: guardian, db: db, now: now) }
         TokenRoutes.register(app, guardian: guardian, db: db, now: now)

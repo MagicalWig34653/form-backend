@@ -88,7 +88,8 @@ it('zeigt bestätigte Zähler und verwendet beim Fortsetzen denselben Lauf', asy
   render(Migration);
   await screen.findByText('Import: Pausiert');
   expect(screen.getByRole('status').textContent).toContain('anfragen');
-  expect(screen.getByRole('alert').textContent).toContain('interrupted');
+  // The raw code is translated for the user.
+  expect(screen.getByRole('alert').textContent).toContain('Pausiert');
   await fireEvent.click(screen.getByRole('button', { name: 'Fortsetzen' }));
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith('POST', `/migration/jobs/${id}/resume`, {

@@ -230,7 +230,7 @@ final class WebhookTests: XCTestCase {
             XCTAssertNil(missing)
             let audit = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE category = 'webhook'").first(decoding: Count.self)!.c
             XCTAssertGreaterThanOrEqual(audit, 4)
-            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE account_id = \(bind: DB.bin(user))").run()
+            try await f.sql.raw("UPDATE sessions SET authenticated_at = DATE_SUB(NOW(), INTERVAL 45 MINUTE) WHERE account_id = \(bind: DB.bin(user))").run()
             try await client.get(base) { XCTAssertEqual($0.status.code, 403) }
         }
     }

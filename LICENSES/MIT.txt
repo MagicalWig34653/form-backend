@@ -161,6 +161,31 @@ Copyright notices by component
 [pwa-bundled] tailwind-merge 3.7.0
   Copyright (c) 2021 Dany Castillo
 
+[pwa-bundled, lazy chunk] mjml-browser 4.18.0 (mail builder, MJML -> HTML)
+  Copyright (c) 2016 Mailjet SAS, https://mjml.io
+  mjml-browser is a prebuilt webpack bundle of mjml-core 4.18.0 and its
+  dependencies. MIT-licensed parts inside the bundle (copyright lines from
+  the packages as resolved for mjml-core@4.18.0; the bundle itself ships no
+  separate notices):
+    juice - Copyright (c) 2021 Automattic
+    cheerio - Copyright (c) 2022 The Cheerio contributors
+    htmlparser2 - Copyright 2010, 2011, Chris Winberry <chris@winberry.net>
+    dom-serializer - Copyright (c) 2014 The cheeriojs contributors
+    lodash - Copyright OpenJS Foundation and other contributors
+             <https://openjsf.org/>; based on Underscore.js, copyright
+             Jeremy Ashkenas, DocumentCloud and Investigative Reporters &
+             Editors
+    mensch - Copyright (c) Brett Stimmerman <brettstimmerman@gmail.com>
+    slick - Valerio Proietti and MooTools authors (MIT per package metadata,
+            http://mootools.net/license.txt; no LICENSE file shipped)
+    web-resource-inliner - Jarrett Widman (MIT per package metadata; may be
+                           absent from the browser bundle)
+    he - Copyright Mathias Bynens <https://mathiasbynens.be/>
+    @babel/runtime - Copyright (c) 2014-present Sebastian McKenzie and other
+                     contributors
+  BSD-2-Clause and ISC parts of the bundle: see
+  LICENSES/mjml-browser-bundled-BSD-2-Clause-ISC.txt
+
 [pwa-source] shadcn-svelte derived UI components (pwa/src/lib/components/ui) 
   Copyright (c) 2023 Hunter Johnston <https://github.com/huntabyte>
   Copyright (c) 2023 CokaKoala <https://github.com/adriangonz97>

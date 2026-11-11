@@ -54,12 +54,33 @@ export type PasskeyOutcome =
   | { ok: true; body: PasskeyCredentialBody; prf?: PrfResult }
   | { ok: false; reason: 'unsupported' | 'cancelled' | 'failed' };
 
-/** Asks the authenticator for an assertion. Never throws; maps the browser's errors to a small set of reasons. */
+/** `{type:'public-key', id}` entries of the options (the login sends none; the step-up names the account's own passkeys). */
+function allowList(options: PasskeyOptions): PublicKeyCredentialDescriptor[] {
+  const out: PublicKeyCredentialDescriptor[] = [];
+  const list: unknown = options.publicKey.allowCredentials;
+  if (!Array.isArray(list)) return out;
+  for (const c of list) {
+    const id = (c as { id?: unknown } | null)?.id;
+    if (typeof id !== 'string') continue;
+    try {
+      out.push({ type: 'public-key', id: fromBase64Url(id) });
+    } catch {
+      /* a malformed id is skipped; the server decides anyway */
+    }
+  }
+  return out;
+}
+
+/**
+ * Asks the authenticator for an assertion. Never throws; maps the browser's errors to a small set of reasons.
+ * `prf: false` leaves out the PRF extension (step-up: only the signature matters, no key material is derived).
+ */
 export async function requestAssertion(
   options: PasskeyOptions,
   credentials: Pick<CredentialsContainer, 'get'> | undefined = typeof navigator === 'undefined'
     ? undefined
     : navigator.credentials,
+  settings: { prf?: boolean } = {},
 ): Promise<PasskeyOutcome> {
   if (!credentials || typeof PublicKeyCredential === 'undefined')
     return { ok: false, reason: 'unsupported' };
@@ -71,10 +92,14 @@ export async function requestAssertion(
         rpId: options.publicKey.rpId,
         timeout: options.publicKey.timeout,
         userVerification: options.publicKey.userVerification,
-        allowCredentials: [],
-        extensions: {
-          prf: { eval: { first: LOGIN_PRF_SALT } },
-        } as AuthenticationExtensionsClientInputs,
+        allowCredentials: allowList(options),
+        ...(settings.prf === false
+          ? {}
+          : {
+              extensions: {
+                prf: { eval: { first: LOGIN_PRF_SALT } },
+              } as AuthenticationExtensionsClientInputs,
+            }),
       },
     });
   } catch (e) {

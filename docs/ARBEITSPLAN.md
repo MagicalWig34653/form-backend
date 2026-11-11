@@ -1,5 +1,9 @@
 # Arbeitsplan
 
+## HTML-E-Mail-Builder (11.11.2026)
+
+Umgesetzt im Worktree-Branch `worktree-agent-aafdd4bb248d0ad0a` (siehe `docs/handoffs/Mail-Builder.md`). Nächste Schritte: unabhängiges Review (Sanitizer, URL-Regeln, Moduswechsel), Merge, Testversand einer Design-Mail an Outlook und Gmail. Später optional: Bild-Upload, Vorlagenbibliothek, Vorschau externer Bilder (`img-src https:` in der CSP).
+
 ## Einsendungen/Export — Abnahmepaket (03.11.2026)
 
 Auf `fix-e2e-entries` / `form-backend-e2e2` (Basis `298b6c0`): Session-Mock

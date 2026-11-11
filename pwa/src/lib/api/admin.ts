@@ -5,6 +5,12 @@ export interface Me {
   username: string;
   systemAdministrator: boolean;
 }
+/** Display preferences stored in the account (contracts/auth/p5-implementiert.openapi.yaml). */
+export interface AccountPreferences {
+  theme?: 'light' | 'dark' | 'system';
+  accent?: string;
+  glow?: number;
+}
 export interface Tenant {
   id: string;
   name: string;
@@ -193,6 +199,11 @@ export function createAdminApi(http: Http) {
   const f = (tenant: string, form: string) => `${t(tenant)}/forms/${id(form)}`;
   return {
     me: (signal?: AbortSignal) => http.request<Me>('GET', '/me', { ...(signal ? { signal } : {}) }),
+    /** Display preferences of the own account; keys that were never set are missing. */
+    preferences: () => http.request<AccountPreferences>('GET', '/me/preferences'),
+    /** Sets a subset; the answer is the complete stored state. */
+    savePreferences: (values: AccountPreferences) =>
+      http.request<AccountPreferences>('PUT', '/me/preferences', { body: values }),
     tenants: (signal?: AbortSignal) =>
       http.request<{ items: Tenant[] }>('GET', '/tenants', { ...(signal ? { signal } : {}) }),
     createTenant: (name: string) =>

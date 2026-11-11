@@ -68,6 +68,32 @@ describe('requestAssertion', () => {
     expect(out.ok && 'userHandle' in out.body.credential.response).toBe(false); // empty handle omitted
   });
 
+  it('step-up: names the allowed credentials and leaves PRF out; tolerates missing lists', async () => {
+    (globalThis as { PublicKeyCredential?: unknown }).PublicKeyCredential = class {};
+    const seen: (CredentialRequestOptions | undefined)[] = [];
+    const get = async (o?: CredentialRequestOptions) => {
+      seen.push(o);
+      return null;
+    };
+    const stepUp: PasskeyOptions = {
+      ...options,
+      publicKey: {
+        ...options.publicKey,
+        allowCredentials: [{ type: 'public-key', id: 'AQID' }, { id: '!' }],
+      },
+    };
+    await requestAssertion(stepUp, { get }, { prf: false });
+    const allow = seen[0]?.publicKey?.allowCredentials ?? [];
+    expect(allow).toHaveLength(1);
+    expect([...new Uint8Array(allow[0]!.id as ArrayBuffer)]).toEqual([1, 2, 3]);
+    expect(seen[0]?.publicKey?.extensions).toBeUndefined();
+    const missing = { ...options, publicKey: { ...options.publicKey } } as PasskeyOptions;
+    delete (missing.publicKey as { allowCredentials?: unknown }).allowCredentials;
+    await requestAssertion(missing, { get });
+    expect(seen[1]?.publicKey?.allowCredentials).toEqual([]);
+    expect(seen[1]?.publicKey?.extensions).toBeDefined();
+  });
+
   it('maps errors', async () => {
     (globalThis as { PublicKeyCredential?: unknown }).PublicKeyCredential = class {};
     const throwing = (name: string) => ({

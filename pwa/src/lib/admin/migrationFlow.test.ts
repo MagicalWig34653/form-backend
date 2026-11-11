@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAdvance,
+  describeJobError,
   landingStep,
   countRows,
   isSha256,
@@ -75,5 +76,29 @@ describe('Berichtszeilen', () => {
   it('prüft SHA-256', () => {
     expect(isSha256('a'.repeat(64))).toBe(true);
     expect(isSha256('A'.repeat(64))).toBe(false);
+  });
+});
+
+describe('describeJobError', () => {
+  const texts = {
+    reasons: {
+      invalidTimestamp: 'Kein gültiger Zeitstempel',
+      unknownKeyGeneration: 'Schlüssel fehlt',
+    },
+    codes: { conflict: 'Ziel enthält schon Daten', migration_failed: 'Unbekannt' },
+    column: 'Spalte',
+  };
+  it('übersetzt feste Codes', () => {
+    expect(describeJobError('conflict', texts)).toBe('Ziel enthält schon Daten');
+  });
+  it('übersetzt Grund@Spalte und nennt die Spalte, nie einen Wert', () => {
+    expect(describeJobError('invalidTimestamp@time', texts)).toBe(
+      'Kein gültiger Zeitstempel (Spalte time)',
+    );
+    expect(describeJobError('unknownKeyGeneration@kid', texts)).toContain('Spalte kid');
+  });
+  it('zeigt unbekannte Codes unverändert', () => {
+    expect(describeJobError('etwas_neues', texts)).toBe('etwas_neues');
+    expect(describeJobError('unbekannt@x', texts)).toBe('unbekannt@x');
   });
 });

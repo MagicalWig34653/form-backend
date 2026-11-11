@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { t } from '$lib/i18n';
   import { router } from '$lib/router.svelte';
   import AppearanceMenu from '$lib/components/shell/AppearanceMenu.svelte';
@@ -8,8 +8,11 @@
   import NotFound from './routes/NotFound.svelte';
   import Shell from './routes/admin/Shell.svelte';
   import ConfirmHost from '$lib/components/shell/ConfirmHost.svelte';
+  import ReauthDialog from '$lib/components/shell/ReauthDialog.svelte';
   import { matchRoute } from '$lib/routes';
   import '$lib/admin/guard.svelte';
+  import { session } from '$lib/session.svelte';
+  import { appearanceSync } from '$lib/appearanceAccount';
 
   // Public documentation site (GitHub Pages); override per deployment with VITE_DOCS_URL.
   const docsUrl: string =
@@ -17,6 +20,17 @@
 
   $effect(() => {
     if (router.path === '/') router.navigate('/overview', true);
+  });
+
+  // Display preferences follow the signed-in account (once per sign-in and page load).
+  $effect(() => {
+    const account =
+      session.status === 'ready' && session.me
+        ? session.me.id
+        : session.status === 'anonymous'
+          ? null
+          : undefined;
+    if (account !== undefined) untrack(() => void appearanceSync.bind(account));
   });
 
   // Move focus to the page heading after client-side navigation (screen readers).
@@ -74,3 +88,4 @@
 </main>
 
 <ConfirmHost />
+<ReauthDialog />

@@ -25,7 +25,7 @@ extension LegacyImporter {
     }
     func store(_ db: SQLDatabase, _ p: ImportPlan, customer: String, form: String, submission: String?, role: String, wire: String, encoding: String = "raw") async throws -> Destination {
         let packet = try PackageV2(wire)
-        guard try await scalar(db,"SELECT HEX(generation_id) AS v FROM customer_key_generations WHERE customer_id=\(customer) AND kid=\(val(packet.kid))") != nil else { throw ImportFailure.invalidSource }
+        guard try await scalar(db,"SELECT HEX(generation_id) AS v FROM customer_key_generations WHERE customer_id=\(customer) AND kid=\(val(packet.kid))") != nil else { throw ImportFailure.invalidSourceAt(table:"stored_objects",column:"kid",reason:.unknownKeyGeneration) }
         let id = bin(DB.bin(UUID()).data), data = Data(wire.utf8)
         return try await insert(db,"stored_objects",["id":id,"customer_id":customer,"form_id":form,"submission_id":submission ?? "NULL","object_role":val(role),"backend":"'db'","ciphertext":bin(data),"packet_format":"'KUBUS-AEAD:2'","wrap_kind":val(packet.wrap),"kid":val(packet.kid),"content_encoding":val(encoding),"ciphertext_sha256":bin(Data(SHA256.hash(data:data))),"payload_sha256":bin(Data(SHA256.hash(data:packet.iv + packet.ciphertext + packet.tag))),"byte_count":String(data.count),"state":"'ready'"],key:["id":id])
     }

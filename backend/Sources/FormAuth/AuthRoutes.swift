@@ -51,6 +51,32 @@ public enum FormAuth {
             return try await sessionResponse(next, sessions: sessions, guardian: guardian, token: token)
         }
 
+        // Step-up: an authenticated session renews its fresh authentication (authenticated_at) with a UV passkey of its own
+        // account, on the page the user is on. Same budgets, Origin/CSRF and throttles as the login; no new token.
+        auth.post("reauth", "options") { req async throws -> Response in
+            try await guardian.budget(req, login: true)
+            let s = try await guardian.requireAuthenticated(req, mutation: true)
+            let (issued, ids) = try await login.beginReauth(session: s)
+            let res = try json(ReauthOptionsBody(
+                challengeId: issued.id.uuidString.lowercased(),
+                publicKey: .init(challenge: issued.challenge.base64URL, rpId: config.relyingParty.rpID, timeout: Int(LoginService.challengeLifetime * 1000),
+                                 userVerification: "required", allowCredentials: ids.map { .init(type: "public-key", id: $0.base64URL) }),
+                expiresAt: iso(issued.expiresAt)))
+            res.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return res
+        }
+
+        auth.post("reauth", "verify") { req async throws -> Response in
+            try await guardian.budget(req, login: true)
+            let s = try await guardian.requireAuthenticated(req, mutation: true)
+            let wire: PasskeyVerifyBody = try decodeBody(req)
+            let (credential, challengeID) = try wire.parsed()
+            let at = try await login.finishReauth(session: s, challengeID: challengeID, input: credential, clientIP: config.clientIP(req))
+            let res = try json(ReauthResultBody(status: "fresh", authenticatedAt: iso(at), freshUntil: iso(at.addingTimeInterval(await sessions.freshWindow()))))
+            res.headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return res
+        }
+
         auth.post("second-factor", "password") { req async throws -> Response in
             try await guardian.budget(req, login: true)
             let s = try await requireSession(req, guardian)
@@ -145,7 +171,6 @@ public enum FormAuth {
         // --- Passkey registration -------------------------------------------------------------------------------------
         let registration = RegistrationService(db: db, relyingParty: config.relyingParty, now: now)
         let enrollmentsSvc = registration.enrollments
-        let fresh: TimeInterval = 300
 
         /// Door 1: one-time enrollment token (anonymous session). Every refusal is the same `registration_failed`.
         auth.post("enrollment", "options") { req async throws -> Response in
@@ -187,7 +212,7 @@ public enum FormAuth {
         auth.post("passkeys", "options") { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
             try await guardian.budget(req, login: true)
-            guard let at = try await sessions.authenticatedAt(s), now().timeIntervalSince(at) <= fresh else { throw ReauthenticationRequired() }
+            guard let at = try await sessions.authenticatedAt(s), now().timeIntervalSince(at) <= (await sessions.freshWindow()) else { throw ReauthenticationRequired() }
             do { return try creationOptionsResponse(try await registration.begin(session: s, account: s.accountID!), rp: config.relyingParty) }
             catch let e as RegistrationError { throw RegistrationFailed.translate(e) }
         }
@@ -195,7 +220,7 @@ public enum FormAuth {
         auth.post("passkeys", "verify") { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
             try await guardian.budget(req, login: true)
-            guard let at = try await sessions.authenticatedAt(s), now().timeIntervalSince(at) <= fresh else { throw ReauthenticationRequired() }
+            guard let at = try await sessions.authenticatedAt(s), now().timeIntervalSince(at) <= (await sessions.freshWindow()) else { throw ReauthenticationRequired() }
             let b: RegistrationVerifyBody = try decodeBody(req)
             let parsed = try b.parsed()
             do {
@@ -271,6 +296,14 @@ struct PasskeyOptionsBody: Encodable {
     struct PublicKey: Encodable { let challenge: String; let rpId: String; let timeout: Int; let userVerification: String; let allowCredentials: [String] }
     let challengeId: String; let publicKey: PublicKey; let expiresAt: String
 }
+
+struct ReauthOptionsBody: Encodable {
+    struct Cred: Encodable { let type: String; let id: String }
+    struct PublicKey: Encodable { let challenge: String; let rpId: String; let timeout: Int; let userVerification: String; let allowCredentials: [Cred] }
+    let challengeId: String; let publicKey: PublicKey; let expiresAt: String
+}
+
+struct ReauthResultBody: Encodable { let status: String; let authenticatedAt: String; let freshUntil: String }
 
 struct SecondFactorBody: Decodable { let method: String; let password: String }
 

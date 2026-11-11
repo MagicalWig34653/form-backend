@@ -65,7 +65,12 @@ struct MigrationService {
     func withSource<T>(_ source: MigrationSource, body: @escaping (SQLDatabase) async throws -> T) async throws -> T {
         try source.validate(allowInsecure: allowInsecure)
         let nets = try await SystemSettings.value("migration.allowedNets", sql: sql).split(separator: ",").compactMap { CIDR(String($0)) }
-        let addresses = try await HostGuard.resolve(host: source.host, allowedNets: nets, requireAllowedNetwork: true)
+        let addresses: [String]
+        do { addresses = try await HostGuard.resolve(host: source.host, allowedNets: nets, requireAllowedNetwork: true) }
+        catch HostGuard.Failure.blocked {
+            // Configuration state only, nothing about the source: an empty or non-matching allowlist is the usual first stumbling block.
+            throw ValidationFailed(detail: "Quelladresse nicht freigegeben: migration.allowedNets (FORM_MIGRATION_ALLOWED_NETS) muss das Netz der Quelle enthalten")
+        } catch { throw ValidationFailed(detail: "Quelle konnte nicht aufgelöst werden") }
         let pinned = addresses[0], port = source.port
         var config = MySQLConfiguration(hostname: source.host, port: port, username: source.username, password: source.password, database: source.database)
         // Preserve the original TLS hostname while pinning the actual socket address.
@@ -121,6 +126,22 @@ struct MigrationService {
             } catch { try? await lock.raw("SELECT RELEASE_LOCK('form_migration_jobs')").run(); throw error }
         }
     }
+    /// Short, stable, secret-free cause for the job list (column error_code is VARCHAR(40)). The phase already names the table.
+    static func errorCode(for error: Error) -> String {
+        guard let failure = error as? ImportFailure else { return "migration_failed" }
+        switch failure {
+        case let .invalidSourceAt(_, column, reason):
+            let safe = column.utf8.count <= 20 && column.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) || $0 == 95 }) ? column : "column"
+            return String("\(reason.rawValue)@\(safe)".prefix(40))
+        case .invalidSource: return "invalid_source"
+        case .invalidPlan: return "invalid_plan"
+        case .conflict: return "conflict"
+        case .missingTarget: return "missing_target"
+        case .database: return "database"
+        case .lock: return "lock"
+        case .interrupted: return "interrupted"
+        }
+    }
     func execute(_ job: MigrationJob) async throws {
         let id = job.id
         try await sql.raw("UPDATE migration_jobs SET state='running',phase='source',updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
@@ -130,9 +151,12 @@ struct MigrationService {
             let refs = try JSONDecoder().decode(MigrationSourceRefs.self, from: Data(job.source_json.utf8))
             let source = try await open(refs), hmac = try await key()
             let plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
-            var report = try await withSource(source) { src in
+            // withSource replaces every error by one generic answer. The importer's own failures carry a safe description
+            // (table, column, reason; never a source value), so they travel out as a value and keep the real cause.
+            let outcome = try await withSource(source) { src -> Result<ImportReport, ImportFailure> in
+              do {
                 let importer = try LegacyImporter(source: src, target: sql, secrets: secrets, hmacKey: hmac)
-                return try await importer.run(plan: plan, dryRun: job.dry_run == 1, expectedSchema: job.expected_schema) { phase, processed in
+                return .success(try await importer.run(plan: plan, dryRun: job.dry_run == 1, expectedSchema: job.expected_schema) { phase, processed in
                     struct C: Decodable { let cancel_requested: Int }
                     let cancel = try await sql.raw("SELECT cancel_requested FROM migration_jobs WHERE id=\(bind: id)").first(decoding: C.self)?.cancel_requested
                     let enabled = try await SystemSettings.value("migration.enabled", sql: sql) == "true"
@@ -140,8 +164,10 @@ struct MigrationService {
                     try await PermissionService(sql: sql).authorize(account: actor, "migration.run", on: .system)
                     let progress = "{\"processed\":\(processed)}"
                     try await sql.raw("UPDATE migration_jobs SET phase=\(bind: phase),report_json=\(bind: progress),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
-                }
+                })
+              } catch let failure as ImportFailure { return .failure(failure) }
             }
+            var report = try outcome.get()
             let knownTables: Set<String> = ["datenschluessel", "outgoingMailServer", "outgoingMailProxy", "formulare", "formularFelder", "anfragen", "anfrageIdempotenz", "formularWebhooks", "statistics"]
             let other = report.inventory.filter { !knownTables.contains($0.key) }.values.reduce(0, +)
             report.inventory = report.inventory.filter { knownTables.contains($0.key) }
@@ -173,7 +199,11 @@ struct MigrationService {
             try await sql.raw("UPDATE migration_jobs SET state='review',phase='verification',report_json=\(bind: encoded),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
         } catch {
             let paused = (error as? ImportFailure).map { if case .interrupted = $0 { return true }; return false } ?? false
-            try await sql.raw("UPDATE migration_jobs SET state=\(bind: paused ? "paused" : "failed"),error_code=\(bind: paused ? "interrupted" : "migration_failed"),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
+            let code = paused ? "interrupted" : Self.errorCode(for: error)
+            // Importer failures describe themselves safely (no source values); anything else only by type (may contain SQL values).
+            if let failure = error as? ImportFailure { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "failure": "\(failure)"]) }
+            else { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "type": "\(type(of: error))"]) }
+            try await sql.raw("UPDATE migration_jobs SET state=\(bind: paused ? "paused" : "failed"),error_code=\(bind: code),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
         }
     }
 }

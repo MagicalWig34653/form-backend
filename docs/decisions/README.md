@@ -17,3 +17,5 @@ Eine Agent-Empfehlung wird nicht allein durch Ablage zum Nutzerbeschluss.
 - [ADR 0026: Konten und TOTP](0026-konten-totp.md) — öffentlicher Alternativweg, kontoweite Sperre, Secret-Rotation und Kontostatus.
 
 - [ADR 0036: Ingest-Budget je Client und Aktivschalter](0036-ingest-budget-und-aktivschalter.md) — FA-015 (`ingest.requestsPerMinute`) und FA-021 (`PUT forms/{id}/active`).
+
+- [ADR 0037: Passkey-Step-up auf der Seite](0037-passkey-step-up.md) — `auth/reauth/{options,verify}`, Frische ohne Neuanmeldung, Lesen von Umstiegsstatus/Einstellungen ohne Frische.

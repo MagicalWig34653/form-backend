@@ -63,3 +63,15 @@ test('glow step switches the data attributes and persists', () => {
   theme.setGlow(0);
   expect(root.dataset.glow).toBeUndefined();
 });
+test('account values replace the choice without counting as a user change', () => {
+  const seen: unknown[] = [];
+  theme.onChange((p) => seen.push(p));
+  theme.replace({ theme: 'light', accent: 'rot', glow: 2 });
+  expect(seen).toEqual([]);
+  expect(theme.snapshot()).toEqual({ theme: 'light', accent: 'rot', glow: 2 });
+  expect(localStorage.getItem('accent')).toBe('rot');
+  expect(root.dataset.glowStep).toBe('2');
+  theme.setAccent('blau');
+  expect(seen).toEqual([{ theme: 'light', accent: 'blau', glow: 2 }]);
+  theme.onChange(null);
+});
