@@ -261,7 +261,7 @@
           }}
         />
       {/if}
-      <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div
           id="statistics"
           class="flex min-w-0 scroll-mt-20 flex-col gap-5 max-lg:order-2"
@@ -288,7 +288,7 @@
           {/if}
         </div>
         <div class="flex min-w-0 flex-col gap-5 max-lg:contents" data-testid="form-side">
-          <div class="max-lg:order-1">
+          <div class="min-w-0 max-lg:order-1">
             <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
               <ul class="divide-border -my-1 divide-y">
                 {@render checkItem(
@@ -307,7 +307,7 @@
             </Panel>
           </div>
           {#if published && (canPublish || canEdit)}
-            <div class="max-lg:order-3">
+            <div class="min-w-0 max-lg:order-3">
               <Panel title={t.formUi.actionsTitle} description={t.formUi.actionsHint}>
                 <div class="flex flex-col gap-4">
                   {#if canPublish}
