@@ -1,5 +1,15 @@
 # Tatsächlicher Stand
 
+## PWA-Oberfläche: Stand 11.11.2026 (maßgeblich)
+
+- Alle unten aufgeführten PWA-Durchgänge (Bereichsauswahl, Fable-Struktur, Einrichtungsfluss, UI-Durchgänge 1–5, PRF-Hinweis, Verbindungen-Fix) sind in `main` gemergt und im öffentlichen Repo (`dba3dd0`). Die Zusätze „Worktree-Branch … ungemergt“ in den folgenden Abschnitten sind überholt.
+- UI-Bewertung durch einen unabhängigen Bewerter anhand von Screenshots (Mock-Daten): 3,2 → 3,5 → 3,8 → 4,2 → 4,4 → **4,5/5** (alle 21 Seiten 4,5). Ziel des Nutzers erreicht.
+- Prüfstand: svelte-check 0 Fehler, eslint/prettier sauber, vitest 327, Playwright 168 bestanden (9 übersprungen).
+- Nicht gegen das echte Backend/den echten Browser geprüft: „Passkey hinzufügen“, Kunden-Spalte der Konten, „Mitglied hinzufügen“, Passkey-Direktabfrage bei frischer Anmeldung (Safari verlangt evtl. eine Geste), PRF-Hinweis in Firefox/macOS.
+- Offene Restpunkte (bewusst nicht gebaut): Greifmodus/zweispaltiger Feldeditor, Tabellenregeln (Sortierung/URL), gemeinsame Massenleiste, gemeinsamer Entsperr-/Sitzungsablauf-Dialog, Fokus nach Alt+Pfeil auf Felder mobil, Restmängel aus `shots-review6/BEWERTUNG.md` (Einstellungen: Alarm-Verbindung als Auswahl; Formular: Checklisten-Begriffe; Mein Konto: Aktionen im Kartenkopf).
+- Konzeptentwürfe (Fable 5.2 bevorzugt, weitere Modelle) liegen unter `docs/ux/konzepte/` (nur privates Repo).
+- Nächster Schritt: Image `latest` aktualisieren (`git pull` im Deploy-Branch, `bash deploy/compose/update.sh`, Browser hart neu laden) und Oberfläche im echten Betrieb abnehmen.
+
 ## PWA: UI-Bewertung fünfter Durchgang 4,4/5, Umsetzung (11.11.2026, Worktree-Branch `worktree-agent-a6d1e84b67f09cce1`, lokal committet, ungemergt)
 
 Commits 183fdb9, 6681c1f, 0a2a298, 5aa31ba, 34682f4 (Speicherstatus, Formular-Diagramm, Widersprüche, Mail, Felder mobil/Seitenkopf). Echte Fehler und Mock-Artefakte: docs/handoffs/UI-Durchgang-5.md. Geprüft: svelte-check 0, eslint, prettier, vitest 327, Playwright 168 grün. Erneute Bewertung steht aus.

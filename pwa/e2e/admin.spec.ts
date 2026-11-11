@@ -1028,6 +1028,103 @@ test('Mail: Auswahl und Zuweisung des Versandwegs widersprechen sich nie', async
   await expect(assign).toBeDisabled();
 });
 
+test.describe('Verbindung prüfen (Schritte aus dem Fehlercode)', () => {
+  const answer = (page: Page, status: number, body: object, delay = 0) =>
+    page.route('**/admin/api/v1/connections/c1/test', async (r) => {
+      if (delay) await new Promise((res) => setTimeout(res, delay));
+      return r.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+    });
+
+  test('Erfolg zeigt alle Schritte in Ordnung und den grünen Ergebniskasten', async ({ page }) => {
+    await mock(page);
+    await answer(page, 200, { ok: true });
+    await page.goto('/connections');
+    await page.getByRole('button', { name: /^Testen/ }).click();
+    const steps = page.getByTestId('check-steps-c1');
+    await expect(steps.getByRole('listitem')).toHaveCount(4);
+    for (const id of ['dns', 'tcp', 'tls', 'auth'])
+      await expect(page.getByTestId(`check-step-c1-${id}`)).toHaveAttribute('data-status', 'ok');
+    await expect(page.getByTestId('check-result-c1')).toHaveAttribute('data-ok', 'true');
+    await expect(page.getByText('Verbindung in Ordnung')).toBeVisible();
+    await expect(page.getByText(/Gesamtdauer/)).toBeVisible();
+    await expect(page.getByText('Getestet ·')).toBeVisible();
+    // Rückweg: erneut prüfen ist möglich.
+    await expect(page.getByRole('button', { name: /^Erneut prüfen/ })).toBeEnabled();
+  });
+
+  test('TLS-Fehler: dns und tcp in Ordnung, tls mit Rat, Anmeldung übersprungen', async ({
+    page,
+  }) => {
+    await mock(page);
+    await answer(page, 200, { ok: false, code: 'tls_failed', transient: false });
+    await page.goto('/connections');
+    await page.getByRole('button', { name: /^Testen/ }).click();
+    await expect(page.getByTestId('check-step-c1-tls')).toHaveAttribute('data-status', 'failed');
+    await expect(page.getByTestId('check-step-c1-dns')).toHaveAttribute('data-status', 'ok');
+    await expect(page.getByTestId('check-step-c1-tcp')).toHaveAttribute('data-status', 'ok');
+    await expect(page.getByTestId('check-step-c1-auth')).toHaveAttribute('data-status', 'skipped');
+    const problem = page.getByTestId('check-problem-c1');
+    await expect(problem).toContainText('Die verschlüsselte Verbindung konnte nicht hergestellt');
+    await expect(problem).toContainText('Was kann ich tun?');
+    await expect(page.getByTestId('check-result-c1')).toHaveAttribute('data-ok', 'false');
+    await expect(page.getByText('Test fehlgeschlagen', { exact: true })).toBeVisible();
+    // Rückweg: nach Korrektur gelingt die erneute Prüfung und ersetzt das Ergebnis.
+    await page.unroute('**/admin/api/v1/connections/c1/test');
+    await answer(page, 200, { ok: true });
+    await page.getByRole('button', { name: /^Erneut prüfen/ }).click();
+    await expect(page.getByTestId('check-result-c1')).toHaveAttribute('data-ok', 'true');
+    await expect(page.getByTestId('check-problem-c1')).toHaveCount(0);
+  });
+
+  test('Unbekannter Code und Rate-Limit bleiben ohne erfundene Schritte', async ({ page }) => {
+    await mock(page);
+    await answer(page, 200, { ok: false, code: 'seltsam_xyz' });
+    await page.goto('/connections');
+    await page.getByRole('button', { name: /^Testen/ }).click();
+    await expect(page.getByTestId('check-problem-c1')).toContainText('seltsam_xyz');
+    await expect(page.getByTestId('check-steps-c1')).toHaveCount(0);
+    await page.unroute('**/admin/api/v1/connections/c1/test');
+    await answer(page, 429, { code: 'rate_limited' });
+    await page.getByRole('button', { name: /^Erneut prüfen/ }).click();
+    await expect(page.getByTestId('check-error-c1')).toContainText('zu oft gestartet');
+  });
+
+  test('Während der Prüfung warten die Schritte, die Anzeige ist busy', async ({ page }) => {
+    await mock(page);
+    await answer(page, 200, { ok: true }, 600);
+    await page.goto('/connections');
+    await page.getByRole('button', { name: /^Testen/ }).click();
+    await expect(page.getByRole('button', { name: /^Prüfung läuft/ })).toBeDisabled();
+    await expect(page.getByTestId('check-c1').locator('[aria-busy="true"]')).toBeVisible();
+    await expect(page.getByTestId('check-steps-c1').getByRole('listitem')).toHaveCount(4);
+    await expect(page.getByTestId('check-result-c1')).toBeVisible();
+  });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`Fehlerergebnis ohne axe-Verstöße bei 320 px (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+      await page.setViewportSize({ width: 320, height: 800 });
+      await mock(page);
+      await answer(page, 200, { ok: false, code: 'auth_failed' });
+      await page.goto('/connections');
+      await page.getByRole('button', { name: /^Testen/ }).click();
+      await expect(page.getByTestId('check-problem-c1')).toBeVisible();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      );
+      expect(overflow).toBe(false);
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+    });
+  }
+});
+
 test('Ungespeicherte Feldänderungen bleiben nach abgebrochener Navigation erhalten', async ({
   page,
 }) => {

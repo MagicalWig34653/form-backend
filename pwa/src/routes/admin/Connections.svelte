@@ -6,6 +6,8 @@
   import { session } from '$lib/session.svelte';
   import { onboarding } from '$lib/onboarding.svelte';
   import { describeError, needsFreshLogin } from '$lib/admin/describe';
+  import { deriveCheck, type CheckOutcome } from '$lib/admin/connectionCheck';
+  import ConnectionCheck from '$lib/components/admin/ConnectionCheck.svelte';
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -31,6 +33,13 @@
   let showCreate = $state(onboarding.activeContext === 'mail');
   let assigned = $state<Record<string, string[]> | null>(null);
   let tested = $state<Record<string, { ok: boolean; at: Date }>>({});
+  interface CheckState {
+    running: boolean;
+    outcome: CheckOutcome | null;
+    error: string;
+    ms: number | null;
+  }
+  let checks = $state<Record<string, CheckState>>({});
   let assignFor = $state<Connection | null>(null);
   let picked = $state<string[]>([]);
 
@@ -118,12 +127,31 @@
     }
   }
 
-  async function test(id: string): Promise<void> {
-    const res = await run(() => adminApi.testConnection(id), '');
-    if (!res) return;
-    tested[id] = { ok: res.ok, at: new Date() };
-    if (res.ok) ok = t.admin.connections.testOk;
-    else message = t.admin.connections.testFailed.replace('{code}', res.code ?? '?');
+  async function test(c: Connection): Promise<void> {
+    if (busy || checks[c.id]?.running) return;
+    busy = true;
+    message = ok = '';
+    checks[c.id] = { running: true, outcome: null, error: '', ms: null };
+    const started = performance.now();
+    const r = await adminApi.testConnection(c.id);
+    const ms = performance.now() - started;
+    busy = false;
+    if (!r.ok) {
+      delete checks[c.id];
+      if (needsFreshLogin(r.error)) {
+        message = t.admin.connections.freshHint;
+        await reauthenticate('/connections');
+      } else if (!handleSessionError(r.error)) {
+        const error =
+          r.error.kind === 'http' && r.error.status === 429
+            ? t.admin.connections.check.rateLimited
+            : describeError(r.error);
+        checks[c.id] = { running: false, outcome: null, error, ms: null };
+      }
+      return;
+    }
+    tested[c.id] = { ok: r.data.ok, at: new Date() };
+    checks[c.id] = { running: false, outcome: deriveCheck(c.kind, r.data), error: '', ms };
   }
 
   function openAssign(c: Connection): void {
@@ -206,6 +234,7 @@
       <ul class="divide-border m-0 flex list-none flex-col divide-y p-0">
         {#each items as c (c.id)}
           {@const result = tested[c.id]}
+          {@const check = checks[c.id]}
           {@const names = assigned?.[c.id]}
           <li class="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
             <div class="min-w-0 flex-1 basis-64">
@@ -233,12 +262,12 @@
                   tone={names?.length && c.enabled ? 'warn' : 'idle'}
                   label={t.admin.connections.untested}
                 />{/if}
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onclick={() => void test(c.id)}
-                >{t.admin.connections.test}<span class="sr-only"> {c.name}</span></Button
+              <Button type="button" variant="outline" disabled={busy} onclick={() => void test(c)}
+                >{checks[c.id]?.running
+                  ? t.admin.connections.check.running
+                  : check
+                    ? t.admin.connections.check.again
+                    : t.admin.connections.test}<span class="sr-only"> {c.name}</span></Button
               >
               <RowMenu
                 label={t.admin.connections.rowActions.replace('{name}', c.name)}
@@ -252,6 +281,17 @@
                 ]}
               />
             </div>
+            {#if check}
+              <ConnectionCheck
+                id={c.id}
+                kind={c.kind}
+                name={c.name}
+                running={check.running}
+                outcome={check.outcome}
+                error={check.error}
+                totalMs={check.ms}
+              />
+            {/if}
           </li>
         {/each}
       </ul>

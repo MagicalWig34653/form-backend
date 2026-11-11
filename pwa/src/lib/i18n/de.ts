@@ -1258,12 +1258,132 @@ try {
       create: 'Verbindung anlegen',
       created: 'Die Verbindung wurde angelegt.',
       test: 'Testen',
-      testOk: 'Die Verbindung funktioniert.',
-      testFailed: 'Test fehlgeschlagen ({code}).',
       assign: 'Kunden zuweisen',
       assigned: 'Zugewiesen.',
       tested: 'Getestet · {time}',
       testFailedChip: 'Test fehlgeschlagen',
+      check: {
+        title: 'Verbindung prüfen',
+        text: 'Baut eine Verbindung auf und geht die Schritte durch. Es wird keine Nachricht gesendet.',
+        run: 'Testen',
+        again: 'Erneut prüfen',
+        running: 'Prüfung läuft …',
+        ok: 'Verbindung in Ordnung',
+        okText: 'Alle Schritte wurden erfolgreich durchlaufen.',
+        okStorage: 'Die Verbindung wurde erfolgreich geprüft.',
+        failed: 'Prüfung fehlgeschlagen',
+        failedHint: 'Der rot markierte Schritt zeigt die Ursache und was Sie tun können.',
+        failedNoStep: 'Die Prüfung ist fehlgeschlagen. Unten steht, was Sie tun können.',
+        help: 'Was kann ich tun?',
+        total: 'Gesamtdauer {ms}',
+        wait: 'Wartet',
+        transient:
+          'Der Fehler kann vorübergehend sein. Versuchen Sie es in einigen Minuten erneut.',
+        rateLimited:
+          'Die Prüfung wurde zu oft gestartet. Bitte versuchen Sie es in einer Minute erneut.',
+        steps: {
+          dns: 'Servername auflösen',
+          tcp: 'Verbindung aufbauen',
+          tls: 'Verschlüsselung',
+          auth: 'Anmeldung',
+          reach: 'Erreichbarkeit',
+        },
+        proxySteps: { dns: 'Adresse auflösen' },
+        status: { ok: 'in Ordnung', failed: 'fehlgeschlagen', skipped: 'übersprungen' },
+        unknown: {
+          message: 'Die Prüfung ist mit dem Code „{code}“ fehlgeschlagen.',
+          advice:
+            'Dieser Code ist hier nicht näher beschrieben. Prüfen Sie die Einstellungen der Verbindung oder wenden Sie sich an die Systemadministration.',
+        },
+        codes: {
+          unresolvable: {
+            message: 'Der Servername konnte nicht aufgelöst werden.',
+            advice:
+              'Prüfen Sie die Schreibweise des Servers in der Verbindung. Stimmt sie, fehlt möglicherweise der DNS-Eintrag oder dieser Server erreicht keinen DNS-Dienst.',
+          },
+          target_blocked: {
+            message: 'Die Adresse des Servers ist nicht erlaubt.',
+            advice:
+              'Der Server liegt in einem Netz, das für ausgehende Verbindungen gesperrt ist, etwa ein internes Netz. Verwenden Sie einen öffentlich erreichbaren Server oder bitten Sie die Systemadministration, das Netz freizugeben.',
+          },
+          connect_failed: {
+            message: 'Es konnte keine Verbindung zum Server aufgebaut werden.',
+            advice:
+              'Prüfen Sie Servername und Port (üblich sind 465 und 587) und ob eine Firewall die Verbindung blockiert.',
+          },
+          timeout: {
+            message: 'Der Server hat nicht rechtzeitig geantwortet.',
+            advice:
+              'Prüfen Sie, ob der Server erreichbar ist und der Port stimmt. Eine Firewall verwirft Verbindungen manchmal ohne Antwort.',
+          },
+          connection_closed: {
+            message: 'Der Server hat die Verbindung beendet.',
+            advice:
+              'Prüfen Sie, ob Port und Verschlüsselung zusammenpassen: Port 465 braucht „TLS (direkt)“, Port 587 braucht „STARTTLS“.',
+          },
+          tls_failed: {
+            message: 'Die verschlüsselte Verbindung konnte nicht hergestellt werden.',
+            advice:
+              'Prüfen Sie, ob das Zertifikat des Servers gültig ist und zum eingetragenen Servernamen passt, und ob Port und Verschlüsselung zusammenpassen (465 mit „TLS (direkt)“, 587 mit „STARTTLS“).',
+          },
+          starttls_unsupported: {
+            message: 'Der Server bietet STARTTLS nicht an.',
+            advice:
+              'Wählen Sie „TLS (direkt)“, meist mit Port 465, oder einen Port, an dem der Server STARTTLS anbietet.',
+          },
+          insecure_not_allowed: {
+            message: 'Unverschlüsselte Verbindungen sind auf diesem System nicht erlaubt.',
+            advice:
+              'Wählen Sie „TLS (direkt)“ oder „STARTTLS“. Unverschlüsselt ist nur für Tests mit ausdrücklicher Freigabe möglich.',
+          },
+          auth_failed: {
+            message: 'Der Server hat die Anmeldung abgelehnt.',
+            advice:
+              'Prüfen Sie Benutzername und Passwort. Manche Anbieter verlangen ein eigenes App-Passwort oder erlauben den Versand nur mit der Absenderadresse als Benutzernamen.',
+          },
+          auth_unsupported: {
+            message: 'Der Server unterstützt kein passendes Anmeldeverfahren.',
+            advice:
+              'Der Server bietet kein Verfahren an, das hier verwendet werden kann. Prüfen Sie beim Anbieter, welche Anmeldung für SMTP erlaubt ist.',
+          },
+          auth_over_plain: {
+            message: 'Die Anmeldung ohne Verschlüsselung wurde abgelehnt.',
+            advice:
+              'Zugangsdaten werden nur über eine verschlüsselte Verbindung gesendet. Wählen Sie „TLS (direkt)“ oder „STARTTLS“.',
+          },
+          credential_missing: {
+            message: 'Es sind keine Zugangsdaten hinterlegt.',
+            advice:
+              'Legen Sie die Verbindung mit Passwort beziehungsweise Zugangscode neu an. Nachträglich lassen sich Zugangsdaten hier nicht ergänzen.',
+          },
+          connection_invalid: {
+            message: 'Die Einstellungen der Verbindung sind ungültig.',
+            advice:
+              'Prüfen Sie Server, Port und Verschlüsselung beziehungsweise die Adresse des Proxys. Legen Sie die Verbindung bei Bedarf neu an.',
+          },
+          proxy_url_invalid: {
+            message: 'Die Adresse des Proxys ist ungültig.',
+            advice:
+              'Prüfen Sie, ob die Adresse vollständig und richtig geschrieben ist. Legen Sie die Verbindung bei Bedarf mit der richtigen Adresse neu an.',
+          },
+          proxy_missing_parameters: {
+            message: 'Der Proxy ist unvollständig eingerichtet.',
+            advice:
+              'Es fehlen Angaben in der Adresse oder der Zugangscode. Legen Sie die Verbindung mit vollständigen Angaben neu an.',
+          },
+          proxy_unreachable: {
+            message: 'Der Proxy ist nicht erreichbar.',
+            advice:
+              'Prüfen Sie die Adresse des Proxys und ob der Dienst läuft und von diesem System aus erreichbar ist.',
+          },
+          proxy_auth_failed: {
+            message: 'Der Proxy hat den Zugangscode abgelehnt.',
+            advice:
+              'Prüfen Sie den Zugangscode (ACODE). Legen Sie die Verbindung bei Bedarf mit dem richtigen Code neu an.',
+          },
+        },
+      },
+
       untested: 'Nicht getestet',
       assignedTo: 'Zugewiesen: {names}',
       assignedNone: 'Zugewiesen: keine Kunden',
