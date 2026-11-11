@@ -161,9 +161,31 @@ test.describe('UI-Feinschliff', () => {
         await page.setViewportSize({ width: 320, height: 700 });
         await page.goto(path);
         await page.waitForLoadState('networkidle');
+        // Name the offenders (outside intentionally scrollable regions) instead of a bare boolean.
         expect(
-          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-        ).toBe(true);
+          await page.evaluate(() => {
+            const scrolls = (el: Element) => {
+              for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+                const o = getComputedStyle(n).overflowX;
+                if (o === 'auto' || o === 'scroll' || o === 'hidden') return true;
+              }
+              return false;
+            };
+            const offenders = [...document.querySelectorAll('body *')]
+              .filter(
+                (el) => el.getBoundingClientRect().right > window.innerWidth + 0.5 && !scrolls(el),
+              )
+              .slice(0, 6)
+              .map(
+                (el) =>
+                  `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 60)} → ${(el.textContent ?? '').trim().slice(0, 40)}`,
+              );
+            const page = document.documentElement.scrollWidth > window.innerWidth;
+            return page
+              ? [`scrollWidth ${document.documentElement.scrollWidth}`, ...offenders]
+              : [];
+          }),
+        ).toEqual([]);
         const results = await new AxeBuilder({ page })
           .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
           .analyze();
