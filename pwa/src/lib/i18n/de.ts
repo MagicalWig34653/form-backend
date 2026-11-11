@@ -1222,6 +1222,26 @@ try {
       mismatch: 'Der Schlüssel passt nicht.',
       noAccountKey: 'Für dieses Konto gibt es noch keinen Kontoschlüssel.',
     },
+    legacyKey: {
+      title: 'Altschlüssel aus dem Umstieg übernehmen',
+      intro:
+        'Nach dem Import aus dem Altsystem sind die alten Einsendungen mit dem bisherigen Datenschlüssel (X25519) verschlüsselt. Für ihn gibt es im neuen System noch keinen Zugang. Geben Sie hier den alten privaten Schlüssel ein: Ihr Browser leitet daraus den öffentlichen Schlüssel ab, vergleicht ihn mit der importierten Schlüsselgeneration (kid) und legt einen Zugang für Ihr Konto an (HPKE an Ihren Kontoschlüssel). Der private Schlüssel verlässt diesen Browser nicht.',
+      recoveryHint:
+        'Sie haben stattdessen den alten Recovery-Code? Wurde die alte Recovery-Hülle mit importiert, öffnen Sie den Schlüssel oben mit „Mit Recovery-Code öffnen“ und wählen danach „Meinen Zugang aus dem Recovery-Code erneuern“.',
+      lockedHint: 'Entsperren Sie zuerst oben Ihren Kontoschlüssel mit dem Passkey.',
+      key: 'Alter privater Datenschlüssel (Base64url, Base64 oder Hex, 32 Byte)',
+      submit: 'Schlüssel prüfen und Zugang anlegen',
+      done: 'Zugang für die importierte Generation {kid} angelegt. Die alten Einsendungen lassen sich jetzt öffnen.',
+      next: 'Empfehlung: Der alte Schlüssel war bisher auch außerhalb dieses Systems bekannt. Rotieren Sie den Datenschlüssel unten („Datenschlüssel-Rotation“, „Rotation beginnen“); dabei entsteht ein neuer Wiederherstellungsweg für die neue Generation. Ein alter Recovery-Code bleibt bis dahin gültig, falls er importiert wurde.',
+      format:
+        'Das ist kein privater X25519-Schlüssel mit 32 Byte (erwartet Base64url, Base64 oder 64 Hexzeichen).',
+      mismatch:
+        'Der Schlüssel passt zu keiner importierten Schlüsselgeneration dieses Kunden. Es wurde nichts gespeichert.',
+      noAccountKey:
+        'Für Ihr Konto gibt es noch keinen Kontoschlüssel. Richten Sie ihn zuerst oben ein.',
+      failed:
+        'Der Zugang konnte nicht angelegt werden. Prüfen Sie, ob Sie das Recht zur Schlüsselverwaltung für diesen Kunden haben, und versuchen Sie es erneut.',
+    },
     entriesPage: {
       accepted: 'Angenommen',
       bytes: '{n} Byte',
@@ -1246,6 +1266,9 @@ try {
       slow: 'Das Laden dauert länger. Bitte warten Sie einen Moment.',
       noAccess:
         'Für {n} Einsendungen ist Ihr Datenzugang noch nicht eingerichtet. Diese lassen sich nicht öffnen.',
+      noAccessLegacy:
+        'Stammen sie aus dem Altsystem, übernehmen Sie den alten Datenschlüssel im Konto (privater X25519-Schlüssel oder alter Recovery-Code).',
+      noAccessLegacyLink: 'Altschlüssel übernehmen',
       unholdWarning:
         'Die Aufbewahrungsfrist kann bereits abgelaufen sein. Nach dem Aufheben kann diese Einsendung automatisch gelöscht werden. Löschschutz aufheben?',
       deleteTitle: 'Einsendungen löschen',
@@ -2319,6 +2342,10 @@ try {
           draftHint:
             'Erzeugt inaktive Entwurfsvorschläge aus den Altformularen samt Konverterbericht.',
           draftStart: 'Entwürfe und Konverterbericht erstellen',
+          adoptTitle: 'Altschlüssel übernehmen',
+          adoptHint:
+            'Der Import überträgt die Einsendungen und die öffentlichen Schlüsselgenerationen, aber keine Zugänge. Bis der alte Datenschlüssel übernommen ist, lassen sich die importierten Einsendungen im normalen Betrieb nicht öffnen. Übernehmen Sie ihn im Konto mit dem alten privaten X25519-Schlüssel oder, falls die Recovery-Hülle importiert wurde, mit dem alten Recovery-Code.',
+          adoptLink: 'Zur Übernahme im Konto',
         },
         done: {
           title: 'Umschaltung',
@@ -2328,6 +2355,7 @@ try {
           checklist: [
             'SDK vor dem DNS-Wechsel prüfen.',
             'Finalen Delta- und Löschabgleich durchführen.',
+            'Altschlüssel im Konto übernehmen, damit importierte Einsendungen lesbar sind.',
             'Stichproben der importierten Einsendungen prüfen.',
             'Rückkehrplan bereithalten.',
           ],

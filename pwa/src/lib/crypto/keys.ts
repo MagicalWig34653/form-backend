@@ -171,12 +171,13 @@ export async function openRecovery(
   kid: string,
 ): Promise<Uint8Array> {
   if (r.iterations !== RECOVERY_ITERATIONS) throw new PackageError('format');
-  const secret = await gcmOpen(
-    await kekRecovery(code, r.salt, r.iterations),
-    r.iv,
-    r.wrap,
-    bytes(kid),
-  );
+  const kek = await kekRecovery(code, r.salt, r.iterations);
+  let secret: Uint8Array;
+  try {
+    secret = await gcmOpen(kek, r.iv, r.wrap, bytes(kid));
+  } finally {
+    kek.fill(0);
+  }
   if (secret.length !== 32 || (await identity(secret)).kid !== kid) {
     secret.fill(0);
     throw new PackageError('keyMismatch');

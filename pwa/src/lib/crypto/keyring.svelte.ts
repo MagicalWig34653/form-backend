@@ -27,6 +27,7 @@ import {
 import { prfWasMissing } from './prfSupport';
 import { KeyOperation } from './operation';
 import { identity, randomBytes, hkdf, bytes } from './packageV2';
+import { sealLegacyKey } from './legacyAdoption';
 
 export type KeyringIssue =
   | 'unsupported' // no PRF / cancelled
@@ -645,6 +646,62 @@ class Keyring {
       sealed: toBase64Url(g.sealed),
     });
     return r.ok ? null : 'server';
+  }
+
+  /**
+   * Legacy adoption (ADR 0038): the old private data key typed into this tab is checked locally against the public key of an
+   * imported generation and sealed to the OWN, locally unlocked account key. Only that envelope is uploaded (own-access path,
+   * key.manage + fresh login, audited). `secret` is always wiped, also on every failure path; the kept copy lives in the keyring.
+   */
+  async adoptLegacyKey(
+    tenant: string,
+    accountId: string,
+    secret: Uint8Array,
+  ): Promise<{ kid: string } | KeyringIssue> {
+    const operation = this.operation();
+    try {
+      operation.track(secret);
+      if (!this.account) return 'locked';
+      const account = operation.copy(this.account);
+      this.touch();
+      const [bundle, generations] = await Promise.all([
+        adminApi.keyBundle(),
+        adminApi.rotation(tenant),
+      ]);
+      operation.check();
+      if (!bundle.ok || !generations.ok) return 'server';
+      const own = (await identity(account)).publicKey;
+      operation.check();
+      if (!bundle.data.accountPublicKey) return 'no-account-key';
+      // The server must name the key unlocked here; otherwise the envelope would be sealed for a key it does not serve.
+      if (bundle.data.accountPublicKey !== toBase64Url(own)) return 'server';
+      let sealed: Awaited<ReturnType<typeof sealLegacyKey>>;
+      try {
+        sealed = await sealLegacyKey(
+          secret,
+          [generations.data.active, generations.data.retiring].filter((g) => g !== null),
+          own,
+        );
+      } catch {
+        operation.check();
+        return 'mismatch';
+      }
+      operation.check();
+      const r = await adminApi.grantKeyAccess(tenant, accountId, {
+        kid: sealed.kid,
+        enc: toBase64Url(sealed.enc),
+        sealed: toBase64Url(sealed.sealed),
+      });
+      operation.check();
+      if (!r.ok) return 'server';
+      this.remember(sealed.kid, secret.slice());
+      this.armIdle();
+      return { kid: sealed.kid };
+    } catch {
+      return this.unlocked ? 'server' : 'locked';
+    } finally {
+      operation.dispose();
+    }
   }
 
   /** Opens the data key with the recovery code (fetching the wrap is audited server-side). */

@@ -133,6 +133,79 @@ final class KeyManagementTests: XCTestCase {
         }
     }
 
+    /// Legacy key adoption (ADR 0038): after the import a customer generation exists without any access row. The browser proves
+    /// the old private key against the generation's public key and seals it to the OWN account key; the server accepts that first
+    /// own access only through the existing self-repair path: key.manage + fresh login + CSRF, own account only, audited.
+    func testLegacyAdoptionFirstOwnAccess() async throws {
+        try await AdminFixture.with { f in
+            let root = try await f.account(), u = try await f.account(), w = try await f.account(), reader = try await f.account(), nokey = try await f.account()
+            let tenant = try await f.customer()
+            for a in [u, w, nokey] { for r in ["form.read", "key.manage"] { try await f.grant(a, r, customer: tenant, by: root) } }
+            try await f.grant(reader, "form.read", customer: tenant, by: root)
+            var cu = try await f.login(u)
+            let cw = try await f.login(w), cr = try await f.login(reader), cn = try await f.login(nokey)
+            for (client, account, id) in [(cu, u, UInt8(1)), (cw, w, 2), (cr, reader, 3)] {
+                let cred = try await passkey(f, account, id)
+                try await client.send(.PUT, "me/account-key", body: "{\"publicKey\":\"\(pub())\",\"wrap\":\(wrap(cred))}") { XCTAssertEqual($0.status, .created, text($0)) }
+            }
+            // imported generations (as LegacyImporter writes them): public key + kid, no access row
+            let active = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation, retiring = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation
+            let kidActive = try keyIDOf(active.base64URLString), kidRetiring = try keyIDOf(retiring.base64URLString)
+            for (n, pk, kid, state) in [(1, retiring, kidRetiring, "retiring"), (2, active, kidActive, "active")] {
+                try await f.sql.raw("""
+                    INSERT INTO customer_key_generations (generation_id, customer_id, kid, generation_no, public_key, state, created_at)
+                    VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(tenant)), \(bind: kid), \(bind: n), \(bind: Blob(pk)), \(bind: state), '2023-11-14 22:13:20')
+                    """).run()
+            }
+            func count(_ q: SQLQueryString) async throws -> Int { try await f.sql.raw(q).first(decoding: C.self)?.c ?? -1 }
+            let body = { (kid: String) in "{\"kid\":\"\(kid)\",\"enc\":\"\(self.b64(32, 0x21))\",\"sealed\":\"\(self.b64(48, 0x42))\"}" }
+            // the generations are visible to key.manage (the browser compares the derived public key with them)
+            try await cu.get("tenants/\(tenant)/key-rotation") { res async throws in
+                XCTAssertEqual(res.status, .ok, text(res))
+                XCTAssertEqual((obj(res)["active"] as? [String: Any])?["publicKey"] as? String, active.base64URLString)
+                XCTAssertEqual((obj(res)["retiring"] as? [String: Any])?["kid"] as? String, kidRetiring)
+            }
+            try await cr.get("tenants/\(tenant)/key-rotation") { XCTAssertEqual($0.status, .forbidden) }
+            // refused: no CSRF, no key.manage, foreign target without own access, unknown kid, account without account key
+            try await cu.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kidActive), csrf: false) { XCTAssertEqual($0.status, .forbidden) }
+            try await cr.send(.PUT, "tenants/\(tenant)/key-access/\(reader)", body: body(kidActive)) { XCTAssertEqual($0.status, .forbidden) }
+            try await cw.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kidActive)) { XCTAssertEqual($0.status, .forbidden) }
+            try await cu.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body("0123456789abcdef")) { XCTAssertEqual($0.status.code, 422) }
+            try await cn.send(.PUT, "tenants/\(tenant)/key-access/\(nokey)", body: body(kidActive)) { XCTAssertEqual($0.status.code, 422) }
+            // refused: stale login (fresh authentication required)
+            try await f.sql.raw("UPDATE sessions SET authenticated_at = '2000-01-01' WHERE account_id = \(bind: DB.bin(u))").run()
+            try await cu.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kidActive)) { res async throws in
+                XCTAssertEqual(res.status, .forbidden); XCTAssertTrue(text(res).contains("reauthentication_required"), text(res))
+            }
+            let none = try await count("SELECT COUNT(*) AS c FROM data_key_access")
+            XCTAssertEqual(none, 0)
+            let noAudit = try await count("SELECT COUNT(*) AS c FROM audit_events WHERE action_code LIKE 'key.access.%'")
+            XCTAssertEqual(noAudit, 0)
+            // accepted: fresh, own account, both imported generations; the blobs are stored exactly, the actor is audited
+            cu = try await f.login(u)
+            for kid in [kidActive, kidRetiring] {
+                try await cu.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kid)) { XCTAssertEqual($0.status, .created, text($0)) }
+            }
+            struct Row: Decodable { let enc: Blob; let sealed_key: Blob; let granted_by: Blob }
+            let rows = try await f.sql.raw("SELECT enc, sealed_key, granted_by FROM data_key_access WHERE customer_id = \(bind: DB.bin(tenant)) AND account_id = \(bind: DB.bin(u))").all(decoding: Row.self)
+            XCTAssertEqual(rows.count, 2)
+            XCTAssertTrue(rows.allSatisfy { $0.enc.data == Data(repeating: 0x21, count: 32) && $0.sealed_key.data == Data(repeating: 0x42, count: 48) && $0.granted_by.data == DB.bin(u).data })
+            let audited = try await count("SELECT COUNT(*) AS c FROM audit_events WHERE action_code = 'key.access.repair' AND actor_id = \(bind: DB.bin(u))")
+            XCTAssertEqual(audited, 2)
+            try await cu.get("me/key-bundle") { res async throws in
+                XCTAssertEqual(Set(((obj(res)["access"] as? [[String: Any]]) ?? []).compactMap { $0["kid"] as? String }), [kidActive, kidRetiring])
+            }
+            // a repeated (replayed) request never multiplies access: one row per generation and account, each attempt audited
+            try await cu.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kidActive)) { XCTAssertEqual($0.status, .created, text($0)) }
+            let after = try await count("SELECT COUNT(*) AS c FROM data_key_access")
+            XCTAssertEqual(after, 2)
+            let auditedAgain = try await count("SELECT COUNT(*) AS c FROM audit_events WHERE action_code = 'key.access.repair'")
+            XCTAssertEqual(auditedAgain, 3)
+            // u's access is never written by another account without access of its own
+            try await cw.send(.PUT, "tenants/\(tenant)/key-access/\(u)", body: body(kidActive)) { XCTAssertEqual($0.status, .forbidden) }
+        }
+    }
+
     private func keyIDOf(_ publicB64: String) throws -> String {
         let pk = try XCTUnwrap(Data(base64URLString: publicB64))
         return SHA256.hash(data: pk).prefix(8).map { String(format: "%02x", $0) }.joined()

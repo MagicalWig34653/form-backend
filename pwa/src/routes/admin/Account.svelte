@@ -3,6 +3,7 @@
   import RecoveryStep from '$lib/crypto/RecoveryStep.svelte';
   import AccessStatus from './AccessStatus.svelte';
   import KeyringPanel from './KeyringPanel.svelte';
+  import LegacyKeyAdoption from './LegacyKeyAdoption.svelte';
   import RotationPanel from './RotationPanel.svelte';
   import { onMount, tick } from 'svelte';
   import { createCredential } from '$lib/api/webauthn';
@@ -172,7 +173,17 @@
     await load();
   }
 
-  onMount(() => void load());
+  onMount(() => {
+    void load();
+    // Link target of the migration page and the entries notice (ADR 0037): open the legacy key adoption.
+    if (new URLSearchParams(router.search).get('legacy') === '1') {
+      advancedOpen = true;
+      void tick().then(() => {
+        const first = document.querySelector<HTMLElement>('[id^="legacy-title-"]');
+        first?.scrollIntoView({ block: 'center' });
+      });
+    }
+  });
 </script>
 
 <div class="flex w-full min-w-0 flex-col gap-6">
@@ -200,6 +211,7 @@
               keyId={customerKids[tenant.id] ?? null}
               onchange={() => void load()}
             />
+            <LegacyKeyAdoption tenant={tenant.id} onchange={() => void load()} />
             <RotationPanel tenant={tenant.id} onchange={() => {}} />
           {/each}
         </div>

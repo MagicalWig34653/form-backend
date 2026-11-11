@@ -248,6 +248,79 @@ final class MigrationTests: XCTestCase {
 }
 
 extension MigrationTests {
+    /// Legacy recovery envelopes (bvk migration 034, `datenschluesselRecovery`) are copied byte for byte into data_key_recovery,
+    /// only for a generation mapped to and imported for the plan customer; anything else becomes a review case (ADR 0037).
+    func testMigrationCopiesLegacyRecoveryEnvelopeExactly() async throws {
+        try await withDatabases { src,dst,secrets in
+            try await src.raw("""
+                CREATE TABLE `datenschluesselRecovery` (
+                    `kid` char(16) NOT NULL, `salt` varbinary(32) NOT NULL, `iterationen` int(11) NOT NULL,
+                    `iv` varbinary(12) NOT NULL, `wrap` varbinary(48) NOT NULL, `erstelltAm` int(11) NOT NULL,
+                    PRIMARY KEY (`kid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """).run()
+            let pub = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation, kid = try FormCrypto.keyID(pub)
+            // a second legacy generation that the plan does not assign to any customer
+            let foreignPub = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation, foreignKid = try FormCrypto.keyID(foreignPub)
+            try await src.raw(query("INSERT INTO datenschluessel (kid,publicKey,status,erstelltAm,erstelltVon) VALUES (\(val(kid)),\(bin(pub)),'aktiv',1700000000,\(val(self.customer)))")).run()
+            // synthetic bytes, including 0x00 and 0xff, so that any text or charset conversion would show
+            let salt = Data((0..<32).map { UInt8(($0 * 37 + 255) % 256) }), iv = Data((0..<12).map { UInt8(255 - $0) }), wrap = Data((0..<48).map { UInt8(($0 * 91) % 256) })
+            try await src.raw(query("INSERT INTO datenschluesselRecovery (kid,salt,iterationen,iv,wrap,erstelltAm) VALUES (\(val(kid)),\(bin(salt)),600000,\(bin(iv)),\(bin(wrap)),1700000001)")).run()
+            try await src.raw(query("INSERT INTO datenschluesselRecovery (kid,salt,iterationen,iv,wrap,erstelltAm) VALUES (\(val(foreignKid)),\(bin(salt)),600000,\(bin(iv)),\(bin(wrap)),1700000001)")).run()
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"recovery",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer],keyCustomers:[kid:self.customer],keyGenerationNumbers:[kid:1])
+            let report = try await importer.run(plan:plan,batchSize:1)
+            XCTAssertEqual(report.inventory["datenschluesselRecovery"],2)
+            XCTAssertEqual(report.tables["datenschluesselRecovery"]?.sourceCount,2)
+            XCTAssertEqual(report.tables["datenschluesselRecovery"]?.importedCount,1)
+            XCTAssertEqual(report.tables["datenschluesselRecovery"]?.reviewCount,1)
+            struct R: Decodable { let kid: String; let kdf_name: String; let salt: Blob; let iterations: Int; let iv: Blob; let wrapped_key: Blob; let customer_id: Blob }
+            let rows = try await dst.raw("SELECT kid,kdf_name,salt,iterations,iv,wrapped_key,customer_id FROM data_key_recovery").all(decoding:R.self)
+            XCTAssertEqual(rows.count,1)
+            let row = try XCTUnwrap(rows.first)
+            XCTAssertEqual(row.kid,kid); XCTAssertEqual(row.kdf_name,"pbkdf2-hmac-sha256"); XCTAssertEqual(row.iterations,600000)
+            XCTAssertEqual(row.salt.data,salt); XCTAssertEqual(row.iv.data,iv); XCTAssertEqual(row.wrapped_key.data,wrap)
+            XCTAssertEqual(row.customer_id.data,DB.bin(try XCTUnwrap(UUID(uuidString:self.customer))).data)
+            // the unassigned generation is a review case, not an import (no guessing of a customer)
+            let issue = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_issues WHERE source_table='datenschluesselRecovery' AND source_key=\(bin(Data(foreignKid.utf8))) AND state='open'")
+            XCTAssertEqual(issue,"1")
+            // no access envelope is created by the importer: adoption happens in the browser
+            let access = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM data_key_access")
+            XCTAssertEqual(access,"0")
+            // idempotent rerun; tampering with the copied envelope is detected
+            let before = try await self.fingerprint(importer,dst,ignoring:["migration_runs"])
+            let again = try await importer.run(plan:plan,batchSize:2)
+            XCTAssertEqual(try json(report),try json(again))
+            let afterRun = try await self.fingerprint(importer,dst,ignoring:["migration_runs"])
+            XCTAssertEqual(before,afterRun)
+            try await dst.raw("UPDATE data_key_recovery SET wrapped_key=\(bind:Blob(Data(repeating:1,count:48)))").run()
+            do { _ = try await importer.run(plan:plan); XCTFail("Expected target conflict") } catch ImportFailure.conflict {}
+        }
+    }
+
+    func testMigrationRecoveryEnvelopeWithForeignShapeIsReviewed() async throws {
+        try await withDatabases { src,dst,secrets in
+            try await src.raw("""
+                CREATE TABLE `datenschluesselRecovery` (
+                    `kid` char(16) NOT NULL, `salt` varbinary(32) NOT NULL, `iterationen` int(11) NOT NULL,
+                    `iv` varbinary(12) NOT NULL, `wrap` varbinary(48) NOT NULL, `erstelltAm` int(11) NOT NULL,
+                    PRIMARY KEY (`kid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """).run()
+            let pub = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation, kid = try FormCrypto.keyID(pub)
+            try await src.raw(query("INSERT INTO datenschluessel (kid,publicKey,status,erstelltAm,erstelltVon) VALUES (\(val(kid)),\(bin(pub)),'auslaufend',1700000000,\(val(self.customer)))")).run()
+            // iteration count differs from the contract (600000): never imported, the browser would refuse it anyway
+            try await src.raw(query("INSERT INTO datenschluesselRecovery (kid,salt,iterationen,iv,wrap,erstelltAm) VALUES (\(val(kid)),\(bin(Data(repeating:1,count:32))),100000,\(bin(Data(repeating:2,count:12))),\(bin(Data(repeating:3,count:48))),1700000001)")).run()
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"recovery-shape",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer],keyCustomers:[kid:self.customer],keyGenerationNumbers:[kid:1])
+            let report = try await importer.run(plan:plan)
+            XCTAssertEqual(report.tables["datenschluesselRecovery"]?.importedCount,0)
+            XCTAssertEqual(report.tables["datenschluesselRecovery"]?.reviewCount,1)
+            let rows = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM data_key_recovery")
+            XCTAssertEqual(rows,"0")
+            let state = try await importer.scalar(dst,"SELECT state AS v FROM migration_runs")
+            XCTAssertEqual(state,"failed")
+        }
+    }
+
     /// Uses only legacy.sql's schema and synthetic rows: 3 forms / 28 fields, never the real dump.
     func testConversionOfImportedSyntheticThreeFormsAnd28Fields() async throws {
         try await withDatabases { src, dst, secrets in

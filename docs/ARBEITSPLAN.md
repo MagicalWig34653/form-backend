@@ -4,6 +4,10 @@
 
 Umgesetzt im Worktree-Branch `worktree-agent-aafdd4bb248d0ad0a` (siehe `docs/handoffs/Mail-Builder.md`). Nächste Schritte: unabhängiges Review (Sanitizer, URL-Regeln, Moduswechsel), Merge, Testversand einer Design-Mail an Outlook und Gmail. Später optional: Bild-Upload, Vorlagenbibliothek, Vorschau externer Bilder (`img-src https:` in der CSP).
 
+## DB-Pool-Deadlock (11.11.2026, Todolino 1EA2CCBB)
+
+Erledigt im Worktree `worktree-agent-aa30f66e51e219486`. Offen sind Review, Merge, Image-Update und ein wiederholter Umstieg im Betrieb. Folgearbeit (nicht begonnen): Hintergrunddienste so umbauen, dass sie nicht mehr eine Sitzung halten und darin eine zweite Verbindung anfordern, sondern eine eigene Lock-Verbindung nutzen oder nur über die Lock-Sitzung arbeiten. Optional ENV für die Pool-Größe (Registry und Deploy-Vorlagen). Details: `docs/handoffs/DB-Pool-Deadlock.md`.
+
 ## Einsendungen/Export — Abnahmepaket (03.11.2026)
 
 Auf `fix-e2e-entries` / `form-backend-e2e2` (Basis `298b6c0`): Session-Mock

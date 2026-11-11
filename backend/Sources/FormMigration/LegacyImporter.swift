@@ -224,12 +224,14 @@ public struct LegacyImporter {
                 return [try await insert(db,"customers",["id":try uid(id),"name":val(p.customers[id]),"state":"'disabled'","created_at":"'1970-01-01 00:00:00'"],key:["id":try uid(id)])]
             }
         }
-        let tables = ["datenschluessel","outgoingMailServer","outgoingMailProxy","formulare","formularFelder","anfragen","anfrageIdempotenz","formularWebhooks","statistics"]
+        let tables = ["datenschluessel","datenschluesselRecovery","outgoingMailServer","outgoingMailProxy","formulare","formularFelder","anfragen","anfrageIdempotenz","formularWebhooks","statistics"]
         do {
             for table in tables {
+                // Recovery envelopes exist only in sources with legacy migration 034; an absent table holds nothing to import.
+                if table == "datenschluesselRecovery" && report.inventory[table] == nil { continue }
                 try await checkpoint?(table, processed)
                 let cols = try await columns(src,table)
-                let keyColumn = table == "datenschluessel" ? "kid":"ID"
+                let keyColumn = ["datenschluessel","datenschluesselRecovery"].contains(table) ? "kid":"ID"
                 guard cols.contains(keyColumn) else { throw ImportFailure.invalidSourceAt(table:table,column:keyColumn,reason:.missingColumn) }
                 let projection = try await projection(src,table,cols)
                 var cursor: Int64?; var keyCursor: String?; var parity = TableParity(); var sourceHashes = HMAC<SHA256>(key:hmacKey), targetHashes = HMAC<SHA256>(key:hmacKey)

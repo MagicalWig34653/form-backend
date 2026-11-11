@@ -8,8 +8,19 @@ import SQLKit
 import Vapor
 
 public enum Persistence {
+    /// Pool size per event loop when the caller does not fix one. Every pinned service (`app.db` captured at boot) draws
+    /// from the pool of one loop, and the lock-holding schedulers (mail, auth, flow, webhooks, storage, ops, deploy,
+    /// erasure, migration) each keep one connection while asking for a second. With 4 per loop and few cores these
+    /// holders exhausted the pool and every waiter ran into the 10 s pool timeout. Small hosts get a pool well above
+    /// the number of such holders; the total per replica stays at 32 up to 8 loops and at the former 4 per loop above.
+    public static func defaultMaxConnectionsPerEventLoop(eventLoops: Int) -> Int {
+        max(4, 32 / max(1, eventLoops))
+    }
+
     /// Registers the MariaDB/MySQL connection pool as the default database. No Fluent migrations.
-    public static func configure(_ app: Application, _ config: AppConfig, maxConnectionsPerEventLoop: Int = 4) {
+    public static func configure(_ app: Application, _ config: AppConfig, maxConnectionsPerEventLoop: Int? = nil) {
+        let loops = app.eventLoopGroup.makeIterator().reduce(0) { n, _ in n + 1 }
+        let maxConnectionsPerEventLoop = maxConnectionsPerEventLoop ?? defaultMaxConnectionsPerEventLoop(eventLoops: loops)
         var tls: TLSConfiguration? = TLSConfiguration.makeClientConfiguration()
         if config.dbTLS == .disable { tls = nil }
         let cfg = MySQLConfiguration(

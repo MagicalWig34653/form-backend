@@ -1,4 +1,4 @@
-# 0037 HTML-E-Mail-Builder in der PWA
+# ADR 0039: HTML-E-Mail-Builder in der PWA
 
 Status: umgesetzt (11.11.2026), Nutzerwunsch „Der HTML E-Mail Builder muss mit rein.“
 

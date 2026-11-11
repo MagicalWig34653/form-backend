@@ -86,3 +86,14 @@ bereits migrierter :2/hpke-Objekte mit dem ausdrücklich im Browser eingegebenen
 alten X25519-Schlüssel. Kein RSA-/CBC-/v1-Decoder im Kern und keine Übermittlung
 von Klartext oder privaten Datenschlüsseln. Servernachweis ist nur eine menschliche
 Bestätigung zum Chiffrathash; Testverschlüsselung und Rücklesen erfolgen lokal.
+
+## Übernahme des Alt-Kundenschlüssels (ADR 0038)
+
+Importierte Generationen haben zunächst keinen Zugang. Übernahme ausschließlich im Browser:
+privater X25519-Altschlüssel (32 Byte) → lokal abgeleiteter Public Key und kid müssen exakt einer
+gelisteten Generation des Kunden entsprechen → HPKE-Zugangshülle (`kubus-datenzugang v1`,
+AAD kid) an den eigenen, lokal entsperrten Kontoschlüssel → Upload nur `{kid,enc,sealed}` über
+den Selbstzugang `PUT /tenants/{t}/key-access/{eigeneKontoId}` (key.manage, frische Anmeldung,
+CSRF, Audit). Alternativ wird die alte Recovery-Hülle (`datenschluesselRecovery`, formatgleich
+zu `keys.ts wrapRecovery`) bytegleich nach `data_key_recovery` importiert und mit dem alten
+Recovery-Code im Browser geöffnet. Kein RSA/CBC/:1-Decoder; keine Übermittlung privater Schlüssel.

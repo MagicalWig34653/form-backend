@@ -2,7 +2,8 @@
   import { formatClock } from '$lib/format';
   import { confirmAction } from '$lib/confirm.svelte';
   import { verifyMigrationProbe } from '$lib/crypto/migrationProbe';
-  import { fromBase64Url } from '$lib/crypto/packageV2';
+  import { parseLegacyPrivateKey } from '$lib/crypto/legacyAdoption';
+  import { router } from '$lib/router.svelte';
   import { onMount } from 'svelte';
   import { http, adminApi } from '$lib/api';
   import type { Tenant } from '$lib/api/admin';
@@ -260,10 +261,10 @@
     error = '';
     notice = '';
     try {
-      secret = fromBase64Url(privateKey.trim());
-      activeSecret = secret;
+      const text = privateKey;
       privateKey = '';
-      if (secret.length !== 32) throw new Error('key');
+      secret = parseLegacyPrivateKey(text);
+      activeSecret = secret;
       const testHash = await verifyMigrationProbe(
         selected.wire,
         selected.hash,
@@ -722,6 +723,7 @@
                       type="password"
                       bind:value={privateKey}
                       autocomplete="off"
+                      spellcheck={false}
                       required
                     />
                   </Row>
@@ -745,6 +747,15 @@
                 >
               </div>
             {/if}
+          </section>
+          <section class="flex flex-col gap-3 rounded-lg border p-4" data-testid="migration-adopt">
+            <h3 class="m-0 text-base font-semibold">{f.review.adoptTitle}</h3>
+            <p class="m-0 text-sm">{f.review.adoptHint}</p>
+            <div>
+              <Button variant="outline" onclick={() => router.navigate('/account?legacy=1')}
+                >{f.review.adoptLink}</Button
+              >
+            </div>
           </section>
           <section class="flex flex-col gap-3 rounded-lg border p-4">
             <h3 class="m-0 text-base font-semibold">{f.review.deltaTitle}</h3>
@@ -806,6 +817,11 @@
               {#each f.done.checklist as item (item)}<li>{item}</li>{/each}
             </ul>
             <p class="text-muted-foreground m-0 text-sm">{f.done.noteLead}</p>
+            <div>
+              <Button variant="outline" onclick={() => router.navigate('/account?legacy=1')}
+                >{f.review.adoptLink}</Button
+              >
+            </div>
           </section>
           <section class="flex flex-col gap-2 rounded-lg border p-4">
             <h3 class="m-0 text-base font-semibold">{f.done.rollbackTitle}</h3>

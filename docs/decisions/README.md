@@ -19,3 +19,5 @@ Eine Agent-Empfehlung wird nicht allein durch Ablage zum Nutzerbeschluss.
 - [ADR 0036: Ingest-Budget je Client und Aktivschalter](0036-ingest-budget-und-aktivschalter.md) — FA-015 (`ingest.requestsPerMinute`) und FA-021 (`PUT forms/{id}/active`).
 
 - [ADR 0037: Passkey-Step-up auf der Seite](0037-passkey-step-up.md) — `auth/reauth/{options,verify}`, Frische ohne Neuanmeldung, Lesen von Umstiegsstatus/Einstellungen ohne Frische.
+- [ADR 0038: Übernahme des Alt-Kundenschlüssels im Browser](0038-altschluessel-uebernahme.md) — privater X25519-Altschlüssel oder importierte Alt-Recovery-Hülle, Selbstzugang ohne neuen Endpunkt.
+- [ADR 0039: HTML-E-Mail-Builder im Mail-Reiter](0039-html-mail-builder.md) — MJML-Bausteine, Rich-Text, Quelltext; Speicherformat des Altsystems.

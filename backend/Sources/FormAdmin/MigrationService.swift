@@ -120,7 +120,7 @@ struct MigrationService {
                     try await lock.raw("SELECT RELEASE_LOCK('form_migration_jobs')").run(); return
                 }
                 if let job = try await lock.raw("SELECT * FROM migration_jobs WHERE state='queued' ORDER BY created_at LIMIT 1").first(decoding: MigrationJob.self) {
-                    try await execute(job)
+                    try await execute(job, session: lock)
                 }
                 try await lock.raw("SELECT RELEASE_LOCK('form_migration_jobs')").run()
             } catch { try? await lock.raw("SELECT RELEASE_LOCK('form_migration_jobs')").run(); throw error }
@@ -142,7 +142,11 @@ struct MigrationService {
         case .interrupted: return "interrupted"
         }
     }
-    func execute(_ job: MigrationJob) async throws {
+    /// `session` is the connection that holds the job lock. The importer runs its target work on that same connection, so a
+    /// running job holds one pooled connection (plus short single queries) instead of two long-lived ones; holding two while
+    /// requesting a third from the same event-loop pool deadlocked the pool together with the maintenance schedulers.
+    func execute(_ job: MigrationJob, session: SQLDatabase? = nil) async throws {
+        let target = session ?? sql
         let id = job.id
         try await sql.raw("UPDATE migration_jobs SET state='running',phase='source',updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
         do {
@@ -155,7 +159,7 @@ struct MigrationService {
             // (table, column, reason; never a source value), so they travel out as a value and keep the real cause.
             let outcome = try await withSource(source) { src -> Result<ImportReport, ImportFailure> in
               do {
-                let importer = try LegacyImporter(source: src, target: sql, secrets: secrets, hmacKey: hmac)
+                let importer = try LegacyImporter(source: src, target: target, secrets: secrets, hmacKey: hmac)
                 return .success(try await importer.run(plan: plan, dryRun: job.dry_run == 1, expectedSchema: job.expected_schema) { phase, processed in
                     struct C: Decodable { let cancel_requested: Int }
                     let cancel = try await sql.raw("SELECT cancel_requested FROM migration_jobs WHERE id=\(bind: id)").first(decoding: C.self)?.cancel_requested
@@ -168,7 +172,7 @@ struct MigrationService {
               } catch let failure as ImportFailure { return .failure(failure) }
             }
             var report = try outcome.get()
-            let knownTables: Set<String> = ["datenschluessel", "outgoingMailServer", "outgoingMailProxy", "formulare", "formularFelder", "anfragen", "anfrageIdempotenz", "formularWebhooks", "statistics"]
+            let knownTables: Set<String> = ["datenschluessel", "datenschluesselRecovery", "outgoingMailServer", "outgoingMailProxy", "formulare", "formularFelder", "anfragen", "anfrageIdempotenz", "formularWebhooks", "statistics"]
             let other = report.inventory.filter { !knownTables.contains($0.key) }.values.reduce(0, +)
             report.inventory = report.inventory.filter { knownTables.contains($0.key) }
             if other > 0 { report.inventory["otherTables"] = other }

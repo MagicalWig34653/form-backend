@@ -1,5 +1,17 @@
 # Tatsächlicher Stand
 
+## DB-Pool-Deadlock bei Umstieg und Hintergrunddiensten (11.11.2026, Worktree-Branch `worktree-agent-aa30f66e51e219486`, lokal committet, ungemergt)
+
+- Belegt in `backend/Tests/FormAdminTests/MigrationPoolTests.swift`: Bei 4 Verbindungen je Event-Loop blockierten sich die Lock-haltenden Dienste (Mail, Auth, Flow, Webhooks) und der Umstiegsjob gegenseitig. Alle bekamen nach 10 s `ConnectionPoolTimeoutError`, wie im Produktionslog. Der Job hielt 3 Verbindungen gleichzeitig und scheiterte mit 2 je Loop selbst (`migration_failed`).
+- Behoben: Der Importer nutzt die Verbindung des Job-Locks (Spitzenwert 2 statt 3), und der Pool richtet sich nach der Zahl der Loops: `max(4, 32 / Loops)`. Keine ENV-, Vertrags- oder Migrationsänderung, Importsemantik unverändert.
+- Übergabe mit Messwerten, Restrisiken und Prüfbefehlen für den Betrieb: `docs/handoffs/DB-Pool-Deadlock.md`.
+
+## Umstieg: Alt-Kundenschlüssel im Browser übernehmen (11.11.2026, Worktree-Branch `worktree-agent-ada0129e51f86cd2e`, lokal committet, ungemergt)
+
+- ADR 0037. PWA: Konto → Sicherheit → Erweitert, je Kunde „Altschlüssel aus dem Umstieg übernehmen“ (`/account?legacy=1`, verlinkt aus Umstieg „Prüfung“/„Umschaltung“ und der Sperrmeldung der Einsendungen). Alter privater X25519-Schlüssel wird lokal gegen kid + Public Key der importierten Generation geprüft und per HPKE an den eigenen Kontoschlüssel versiegelt; Upload nur der Hülle über den vorhandenen Selbstzugang (`PUT key-access/{eigeneId}`: key.manage, frische Anmeldung, CSRF, Audit `key.access.repair`). Kein neuer Endpunkt.
+- Importer: alte Recovery-Hülle `datenschluesselRecovery` (formatgleich, Vergleich in ADR 0037) wird bytegleich nach `data_key_recovery` übernommen; danach wirkt der alte Recovery-Code über „Mit Recovery-Code öffnen“.
+- Geprüft: Swift gegen Wegwerf-MariaDB (gezielt und Gesamtlauf, siehe `docs/handoffs/Altschluessel-Uebernahme.md`), svelte-check 0, eslint, prettier, vitest, Playwright 180 bestanden/9 übersprungen, `contracts/auth/validate.py` grün. Nicht mit echtem Altschlüssel geprüft; unabhängiges Review steht aus.
+
 ## Darstellungsoptionen im Konto (11.11.2026, Worktree-Branch `worktree-agent-a0cc94f17870fdab5`, lokal committet, ungemergt)
 
 - Backend: `GET/PUT /admin/api/v1/me/preferences` (`backend/Sources/FormAdmin/AccountPreferenceRoutes.swift`) auf der vorhandenen Tabelle `account_preferences`, keine Migration. Nur eigenes Konto, PUT mit Origin/CSRF, keine frische Anmeldung, kein Audit. Allowlist `theme` light/dark/system, `accent` = 20 IDs aus `pwa/src/lib/accents.ts`, `glow` 0–6; sonst 422 „Ungültige Darstellungsoption.“ Vertrag: `contracts/auth/p5-implementiert.openapi.yaml`. Neue Akzentfarben müssen in beiden Allowlists ergänzt werden.

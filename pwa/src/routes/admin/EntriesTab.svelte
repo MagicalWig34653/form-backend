@@ -438,7 +438,15 @@
       {/if}
       {#if missingCount > 0 && keyring.unlocked}
         <div class="p-3 pb-0">
-          <Banner tone="warn">{ui.noAccess.replace('{n}', String(missingCount))}</Banner>
+          <Banner tone="warn"
+            >{ui.noAccess.replace('{n}', String(missingCount))}
+            {ui.noAccessLegacy}
+            {#snippet action()}
+              <Button variant="outline" onclick={() => router.navigate('/account?legacy=1')}
+                >{ui.noAccessLegacyLink}</Button
+              >
+            {/snippet}
+          </Banner>
         </div>
       {/if}
       {#if visible.length > 0}

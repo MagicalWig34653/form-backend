@@ -39,6 +39,23 @@ extension LegacyImporter {
                   ["aktiv","auslaufend"].contains(try r.required("status")) else { throw ImportFailure.invalidPlan }
             let c = try uid(customer)
             return [try await insert(db,"customer_key_generations",["generation_id":bin(DB.bin(UUID()).data),"customer_id":c,"kid":val(kid),"generation_no":String(number),"public_key":bin(pub),"state":val(try r.required("status") == "aktiv" ? "active":"retiring"),"created_at":try timestamp(r.required("erstelltAm"),table:r.table,column:"erstelltAm")],key:["customer_id":c,"kid":val(kid)])]
+        case "datenschluesselRecovery":
+            // Legacy recovery envelope (bvk www/src/krypto/schluessel-modell.js recoveryWickeln/kekR, normalisierePassphrase in
+            // schluessel-seite.js): PBKDF2-HMAC-SHA256(normalized code, salt[32], 600000) -> AES-256-GCM(iv[12], AAD=ASCII(kid), sk_D) = 48 bytes.
+            // Byte-for-byte the format of pwa keys.ts wrapRecovery/openRecovery, so it is copied exactly, never derived or re-wrapped.
+            let kid = try r.required("kid")
+            guard kid.range(of: "^[0-9a-f]{16}$", options: .regularExpression) != nil,
+                  let customer = p.keyCustomers[kid], p.customers[customer] != nil else { throw ImportFailure.invalidPlan }
+            let c = try uid(customer)
+            // Only for the generation imported for exactly this customer (row from "datenschluessel" in the same run).
+            guard try await scalar(db,"SELECT kid AS v FROM customer_key_generations WHERE customer_id=\(c) AND kid=\(val(kid))") == kid else { throw ImportFailure.invalidPlan }
+            guard let salt = try r.bytes("salt"), salt.count == 32, let iv = try r.bytes("iv"), iv.count == 12,
+                  let wrap = try r.bytes("wrap"), wrap.count == 48, try r.required("iterationen") == "600000" else { throw ImportFailure.invalidSource }
+            // A recovery written by the new system for this generation is never replaced.
+            guard try await scalar(db,"SELECT kid AS v FROM data_key_recovery WHERE customer_id=\(c) AND kid=\(val(kid))") == nil else { throw ImportFailure.conflict }
+            let created = try timestamp(r.required("erstelltAm"),table:r.table,column:"erstelltAm")
+            guard created != "NULL" else { throw ImportFailure.invalidSourceAt(table:r.table,column:"erstelltAm",reason:.invalidTimestamp) }
+            return [try await insert(db,"data_key_recovery",["customer_id":c,"kid":val(kid),"kdf_name":"'pbkdf2-hmac-sha256'","salt":bin(salt),"iterations":"600000","iv":bin(iv),"wrapped_key":bin(wrap),"created_at":created],key:["customer_id":c,"kid":val(kid)])]
         case "outgoingMailServer", "outgoingMailProxy":
             let id = try r.required("UUID"), idSQL = try r.uuid("UUID")
             guard let owners = p.connectionCustomers[id], !owners.isEmpty else { throw ImportFailure.invalidPlan }

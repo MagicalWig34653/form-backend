@@ -268,7 +268,7 @@ paths:
   /tenants/{tenantId}/key-access/{accountId}:
     put:
       operationId: grantKeyAccess
-      description: 'Recht key.manage + eigener Datenzugang, frische Anmeldung. Body {kid,enc(32),sealed(48)}; kid muss die aktive Generation sein, das Zielkonto aktiv mit Kontoschlüssel und Recht im Kunden; fremder Zugang wird nie ersetzt (409).'
+      description: 'Recht key.manage, frische Anmeldung, CSRF. Body {kid,enc(32),sealed(48)}; kid muss eine aktive oder auslaufende Generation des Kunden sein, das Zielkonto aktiv mit Kontoschlüssel und Recht im Kunden. Für ein fremdes Konto zusätzlich eigener Datenzugang zu dieser Generation (sonst 403); fremder Zugang wird nie ersetzt (409), Audit key.access.grant. Für das eigene Konto kein vorhandener Zugang nötig (Selbstreparatur nach Recovery und Altschlüssel-Übernahme nach ADR 0037); eine vorhandene eigene Zeile wird ersetzt, Audit key.access.repair. Der Server prüft die Hülle nicht (Zero-Knowledge).'
       security: [{ Session: [] }]
       parameters: [{ $ref: '#/components/parameters/tenantId' }, { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '201': { description: Erteilt. } }
@@ -289,7 +289,7 @@ paths:
   /tenants/{tenantId}/key-recovery:
     get:
       operationId: getKeyRecovery
-      description: 'Recht key.manage, frische Anmeldung, Audit key.recovery.read. {keyId,salt,iterations(600000),iv,wrap}; no-store.'
+      description: 'Recht key.manage, frische Anmeldung, Audit key.recovery.read. Optional ?kid= (16 Hex, aktive oder auslaufende Generation; sonst die aktive). {keyId,salt,iterations(600000),iv,wrap}; no-store. Importierte Alt-Recovery-Hüllen (ADR 0037) sind formatgleich.'
       security: [{ Session: [] }]
       parameters: [{ $ref: '#/components/parameters/tenantId' }]
       responses: { '200': { description: Recovery-Hülle. } }
