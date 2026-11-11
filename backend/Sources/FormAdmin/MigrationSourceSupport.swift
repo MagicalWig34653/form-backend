@@ -82,7 +82,10 @@ enum SourceTLSProbe {
                 .connectTimeout(timeout)
                 .channelInitializer { $0.pipeline.addHandler(GreetingReader(promise: promise)) }
                 .connect(to: socket).get()
-        } catch { throw SourceFailure.unreachable }
+        } catch {
+            promise.fail(SourceFailure.unreachable)  // NIO aborts (debug) on a promise that is never completed
+            throw SourceFailure.unreachable
+        }
         let timer = channel.eventLoop.scheduleTask(in: timeout) { promise.fail(SourceFailure.unreachable) }
         defer { timer.cancel(); channel.close(promise: nil) }
         let greeting = try await promise.futureResult.get()

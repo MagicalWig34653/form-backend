@@ -26,8 +26,9 @@ final class ImportRehearsalTests: XCTestCase {
         let secrets: SecretStore
         var host: String { ProcessInfo.processInfo.environment["P4A_DB_HOST"] ?? "127.0.0.1" }
         var port: Int { Int(ProcessInfo.processInfo.environment["P4A_DB_PORT"]!)! }
-        func sourceBody(user: String? = nil, password: String? = nil, database: String? = nil, port: Int? = nil) -> [String: Any] {
-            ["host": host, "port": port ?? self.port, "database": database ?? source.name, "username": user ?? source.reader, "password": password ?? source.password, "tls": "disable"]
+        /// `host` is the database host of the environment; a fake server in the test process listens on loopback (`host: "127.0.0.1"`).
+        func sourceBody(user: String? = nil, password: String? = nil, database: String? = nil, port: Int? = nil, host overrideHost: String? = nil) -> [String: Any] {
+            ["host": overrideHost ?? host, "port": port ?? self.port, "database": database ?? source.name, "username": user ?? source.reader, "password": password ?? source.password, "tls": "disable"]
         }
         func json(_ object: Any) -> String { String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self) }
         func test(_ body: [String: Any]? = nil) async throws -> (HTTPStatus, [String: Any], String) {
@@ -275,7 +276,7 @@ final class ImportRehearsalTests: XCTestCase {
         try await withHarness(perForm: 1, statistics: 0) { h in
             let fake = try await FakeServer(ssl: false)
             do {
-                var body = h.sourceBody(user: "srcuser-geheim", password: "pw-geheim", database: "alt", port: fake.port)
+                var body = h.sourceBody(user: "srcuser-geheim", password: "pw-geheim", database: "alt", port: fake.port, host: "127.0.0.1")
                 body["tls"] = "verify"
                 let (status, _, text) = try await h.test(body)
                 try await Task.sleep(nanoseconds: 300_000_000)
