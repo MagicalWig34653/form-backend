@@ -16,10 +16,10 @@ auf eine freie Verbindung 10 s. Pro Replik werden höchstens 32 Verbindungen ge�
 
 ## Listener und sichere Proxy-Zuordnung
 
-| Listener | ENV / Standard | Registrierte Oberfläche |
-| --- | --- | --- |
-| Öffentlich | `FORM_PUBLIC_PORT=8080` | `/api/v2/submit` (inkl. index.php-Alias), `/api/v2/statistics/events`, `/mcp`, vorhandene MCP-Metadaten, `/healthz` |
-| Intern | `FORM_INTERNAL_PORT=8081` | PWA aus `FORM_PUBLIC_DIR`, `/admin/api`, `/health`, `/healthz`, `/ready`, weitere Verwaltungsrouten |
+| Listener   | ENV / Standard            | Registrierte Oberfläche                                                                                             |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Öffentlich | `FORM_PUBLIC_PORT=8080`   | `/api/v2/submit` (inkl. index.php-Alias), `/api/v2/statistics/events`, `/mcp`, vorhandene MCP-Metadaten, `/healthz` |
+| Intern     | `FORM_INTERNAL_PORT=8081` | PWA aus `FORM_PUBLIC_DIR`, `/admin/api`, `/health`, `/healthz`, `/ready`, weitere Verwaltungsrouten                 |
 
 **Ingest ausschließlich öffentlich**: intern gibt es hierfür 404, ebenso für MCP und den
 Statistik-Collector. Ohne `FORM_PUBLIC_DASHBOARD=1` sind PWA und sämtliche Admin-Routen öffentlich
@@ -65,11 +65,11 @@ privates Netz oder gleichwertigen Zugang schützen. Der Container-Healthcheck pr
 
 Optionale Hostveröffentlichung (leer = keine, auch bei Compose):
 
-| Variante | Intern | Öffentlich |
-| --- | --- | --- |
-| Swarm app | `FORM_PUBLISH_PORT` | `FORM_PUBLIC_PUBLISH_PORT` |
+| Variante         | Intern                     | Öffentlich                        |
+| ---------------- | -------------------------- | --------------------------------- |
+| Swarm app        | `FORM_PUBLISH_PORT`        | `FORM_PUBLIC_PUBLISH_PORT`        |
 | Swarm app-pinned | `FORM_PINNED_PUBLISH_PORT` | `FORM_PINNED_PUBLIC_PUBLISH_PORT` |
-| Compose app | `PUBLISHED_PORT` | `FORM_PUBLIC_PUBLISH_PORT` |
+| Compose app      | `PUBLISHED_PORT`           | `FORM_PUBLIC_PUBLISH_PORT`        |
 
 Alle aktivierten Swarm-Hostports müssen verschieden sein; deaktiviertes Pinning veröffentlicht
 keinen gepinnten Port. `PUBLISH_MODE` gilt für beide Listener. Compose nutzt `BIND_ADDR`
@@ -145,24 +145,24 @@ die vorherige Fassung liegt ebenfalls geschützt als `.bak`. Passwörter/Schlüs
 nicht gespeichert, nur sichere Pfad-/Secretnamen. `--dry-run` erzeugt/ändert keine Dateien,
 Secrets, Netze oder Container und führt keine Docker-/Registry-/Verbindungstests aus.
 
-| Bereich | Parameter und Wirkung |
-| --- | --- |
-| Image | `FORM_IMAGE_REPOSITORY`, `FORM_IMAGE_TAG`, optional vollständiges `FORM_IMAGE`; bei Erfolg gespeicherter Digest |
-| Externe DB | `FORM_DB_HOST`, `FORM_DB_PORT`, `FORM_DB_USER`, `FORM_DB_NAME`, `FORM_DB_TLS`, `FORM_DB_PASSWORD_FILE` |
-| HTTP/PWA | `FORM_HTTP_HOST`, `FORM_PUBLIC_PORT`, `FORM_INTERNAL_PORT`, `FORM_LOG_LEVEL`, `FORM_PUBLIC_DIR`, `FORM_SCHEMA_FILE`, `FORM_SDK_DIR`, `LOG_LEVEL` |
-| Anmeldung | `FORM_ADMIN_ORIGIN`, `FORM_RP_ID`, `FORM_SERVER_KEY_FILE`, `FORM_BOOTSTRAP_PASSWORD_FILE` |
-| Rechte an Weiterleitungen | `FORM_TRUSTED_PROXIES`, `FORM_MAIL_ALLOWED_NETS`, `FORM_ALLOW_INSECURE_DEV` |
-| Secret-Quellen | `DB_PASSWORD_SOURCE_FILE`, `SERVER_KEY_SOURCE_FILE`, `BOOTSTRAP_PASSWORD_SOURCE_FILE`: Hostpfade |
-| Swarm-Secrets | `DB_PASSWORD_SECRET`, `SERVER_KEY_SECRET`, `BOOTSTRAP_PASSWORD_SECRET`; leer: aus STACK ableiten |
-| Ressourcen | `APP_CPUS`, `APP_MEMORY`, `APP_RESERVE_CPUS`, `APP_RESERVE_MEMORY`, `MIGRATION_CPUS`, `MIGRATION_MEMORY` |
-| Skalierung | `FORM_REPLICAS`: Swarm Standard 3, Compose mit festem Hostport hier genau 1 |
-| Hostzugang | `BIND_ADDR`, `PUBLISHED_PORT`, `PUBLISH_MODE` (host/ingress, Swarm); interne/öffentliche Containerziele gemäß Listener-Tabelle |
-| Netz | `STACK`, `NETWORK_NAME`, `NETWORK_DRIVER`; Name frei, Treiber passend zur Variante |
-| Update | `UPDATE_PARALLELISM`, `UPDATE_ORDER`, `UPDATE_MONITOR`, `UPDATE_DELAY`, `UPDATE_FAILURE_ACTION` |
-| Rollback/Neustart | `ROLLBACK_PARALLELISM`, `ROLLBACK_ORDER`, `ROLLBACK_MONITOR`, `RESTART_CONDITION`, `RESTART_DELAY` (Swarm) |
-| Prüfung | `HEALTH_INTERVAL`, `HEALTH_TIMEOUT`, `HEALTH_RETRIES`, `HEALTH_START_PERIOD`, `HEALTHCHECK_URL`, `WAIT_SECONDS` |
-| Laufzeitpfade/-benutzer | `FORM_APP_BINARY`, `ENTRYPOINT_PATH`, `HEALTHCHECK_PATH`, `APP_UID`, `APP_GID` |
-| DB-Client | `DB_CLIENT_IMAGE`, `DB_CLIENT_MODE`, `DB_CLIENT_NETWORK`, `DB_CLIENT_MEMORY`, `DB_CONNECT_TIMEOUT`, `DB_TLS_CA_FILE`, `DB_CLIENT_CA_PATH` |
+| Bereich                   | Parameter und Wirkung                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Image                     | `FORM_IMAGE_REPOSITORY`, `FORM_IMAGE_TAG`, optional vollständiges `FORM_IMAGE`; bei Erfolg gespeicherter Digest                                  |
+| Externe DB                | `FORM_DB_HOST`, `FORM_DB_PORT`, `FORM_DB_USER`, `FORM_DB_NAME`, `FORM_DB_TLS`, `FORM_DB_PASSWORD_FILE`                                           |
+| HTTP/PWA                  | `FORM_HTTP_HOST`, `FORM_PUBLIC_PORT`, `FORM_INTERNAL_PORT`, `FORM_LOG_LEVEL`, `FORM_PUBLIC_DIR`, `FORM_SCHEMA_FILE`, `FORM_SDK_DIR`, `LOG_LEVEL` |
+| Anmeldung                 | `FORM_ADMIN_ORIGIN`, `FORM_RP_ID`, `FORM_SERVER_KEY_FILE`, `FORM_BOOTSTRAP_PASSWORD_FILE`                                                        |
+| Rechte an Weiterleitungen | `FORM_TRUSTED_PROXIES`, `FORM_MAIL_ALLOWED_NETS`, `FORM_ALLOW_INSECURE_DEV`                                                                      |
+| Secret-Quellen            | `DB_PASSWORD_SOURCE_FILE`, `SERVER_KEY_SOURCE_FILE`, `BOOTSTRAP_PASSWORD_SOURCE_FILE`: Hostpfade                                                 |
+| Swarm-Secrets             | `DB_PASSWORD_SECRET`, `SERVER_KEY_SECRET`, `BOOTSTRAP_PASSWORD_SECRET`; leer: aus STACK ableiten                                                 |
+| Ressourcen                | `APP_CPUS`, `APP_MEMORY`, `APP_RESERVE_CPUS`, `APP_RESERVE_MEMORY`, `MIGRATION_CPUS`, `MIGRATION_MEMORY`                                         |
+| Skalierung                | `FORM_REPLICAS`: Swarm Standard 3, Compose mit festem Hostport hier genau 1                                                                      |
+| Hostzugang                | `BIND_ADDR`, `PUBLISHED_PORT`, `PUBLISH_MODE` (host/ingress, Swarm); interne/öffentliche Containerziele gemäß Listener-Tabelle                   |
+| Netz                      | `STACK`, `NETWORK_NAME`, `NETWORK_DRIVER`; Name frei, Treiber passend zur Variante                                                               |
+| Update                    | `UPDATE_PARALLELISM`, `UPDATE_ORDER`, `UPDATE_MONITOR`, `UPDATE_DELAY`, `UPDATE_FAILURE_ACTION`                                                  |
+| Rollback/Neustart         | `ROLLBACK_PARALLELISM`, `ROLLBACK_ORDER`, `ROLLBACK_MONITOR`, `RESTART_CONDITION`, `RESTART_DELAY` (Swarm)                                       |
+| Prüfung                   | `HEALTH_INTERVAL`, `HEALTH_TIMEOUT`, `HEALTH_RETRIES`, `HEALTH_START_PERIOD`, `HEALTHCHECK_URL`, `WAIT_SECONDS`                                  |
+| Laufzeitpfade/-benutzer   | `FORM_APP_BINARY`, `ENTRYPOINT_PATH`, `HEALTHCHECK_PATH`, `APP_UID`, `APP_GID`                                                                   |
+| DB-Client                 | `DB_CLIENT_IMAGE`, `DB_CLIENT_MODE`, `DB_CLIENT_NETWORK`, `DB_CLIENT_MEMORY`, `DB_CONNECT_TIMEOUT`, `DB_TLS_CA_FILE`, `DB_CLIENT_CA_PATH`        |
 
 Pfade `FORM_*_FILE` in Stack/Compose sind **Containerpfade**, die Secret-Quellen dagegen
 Hostpfade. Relative Host-Quellen werden relativ zur gewählten Env-Datei aufgelöst. Native
@@ -186,17 +186,17 @@ Stand 03.11.2026: Nutzerauftrag im Hauptverzeichnis auf Branch `main`, Änderung
 Jobs. Die folgenden Angaben ersetzen für Swarm die älteren Hostport-Angaben in diesem Dokument.
 P11-A ersetzt den früheren einzelnen Hostport durch zwei optionale Veröffentlichungen.
 
-| ENV | Default | Wirkung |
-| --- | --- | --- |
-| `FORM_PLACEMENT_CONSTRAINTS` | leer | Kommagetrennte harte Constraints für `app`, z.B. `node.role==worker,node.labels.disk==ssd`; alle müssen erfüllt sein |
-| `FORM_PLACEMENT_PREFERENCES` | leer | Kommagetrennte weiche Präferenzen für `app`, z.B. `spread=node.labels.zone,spread=node.labels.rack`; keine Platzierungsgarantie |
-| `FORM_PINNED_NODE` | leer | Exakter Hostname oder vollständige Swarm-Node-ID; leer deaktiviert Pinning |
-| `FORM_PINNED_REPLICAS` | `1` | Positive Anzahl zusätzlicher Replikate auf diesem Knoten |
-| `FORM_EXCLUDE_LABEL` | leer | Label-Schlüssel, z.B. `reserved`; ergänzt automatisch `node.labels.reserved!=true` bei `app`, DB-Prüfung und Migration |
-| `FORM_PUBLISH_PORT` | leer | Optionaler TCP-Hostport für `app` (1–65535); leer = keine Veröffentlichung |
-| `FORM_PINNED_PUBLISH_PORT` | leer | Optionaler anderer TCP-Hostport für `app-pinned`; nur bei aktivem Pinning veröffentlicht |
-| `PUBLISH_MODE` | `ingress` | Modus für alle aktivierten Veröffentlichungen: `ingress` oder `host` |
-| `FORM_PUBLISH_BIND` | leer | Nur leer oder `0.0.0.0`: Swarm unterstützt keine Bindung an eine einzelne Host-IP |
+| ENV                          | Default   | Wirkung                                                                                                                         |
+| ---------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `FORM_PLACEMENT_CONSTRAINTS` | leer      | Kommagetrennte harte Constraints für `app`, z.B. `node.role==worker,node.labels.disk==ssd`; alle müssen erfüllt sein            |
+| `FORM_PLACEMENT_PREFERENCES` | leer      | Kommagetrennte weiche Präferenzen für `app`, z.B. `spread=node.labels.zone,spread=node.labels.rack`; keine Platzierungsgarantie |
+| `FORM_PINNED_NODE`           | leer      | Exakter Hostname oder vollständige Swarm-Node-ID; leer deaktiviert Pinning                                                      |
+| `FORM_PINNED_REPLICAS`       | `1`       | Positive Anzahl zusätzlicher Replikate auf diesem Knoten                                                                        |
+| `FORM_EXCLUDE_LABEL`         | leer      | Label-Schlüssel, z.B. `reserved`; ergänzt automatisch `node.labels.reserved!=true` bei `app`, DB-Prüfung und Migration          |
+| `FORM_PUBLISH_PORT`          | leer      | Optionaler TCP-Hostport für `app` (1–65535); leer = keine Veröffentlichung                                                      |
+| `FORM_PINNED_PUBLISH_PORT`   | leer      | Optionaler anderer TCP-Hostport für `app-pinned`; nur bei aktivem Pinning veröffentlicht                                        |
+| `PUBLISH_MODE`               | `ingress` | Modus für alle aktivierten Veröffentlichungen: `ingress` oder `host`                                                            |
+| `FORM_PUBLISH_BIND`          | leer      | Nur leer oder `0.0.0.0`: Swarm unterstützt keine Bindung an eine einzelne Host-IP                                               |
 
 `app` behält `FORM_REPLICAS` (Default 3). `app-pinned` erbt Image, Environment, Secrets,
 Configs, Healthcheck, Ressourcen und Update-/Rollback-Konfiguration über YAML-Anker.
@@ -597,6 +597,7 @@ Authorization-Endpoint; der Browser muss sie erreichen können. Beide Änderunge
 `FORM_MCP_TOKEN_RATE_LIMIT` überschreibt die DB-Einstellung `mcp.requestsPerMinute`, Default 60/min
 je persönlichem oder OAuth-Access-Token. Clientprofil, DB-Upgradegrenze und Abnahme:
 `docs/handoffs/P11-E.md`. Keine Header-/Body-/Tokenlogs für OAuth/MCP aktivieren.
+
 ## P11-G: Anmeldung je Listener (ADR 0022)
 
 Intern reicht standardmäßig der Passkey mit Geräte-PIN/Biometrie.
@@ -611,7 +612,6 @@ Beim Upgrade werden bestehende Sitzungen ungültig. Internes Cookie gilt öffent
 nicht, auch bei gleichem Host. Interner Port muss per Netz/Firewall/Proxy begrenzt
 bleiben: Passkey-/Gerätekompromittierung hat ohne unabhängiges Passwort größere
 Folgen. Vollständige Risikobewertung und Schutzmaßnahmen: ADR 0022.
-
 
 ## Deploy-ENV-Erweiterung (Todolino 8B72B9D6, 03.11.2026)
 
