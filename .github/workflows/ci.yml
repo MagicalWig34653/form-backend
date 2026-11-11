@@ -96,7 +96,15 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium
+        run: |
+          # The Ubuntu mirrors are sometimes unreachable from the runners (DNS/timeouts); retry, then fall back to the browser
+          # download alone (the runner image already ships most system libraries).
+          for attempt in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            echo "playwright install --with-deps failed (attempt $attempt)"; sleep 30
+          done
+          npx playwright install chromium
       - run: npx playwright test
       - name: Production dependency audit
         run: npm audit --omit=dev
@@ -145,7 +153,11 @@ jobs:
         working-directory: pwa
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          for attempt in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            echo "playwright install --with-deps failed (attempt $attempt)"; sleep 30
+          done
+          npx playwright install chromium
       # Each script gets its own ports and they run one after another; all steps run even if an earlier one failed.
       - name: Smoke test (admin API, ingest, fail-closed key file)
         run: P3B_PORT=33710 SMOKE_HTTP_PORT=38710 SMOKE_PUBLIC_PORT=38711 bash backend/smoke-admin.sh
