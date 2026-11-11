@@ -62,3 +62,15 @@ it('checks delete permission live again after confirmation', async () => {
   expect(mock.deleteEntries).not.toHaveBeenCalled();
   expect(await screen.findByRole('alert')).toBeTruthy();
 });
+it('hides the local period fields until requested', async () => {
+  render(Suche, { tenant: 't', form: 'f', onDeleted: vi.fn() });
+  expect(screen.queryByLabelText(/^Von \(UTC\)/)).toBeNull();
+  const toggle = screen.getByRole('button', { name: 'Zeitraum einschränken' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  await fireEvent.click(toggle);
+  expect(screen.getAllByLabelText(/^Von \(UTC\)/).length).toBeGreaterThan(0);
+  expect(screen.getAllByLabelText(/^Bis \(UTC\)/).length).toBeGreaterThan(0);
+  expect(
+    screen.getByRole('button', { name: 'Zeitraum ausblenden' }).getAttribute('aria-expanded'),
+  ).toBe('true');
+});

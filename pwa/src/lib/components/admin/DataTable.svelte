@@ -72,11 +72,16 @@
         {#each columns as column, index (column.id)}
           {#if index === 0}
             <th scope="row" class={cn('!py-1.5 text-left font-medium', hide(column), column.class)}
-              >{@render cell(row, column)}{#each hiddenColumns as extra (extra.id)}<div
-                  class="text-muted-foreground mt-0.5 text-xs font-normal sm:hidden"
+              >{@render cell(row, column)}{#if hiddenColumns.length > 0}<div
+                  class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden"
+                  data-extras
                 >
-                  {@render cell(row, extra)}
-                </div>{/each}</th
+                  {#each hiddenColumns as extra (extra.id)}<div
+                      class="text-muted-foreground text-xs font-normal"
+                    >
+                      <span class="sr-only">{extra.header}: </span>{@render cell(row, extra)}
+                    </div>{/each}
+                </div>{/if}</th
             >
           {:else}
             <td

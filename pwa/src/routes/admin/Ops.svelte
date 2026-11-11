@@ -333,8 +333,11 @@
     {/if}
     {#if access.cleanup}
       <Panel title={t.ops.cleanup} description={t.ops.limit}>
-        <Button variant="outline" disabled={busy} onclick={() => void cleanup()}
-          >{t.ops.cleanupNow}</Button
+        <Button
+          variant="outline"
+          class="text-destructive"
+          disabled={busy}
+          onclick={() => void cleanup()}>{t.ops.cleanupNow}</Button
         >
       </Panel>
     {/if}

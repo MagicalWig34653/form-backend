@@ -105,8 +105,9 @@ final class SetupMigrationTests: XCTestCase {
                     XCTFail("Public migration source accepted")
                 } catch {
                     // Still refused before any connection; the answer now names the setting to change instead of a bare 500.
-                    let failure = try XCTUnwrap(error as? ValidationFailed, "expected ValidationFailed, got \(error)")
-                    XCTAssertTrue(failure.detail.contains("migration.allowedNets"))
+                    let failure = try XCTUnwrap(error as? SourceFailure, "expected SourceFailure, got \(error)")
+                    XCTAssertEqual(failure, .notAllowed)
+                    XCTAssertTrue(failure.message.contains("migration.allowedNets"))
                 }
             }
         }

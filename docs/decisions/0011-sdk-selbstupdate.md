@@ -3,9 +3,11 @@
 Status: beschlossen auf Nutzerwunsch am 02.11.2026 (Umsetzungsdetails VORGESCHLAGEN). SPDX: AGPL-3.0-only.
 
 ## Anforderung
+
 Das Backend kann das PHP-SDK auf dem Webspace eines Kunden selbst installieren und aktualisieren: Zugangsdaten und genauer Zielpfad werden hinterlegt, es gibt Rollback. **Automatische Updates sind optional** (Standard aus, je Ziel schaltbar); manuelles Installieren, Aktualisieren und Zurückrollen bleibt immer möglich.
 
 ## Entscheidungen
+
 1. **Transport:** FTP über TLS (FTPS explizit `AUTH TLS` oder implizit, Port 990). Klartext-FTP nur mit `FORM_ALLOW_INSECURE_DEV=1`. Kontrollkanal UND Datenkanal sind verschlüsselt (`PROT P`): der hochgeladene Code wird auf dem Kundenserver ausgeführt, seine Integrität darf nicht manipulierbar sein. Passive Datenverbindung geht immer zur geprüften Adresse des Kontrollkanals (nie zur vom Server genannten, FTP-Bounce). Zieladressen laufen durch den `HostGuard` (SSRF). Server, die TLS-Sitzungswiederverwendung auf dem Datenkanal erzwingen, werden derzeit nicht unterstützt (NIOSSL), SFTP ist unter Nr. 8 umgesetzt.
 2. **Quelle:** das SDK liegt im Serverabbild (`FORM_SDK_DIR`, Standard `/app/sdk`); die Version steht in `sdk/php/VERSION`, der Inhalt wird als Manifest (Pfad, Größe, SHA-256) aus den Dateien gebildet. Kein Download aus dem Internet.
 3. **Installationsablauf (ohne Überschreiben im Betrieb):** Hochladen in ein Staging-Verzeichnis neben dem Zielpfad → jede Datei zurücklesen und per SHA-256 prüfen → Zielverzeichnis in `<ziel>.prev` umbenennen, Staging in `<ziel>` umbenennen → bei Fehler sofort Rückbenennung. Es bleibt genau EINE Vorversion (`.prev`). **Rollback** benennt zurück (`.prev` ⇄ aktuell). Zugangsdatei und Konfiguration des Kunden (`credentials.json` o. ä.) liegen außerhalb des SDK-Verzeichnisses und werden nie angefasst.

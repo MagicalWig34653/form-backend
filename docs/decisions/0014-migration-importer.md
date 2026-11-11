@@ -33,7 +33,6 @@ Die Formular-Konfigurationsprojektion besitzt eine explizite gemeinsame Spaltenl
 
 Jeder abgeschlossene Import aktualisiert Status und Abschlusszeit unabhängig davon, ob sich `report_json` geändert hat. Damit kann eine erfolgreiche Wiederholung einen zuvor fehlgeschlagenen Lauf mit identischem Bericht wieder auf `verified` setzen, sofern keine offenen Issues bestehen. Fachobjekte und Ledger bleiben unverändert nachgeprüft. Prüfstand und noch ausstehende DB-Abnahme siehe P9-Handoff.
 
-
 ### Nachkorrektur zum Retry-Review (03.11.2026)
 
 Der bedingungslose Abschluss-UPDATE im `LegacyImporter` bleibt maßgeblich. Der DB-Lauf `/tmp/seq3-migration.log` zeigte dennoch `failed`: Beim Abgleich von `formularFelder` erzeugte der Bytevergleich zwischen `JSONSerialization.sortedKeys` und `JSONEncoder.sortedKeys` wegen unterschiedlicher Sortierung gemischter Groß-/Kleinschreibung (z. B. `ID`) einen falschen Konflikt samt offenem `migration-review`-Issue. Feldprojektionen werden deshalb als `[String: String?]` inhaltlich verglichen; NULL, fehlende Schlüssel und geänderte Werte bleiben unterscheidbar. Offene Issues verhindern weiterhin `verified`. Der Retry-Test prüft zusätzlich den issuefreien, verifizierten Erstlauf. Keine automatische Auflösung bereits gespeicherter Issues; DB-Nachprüfung mit frischen synthetischen Testdaten ausstehend.

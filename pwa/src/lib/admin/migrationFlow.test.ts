@@ -17,6 +17,7 @@ import {
   sourceConnections,
   sourceForms,
   suggestNamespace,
+  summarizeReport,
   type SourceKey,
 } from './migrationFlow';
 
@@ -354,5 +355,22 @@ describe('describeJobError', () => {
   it('zeigt unbekannte Codes unverändert', () => {
     expect(describeJobError('etwas_neues', texts)).toBe('etwas_neues');
     expect(describeJobError('unbekannt@x', texts)).toBe('unbekannt@x');
+  });
+});
+
+describe('summarizeReport', () => {
+  it('liest Tabellenzähler und offene Fälle, unbekannte Formen ergeben leere Listen', () => {
+    const s = summarizeReport({
+      tables: {
+        formulare: { sourceCount: 3, importedCount: 3, reviewCount: 0 },
+        anfragen: { sourceCount: 5, importedCount: 5, reviewCount: 1 },
+      },
+      issues: [{ code: 'unsupported-content', count: 1 }, { count: 2 }],
+    });
+    expect(s.tables.map((t) => t.table)).toEqual(['anfragen', 'formulare']);
+    expect(s.tables[0]).toEqual({ table: 'anfragen', source: 5, imported: 5, review: 1 });
+    expect(s.issues).toEqual([{ code: 'unsupported-content', count: 1 }]);
+    expect(summarizeReport({ processed: 12 })).toEqual({ processed: 12, tables: [], issues: [] });
+    expect(summarizeReport(null).tables).toEqual([]);
   });
 });

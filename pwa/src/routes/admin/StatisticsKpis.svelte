@@ -78,5 +78,6 @@
       .replace('{values}', convSeries.map((v) => (v === null ? '–' : formatPercent(v))).join(', '))}
     delta={pointsDelta(conversionWeeks(visitsSeries, submitsSeries))}
     reason={t.overview.noConversion}
+    note={t.overview.conversionFormula}
   />
 </div>

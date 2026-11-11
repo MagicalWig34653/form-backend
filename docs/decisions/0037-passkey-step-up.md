@@ -23,5 +23,6 @@ Status: angenommen (Nutzerwunsch 11.11.2026: „Ich möchte mich nicht immer ern
 ## Gründe und Grenzen
 
 - Keine Rotation: Step-up ändert weder Identität noch Rechte; Rotation würde den CSRF-Token und die Schlüsselbindung der PWA (`keyring.bind`) ohne Sicherheitsgewinn invalidieren. Ein gestohlener Sitzungscookie bleibt Cookie-Diebstahl; der Step-up verlangt zusätzlich einen UV-Passkey desselben Kontos.
-- Das Frischefenster bleibt 5 min (`AuthGuard.freshness`).
+- Das Frischefenster ist einstellbar (`auth.freshLoginMinutes`, Standard 30, 1–120; `SessionService.freshWindow()`, Rückfall 300 s). Nur Veröffentlichungsbestätigungen nutzen 300 s (`ReleaseRoutes.swift`). (Korrigiert nach Sicherheitsreview B4.)
+- Bekannte Grenze (Review B5): Der Step-up ist nicht an die auslösende Aktion gebunden; der Dialog nennt keine Aktion.
 - Publikationsbestätigungen (`publication_confirmations.authenticated_at`) bleiben unverändert an den Zeitpunkt ihrer Erzeugung gebunden.

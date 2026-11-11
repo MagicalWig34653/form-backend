@@ -137,22 +137,50 @@ public struct LegacyImporter {
     func columns(_ db: SQLDatabase, _ table: String) async throws -> [String] {
         try await db.raw(query("SELECT COLUMN_NAME AS v FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=\(val(table)) ORDER BY ORDINAL_POSITION")).all(decoding:TextRow.self).map(\.v)
     }
-    func projection(_ cols: [String], uuidColumns: Set<String> = []) throws -> String {
+    /// How cells larger than `bigCellBytes` are projected. A hex string of a large cell (or the JSON object around it) exceeds
+    /// max_allowed_packet (16 MB by default), and MariaDB then returns NULL silently: the value would look absent.
+    enum BigCells { case inline, fetchLater, digest }
+    static let bigCellBytes = 1_000_000
+    func projection(_ cols: [String], uuidColumns: Set<String> = [], big: BigCells = .inline) throws -> String {
         "JSON_OBJECT(" + (try cols.sorted().map {
             let column = try ident($0)
             // HEX(number) is numeric base conversion, not byte encoding. UUIDs must use their
             // textual representation; BINARY/VARBINARY/BLOB must retain every original byte.
             let bytes = uuidColumns.contains($0) ? "CAST(\(column) AS CHAR CHARACTER SET utf8mb4)" : "CAST(\(column) AS BINARY)"
-            return "\(val($0)),HEX(\(bytes))"
+            let hexed = "HEX(\(bytes))"
+            switch big {
+            case .inline: return "\(val($0)),\(hexed)"
+            case .fetchLater: return "\(val($0)),IF(OCTET_LENGTH(\(bytes))>\(Self.bigCellBytes),CONCAT('@',OCTET_LENGTH(\(bytes))),\(hexed))"
+            case .digest: return "\(val($0)),IF(OCTET_LENGTH(\(bytes))>\(Self.bigCellBytes),CONCAT('sha256:',SHA2(\(bytes),256)),\(hexed))"
+            }
         }).joined(separator:",") + ")"
     }
-    func projection(_ db: SQLDatabase, _ table: String, _ cols: [String]) async throws -> String {
+    func projection(_ db: SQLDatabase, _ table: String, _ cols: [String], big: BigCells = .inline) async throws -> String {
         let uuids = try await db.raw(query("SELECT COLUMN_NAME AS v FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=\(val(table)) AND DATA_TYPE='uuid'")).all(decoding:TextRow.self)
-        return try projection(cols,uuidColumns:Set(uuids.map(\.v)))
+        return try projection(cols,uuidColumns:Set(uuids.map(\.v)),big:big)
+    }
+    /// Reads the cells the projection left out ("@<byte count>") in chunks of 1 MB and puts their hex into the row.
+    func resolveLargeCells(_ src: SQLDatabase, _ table: String, _ row: LegacyRow, keyColumn: String) async throws -> LegacyRow {
+        var row = row
+        for (column, value) in row.values.sorted(by: { $0.key < $1.key }) {
+            guard let value, value.hasPrefix("@"), let length = Int(value.dropFirst()), length > Self.bigCellBytes,
+                  let key = try row.text(keyColumn), key.utf8.allSatisfy({ (48...57).contains($0) }) else { continue }
+            var hexed = ""; hexed.reserveCapacity(length * 2)
+            var offset = 1
+            while offset <= length {
+                guard let part = try await scalar(src,"SELECT HEX(SUBSTRING(CAST(\(try ident(column)) AS BINARY),\(offset),\(Self.bigCellBytes))) AS v FROM \(try ident(table)) WHERE \(try ident(keyColumn))=\(key)") else {
+                    throw ImportFailure.invalidSourceAt(table:table,column:column,reason:.invalidProjection)
+                }
+                hexed += part; offset += Self.bigCellBytes
+            }
+            guard hexed.utf8.count == length * 2 else { throw ImportFailure.invalidSourceAt(table:table,column:column,reason:.invalidProjection) }
+            row.values[column] = hexed
+        }
+        return row
     }
     func snapshot(_ db: SQLDatabase, _ d: Destination) async throws -> String {
         let cols = try await columns(db,d.table)
-        let projection = try await projection(db,d.table,cols)
+        let projection = try await projection(db,d.table,cols,big:.digest)
         guard let s = try await scalar(db,"SELECT \(projection) AS v FROM \(try ident(d.table)) WHERE \(d.predicate)") else { throw ImportFailure.missingTarget }
         let obj = try JSONSerialization.jsonObject(with:Data(s.utf8))
         return String(decoding:try JSONSerialization.data(withJSONObject:obj,options:[.sortedKeys]),as:UTF8.self)
@@ -233,14 +261,14 @@ public struct LegacyImporter {
                 let cols = try await columns(src,table)
                 let keyColumn = ["datenschluessel","datenschluesselRecovery"].contains(table) ? "kid":"ID"
                 guard cols.contains(keyColumn) else { throw ImportFailure.invalidSourceAt(table:table,column:keyColumn,reason:.missingColumn) }
-                let projection = try await projection(src,table,cols)
+                let projection = try await projection(src,table,cols,big:.fetchLater)
                 var cursor: Int64?; var keyCursor: String?; var parity = TableParity(); var sourceHashes = HMAC<SHA256>(key:hmacKey), targetHashes = HMAC<SHA256>(key:hmacKey)
                 while true {
                     let condition = keyColumn == "ID" ? cursor.map { "ID>\($0)" } ?? "1=1" : keyCursor.map { "kid>\(val($0))" } ?? "1=1"
                     let rows = try await src.raw(query("SELECT \(projection) AS v FROM \(try ident(table)) WHERE \(condition) ORDER BY \(try ident(keyColumn)) LIMIT \(batch)")).all(decoding:TextRow.self)
                     if rows.isEmpty { break }
                     for r in rows {
-                        let row = try LegacyRow.decode(r.v,table:table); let dict = row.values
+                        let row = try await resolveLargeCells(src,table,try LegacyRow.decode(r.v,table:table),keyColumn:keyColumn); let dict = row.values
                         let key = try row.required(keyColumn)
                         if keyColumn == "ID" { guard let n = Int64(key), cursor.map({ n > $0 }) ?? true else { throw ImportFailure.invalidSourceAt(table:table,column:keyColumn,reason:.invalidCursor) }; cursor = n } else { keyCursor = key }
                         // Check outside object(): a resumed ledger entry must still expose mapping gaps.

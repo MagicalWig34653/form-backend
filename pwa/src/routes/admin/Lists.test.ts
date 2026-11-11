@@ -97,6 +97,13 @@ it('unterscheidet fehlende Freigabe von leerer Kundenverwaltung', async () => {
   await screen.findByText('Für Ihr Konto ist noch kein Kunde freigegeben.');
   expect(screen.queryByRole('button', { name: 'Kunde anlegen' })).toBeNull();
 });
+it('zeigt Kundenrechte als einzelne Chips', async () => {
+  render(Tenants);
+  await screen.findByRole('link', { name: 'Öffnen: Beispiel' });
+  const chips = screen.getAllByTestId('rights-chips')[0]!;
+  expect(chips.querySelectorAll('li').length).toBeGreaterThan(0);
+  expect(chips.tagName).toBe('UL');
+});
 it('behält einen einzelnen Kunden in der Übersicht sichtbar', async () => {
   render(Tenants);
   await screen.findByRole('link', { name: 'Öffnen: Beispiel' });

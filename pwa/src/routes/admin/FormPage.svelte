@@ -194,7 +194,7 @@
     {#snippet actions()}
       {#if canEdit}<Button
           variant="outline"
-          class="max-sm:flex-1 max-sm:px-2"
+          class="max-sm:h-9 max-sm:flex-1 max-sm:px-2"
           aria-label={t.formWork.edit}
           href={formPath(tenant, form, 'fields')}
           onclick={(e) => navigate(e, 'fields')}
@@ -203,7 +203,7 @@
           ></Button
         >{/if}
       {#if canPublish && tab !== 'publish'}<Button
-          class="max-sm:flex-1 max-sm:px-2"
+          class="max-sm:h-9 max-sm:flex-1 max-sm:px-2"
           aria-label={t.formWork.publish}
           href={formPath(tenant, form, 'publish')}
           onclick={(e) => navigate(e, 'publish')}
@@ -264,7 +264,7 @@
       <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div
           id="statistics"
-          class="flex min-w-0 scroll-mt-20 flex-col gap-5"
+          class="flex min-w-0 scroll-mt-20 flex-col gap-5 max-lg:order-2"
           aria-busy={statsLoading}
         >
           {#if statsLoading && !stats}
@@ -287,54 +287,58 @@
             <AdsStatisticsPanel {tenant} {form} />
           {/if}
         </div>
-        <div class="flex min-w-0 flex-col gap-5 max-lg:order-first">
-          <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
-            <ul class="divide-border -my-1 divide-y">
-              {@render checkItem(
-                published,
-                t.formUi.setupPublished,
-                canPublish ? 'publish' : undefined,
-              )}
-              {@render checkItem(published && editor.detail.active, t.formUi.setupAccepting)}
-              {@render checkItem(
-                !!editor.detail.mailConnectionId,
-                t.formUi.setupMail,
-                canEdit ? 'mail' : undefined,
-              )}
-              {@render checkItem(null, t.formUi.setupIntegration, 'keys')}
-            </ul>
-          </Panel>
-          {#if published && (canPublish || canEdit)}
-            <Panel title={t.formUi.actionsTitle} description={t.formUi.actionsHint}>
-              <div class="flex flex-col gap-4">
-                {#if canPublish}
-                  <ActiveSwitch
-                    {tenant}
-                    {form}
-                    active={editor.detail.active}
-                    onchange={() => editor.load()}
-                  />
-                {/if}
-                {#if canEdit}
-                  <div class="flex flex-col gap-1.5">
-                    <div>
-                      <Button
-                        variant="outline"
-                        class="h-auto min-h-10 py-2 text-left whitespace-normal"
-                        disabled={editor.saving}
-                        onclick={async () => {
-                          if (await editor.createDraft())
-                            router.navigate(formPath(tenant, form, 'fields'));
-                        }}>{t.admin.form.newDraft}</Button
-                      >
-                    </div>
-                    <p class="text-muted-foreground text-sm">
-                      {t.admin.form.newDraftHint}
-                    </p>
-                  </div>
-                {/if}
-              </div>
+        <div class="flex min-w-0 flex-col gap-5 max-lg:contents" data-testid="form-side">
+          <div class="max-lg:order-1">
+            <Panel title={t.formUi.setupTitle} description={t.formUi.setupHint}>
+              <ul class="divide-border -my-1 divide-y">
+                {@render checkItem(
+                  published,
+                  t.formUi.setupPublished,
+                  canPublish ? 'publish' : undefined,
+                )}
+                {@render checkItem(published && editor.detail.active, t.formUi.setupAccepting)}
+                {@render checkItem(
+                  !!editor.detail.mailConnectionId,
+                  t.formUi.setupMail,
+                  canEdit ? 'mail' : undefined,
+                )}
+                {@render checkItem(null, t.formUi.setupIntegration, 'keys')}
+              </ul>
             </Panel>
+          </div>
+          {#if published && (canPublish || canEdit)}
+            <div class="max-lg:order-3">
+              <Panel title={t.formUi.actionsTitle} description={t.formUi.actionsHint}>
+                <div class="flex flex-col gap-4">
+                  {#if canPublish}
+                    <ActiveSwitch
+                      {tenant}
+                      {form}
+                      active={editor.detail.active}
+                      onchange={() => editor.load()}
+                    />
+                  {/if}
+                  {#if canEdit}
+                    <div class="flex flex-col gap-1.5">
+                      <div>
+                        <Button
+                          variant="outline"
+                          class="h-auto min-h-10 py-2 text-left whitespace-normal"
+                          disabled={editor.saving}
+                          onclick={async () => {
+                            if (await editor.createDraft())
+                              router.navigate(formPath(tenant, form, 'fields'));
+                          }}>{t.admin.form.newDraft}</Button
+                        >
+                      </div>
+                      <p class="text-muted-foreground text-sm">
+                        {t.admin.form.newDraftHint}
+                      </p>
+                    </div>
+                  {/if}
+                </div>
+              </Panel>
+            </div>
           {/if}
         </div>
       </div>

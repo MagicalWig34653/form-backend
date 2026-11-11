@@ -37,7 +37,7 @@ test('Erststart führt zur Einrichtung; Wiederherstellungscode wird dort bestät
 }) => {
   await page.goto('/t');
   await expect(page).toHaveURL(/installation/);
-  await expect(page.getByLabel('Einrichtungsschritte').getByRole('listitem')).toHaveCount(7);
+  await expect(page.getByLabel('Einrichtungsschritte').getByRole('listitem')).toHaveCount(10);
   await page.getByRole('button', { name: 'Wiederherstellungscode vorbereiten' }).click();
   await expect(page.getByTestId('account-recovery-code')).toBeVisible();
   await expect(page.getByLabel('Code zur Bestätigung erneut eingeben')).toBeVisible();

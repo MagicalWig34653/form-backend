@@ -52,13 +52,13 @@ Selbstzugang ohnehin besteht. Eine Wiederholung derselben Anfrage ersetzt nur di
 
 **B – Alt-Recovery-Code: umgesetzt.** Formatvergleich:
 
-| | Alt (bvk) | Neu |
-| --- | --- | --- |
-| Tabelle | `datenschluesselRecovery(kid char16 PK, salt vb32, iterationen int, iv vb12, wrap vb48, erstelltAm int)` – `db/migrations/034-schluessel-infrastruktur.sql:50–58` | `data_key_recovery(customer_id, kid, kdf_name, salt 32, iterations, iv 12, wrapped_key 48, created_at)` – `backend/db/schema-p3.sql:371–383` |
-| Normalisierung | `toUpperCase().replace(/[-\s]/g,'')` – `www/src/krypto/schluessel-seite.js:66–70`, angewandt beim Wickeln (`:372`, `:721`) und Öffnen (`:1003`) | `normalizeRecovery`, identisch – `pwa/src/lib/crypto/keys.ts:112–116` |
-| KDF | PBKDF2-HMAC-SHA256, UTF-8 der Passphrase, Salt 32, 600000, 256 Bit, Mindestlänge 24 – `schluessel-modell.js:121–134` | identisch – `keys.ts kekRecovery` |
-| Hülle | AES-256-GCM, IV 12, Tag 128, AAD = UTF-8(kid), Klartext sk_D 32 → 48 Byte – `schluessel-modell.js:136–147` | identisch – `keys.ts wrapRecovery/openRecovery` (prüft zusätzlich kid des Ergebnisses) |
-| kid | `SHA-256(pk)[0..8]` hex – `www/src/krypto/paket-v2.js:25–28` | `packageV2.ts keyId`, identisch |
+|                | Alt (bvk)                                                                                                                                                         | Neu                                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tabelle        | `datenschluesselRecovery(kid char16 PK, salt vb32, iterationen int, iv vb12, wrap vb48, erstelltAm int)` – `db/migrations/034-schluessel-infrastruktur.sql:50–58` | `data_key_recovery(customer_id, kid, kdf_name, salt 32, iterations, iv 12, wrapped_key 48, created_at)` – `backend/db/schema-p3.sql:371–383` |
+| Normalisierung | `toUpperCase().replace(/[-\s]/g,'')` – `www/src/krypto/schluessel-seite.js:66–70`, angewandt beim Wickeln (`:372`, `:721`) und Öffnen (`:1003`)                   | `normalizeRecovery`, identisch – `pwa/src/lib/crypto/keys.ts:112–116`                                                                        |
+| KDF            | PBKDF2-HMAC-SHA256, UTF-8 der Passphrase, Salt 32, 600000, 256 Bit, Mindestlänge 24 – `schluessel-modell.js:121–134`                                              | identisch – `keys.ts kekRecovery`                                                                                                            |
+| Hülle          | AES-256-GCM, IV 12, Tag 128, AAD = UTF-8(kid), Klartext sk_D 32 → 48 Byte – `schluessel-modell.js:136–147`                                                        | identisch – `keys.ts wrapRecovery/openRecovery` (prüft zusätzlich kid des Ergebnisses)                                                       |
+| kid            | `SHA-256(pk)[0..8]` hex – `www/src/krypto/paket-v2.js:25–28`                                                                                                      | `packageV2.ts keyId`, identisch                                                                                                              |
 
 Der Importer (`FormMigration/Transform.swift` Fall `datenschluesselRecovery`, Tabelle nach
 `datenschluessel`, Cursor `kid`) kopiert Salt/IV/Wrap bytegleich, `kdf_name`
@@ -99,3 +99,4 @@ alten Generation samt alter Recovery. Bis dahin bleibt ein importierter alter Co
 - „Mit Recovery-Code öffnen“ nutzt die aktive Generation; Recovery einer importierten
   auslaufenden Generation bräuchte eine kid-Auswahl in der Oberfläche.
 - Nicht mit echtem Altschlüssel geprüft (nur synthetische Testvektoren).
+- Review B3: Importierte Alt-Recovery-Hüllen sind für jedes Konto mit `key.manage` abrufbar (`GET key-recovery`, nur der Abruf wird auditiert). Ein Offline-Ratean­griff ist möglich; seine Stärke hängt am Alt-Code. Empfehlung: Schlüssel nach der Übernahme rotieren.

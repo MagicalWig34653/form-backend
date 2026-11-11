@@ -34,7 +34,6 @@ Mailfortsetzung ohne unveränderliches vollständiges Versandmanifest bleibt ges
 
 Schritt-/Checkpointgrößen- und kumulative aktive Zeitbudgets werden teilweise geprüft (offene Durchsetzungslücken siehe Review-Nachtrag); Transportaufrufe benutzen die Grenzen des vorhandenen Maildienstes. Keine harte Prozess-/Speicherisolation, kein erzwungener Abbruch eines bereits laufenden SMTP-Aufrufs am Knotenzeitlimit. Dies und Versandmanifest/Testsenken sind Restabnahmen, keine Produktionsfreigabe.
 
-
 ## Review-Korrekturen 03.11.2026
 
 Befunde 1/2/3/5/6/8: Originaleinsendungs-Resend weist Flow-Deliveries mit 409 ab, zusätzlich sperrt der gemeinsame Maildienst den Resend von `effect_id`-Zeilen. Der interne Abort-Grund erläutert das fehlende Versandmanifest; öffentlich liefert die HTTP-Middleware den festen Fehler `code=conflict`, `message=Konflikt.`. Ein `prepared`-Effekt darf mit unveränderter Effekt-/Deliveryidentität unter einer neuen gültigen Lease vorbereitet werden; erst der Crossing-Point zählt den Versandversuch. `smtp-accepted` gleicht `in-flight`/`uncertain` im Effektledger ab, auch vor Resume. Ungeklärte Zustellungen bleiben gesperrt.

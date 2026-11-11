@@ -117,3 +117,24 @@ it('schreibt gesetzte ENV-Werte nicht und nennt fehlende ENV-Namen', async () =>
   await screen.findByLabelText('Anfragen je MCP-Token');
   expect(screen.getByText(/keine ENV-Variable/)).toBeTruthy();
 });
+it('zeigt den Quellen-Chip nur für abweichende Quellen, nicht für Standardwerte', async () => {
+  render(Settings);
+  const envRow = (await screen.findByLabelText('Erlaubte Netze für Mailserver')).closest(
+    '[data-setting]',
+  )!;
+  const defaultRow = screen.getByLabelText('Anfragen je MCP-Token').closest('[data-setting]')!;
+  const chips = (row: Element) => row.querySelectorAll('.rounded-full').length;
+  expect(chips(envRow)).toBeGreaterThan(chips(defaultRow));
+  expect(defaultRow.textContent).toContain('Quelle:');
+});
+it('klappt technische Angaben über einen Schalter ein und aus (schmale Anzeige)', async () => {
+  render(Settings);
+  const row = (await screen.findByLabelText('Anfragen je MCP-Token')).closest('[data-setting]')!;
+  const meta = row.querySelector('[data-meta]')!;
+  expect(meta.className).toBe('hidden');
+  const toggle = screen.getByTestId('meta-toggle');
+  expect(toggle.getAttribute('aria-pressed')).toBe('false');
+  await fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  expect(meta.className).toBe('contents');
+});

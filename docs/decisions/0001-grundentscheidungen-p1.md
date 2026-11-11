@@ -4,12 +4,12 @@ Datum: 26.10.2026. Status: **beschlossen durch den Nutzer** (Auswahl der jeweils
 
 ## Entscheidungen
 
-| Nr. in OFFENE-ENTSCHEIDUNGEN | Entscheidung | Alternative (verworfen) |
-| --- | --- | --- |
-| 2 | Backend-Framework: Vapor mit Fluent. Targetstruktur und Mindestversionen noch offen. | Hummingbird |
-| 3 | Mandantenmodell: Kunde als Mandant, Formulare gehören einem Kunden; Rollen Admin, Betreuer, Kunde (Kunde mit eigener Sicht). Feine Berechtigungen (Konfiguration, Veröffentlichung, Inhalte, Debug) noch offen. | Altbestand Benutzer↔Formular ohne Mandant |
-| 4 (Teil), 17 | Altchiffrate (`KUBUS-AEAD:1`, CBC) und v1-Header-Schlüssel werden nur im Migrationswerkzeug gelesen und auf `:2` umgestellt; die Laufzeit schreibt und liest nur `:2`. Verschlüsselungsprofile, Schlüsselgranularität, Klartext für Retry und Recovery bleiben offen. | Dauerhaft alle Formate lesen |
-| 14 (Teil) | Code und Codekommentare englisch, Nutzertexte deutsch und lokalisierbar, Dokumentation deutsch. Repo-/Branchkonventionen offen. | Alles deutsch |
+| Nr. in OFFENE-ENTSCHEIDUNGEN | Entscheidung                                                                                                                                                                                                                                                          | Alternative (verworfen)                   |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 2                            | Backend-Framework: Vapor mit Fluent. Targetstruktur und Mindestversionen noch offen.                                                                                                                                                                                  | Hummingbird                               |
+| 3                            | Mandantenmodell: Kunde als Mandant, Formulare gehören einem Kunden; Rollen Admin, Betreuer, Kunde (Kunde mit eigener Sicht). Feine Berechtigungen (Konfiguration, Veröffentlichung, Inhalte, Debug) noch offen.                                                       | Altbestand Benutzer↔Formular ohne Mandant |
+| 4 (Teil), 17                 | Altchiffrate (`KUBUS-AEAD:1`, CBC) und v1-Header-Schlüssel werden nur im Migrationswerkzeug gelesen und auf `:2` umgestellt; die Laufzeit schreibt und liest nur `:2`. Verschlüsselungsprofile, Schlüsselgranularität, Klartext für Retry und Recovery bleiben offen. | Dauerhaft alle Formate lesen              |
+| 14 (Teil)                    | Code und Codekommentare englisch, Nutzertexte deutsch und lokalisierbar, Dokumentation deutsch. Repo-/Branchkonventionen offen.                                                                                                                                       | Alles deutsch                             |
 
 ## Folgen
 

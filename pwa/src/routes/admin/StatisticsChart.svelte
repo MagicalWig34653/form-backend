@@ -53,6 +53,8 @@
   const plotW = $derived(W - padL - padR);
   const plotH = H - padT - padB;
   const few = $derived(stats.days.length <= 7);
+  const activeDays = $derived(stats.days.filter((d) => metrics.some((m) => d[m] > 0)).length);
+  const sparse = $derived(!few && activeDays > 0 && activeDays <= 2);
 
   const top = $derived.by(() => {
     const max = Math.max(1, ...stats.days.flatMap((d) => metrics.map((m) => d[m])));
@@ -135,6 +137,9 @@
             <span class="text-muted-foreground tabular-nums">{stats[metric]}</span>
           </li>{/each}
       </ul>
+      {#if sparse}<p class="text-muted-foreground mb-2 text-sm" data-testid="sparse-note">
+          {ui.sparse.replace('{n}', String(activeDays)).replace('{m}', String(stats.days.length))}
+        </p>{/if}
       <svg viewBox={`0 0 ${W} ${H}`} class="block h-auto w-full" aria-hidden="true">
         {#each ticks as tick (tick)}
           <line

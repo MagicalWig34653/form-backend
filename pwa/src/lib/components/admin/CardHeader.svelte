@@ -30,7 +30,7 @@
   )}
   data-slot="card-header"
 >
-  <div class="min-w-0 flex-1 basis-72">
+  <div class={cn('min-w-0 flex-1', description ? 'basis-72' : 'basis-40')}>
     {#if title}<div class="flex items-center gap-1">
         <svelte:element
           this={heading}

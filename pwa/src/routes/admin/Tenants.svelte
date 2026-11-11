@@ -247,7 +247,17 @@
                 {/if}
               </span>
             {:else if column.id === 'rights'}
-              <span class="text-muted-foreground">{rightsOf(c.permissions).join(', ')}</span>
+              <ul
+                class="flex flex-wrap gap-1.5"
+                data-testid="rights-chips"
+                aria-label={t.listUi.rights}
+              >
+                {#each rightsOf(c.permissions) as right (right)}
+                  <li class="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs">
+                    {right}
+                  </li>
+                {/each}
+              </ul>
             {/if}
           {/snippet}
         </DataTable>

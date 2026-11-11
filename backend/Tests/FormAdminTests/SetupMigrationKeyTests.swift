@@ -78,7 +78,7 @@ final class SetupMigrationKeyTests: XCTestCase {
                 try await fx.grant(actor, "migration.run", system: true, by: actor)
                 let at = DB.time(Date())
                 try await SystemSettings.write(fx.sql, key: "migration.enabled", value: "true", at: at)
-                try await SystemSettings.write(fx.sql, key: "migration.allowedNets", value: "127.0.0.0/8", at: at)
+                try await SystemSettings.write(fx.sql, key: "migration.allowedNets", value: "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", at: at)
                 let env = ProcessInfo.processInfo.environment
                 let body = try String(decoding: JSONSerialization.data(withJSONObject: [
                     "host": env["P4A_DB_HOST"] ?? "127.0.0.1", "port": Int(env["P4A_DB_PORT"]!)!, "database": source.name,

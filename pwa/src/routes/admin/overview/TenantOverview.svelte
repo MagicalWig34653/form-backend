@@ -135,6 +135,10 @@
   );
 
   const attention = $derived(deriveAttention(forms, loader.snapshots, locked));
+  // The setup panel already names the next missing step; the missing-route hints are not repeated per form above it.
+  const attentionShown = $derived(
+    showSetup ? attention.filter((x) => x.kind !== 'noMail') : attention,
+  );
   const steps = $derived(setupSteps(forms, loader.snapshots));
   const timeText = $derived(stamp ? formatClock(stamp) : '…');
 </script>
@@ -212,7 +216,7 @@
     <div data-w={showSetup ? '6' : undefined}>
       <AttentionList
         {tenant}
-        items={attention}
+        items={attentionShown}
         partial={anyLoading || detailState.status === 'error'}
       />
     </div>

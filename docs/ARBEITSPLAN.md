@@ -1,5 +1,13 @@
 # Arbeitsplan
 
+## Setup-Assistent: weitere Schritte (11.11.2026, Todolino 9C74289D)
+
+Umgesetzt: Schritte Passkeys, API-Token, Probe-Einsendung, neue Reihenfolge, Abschluss-Zusammenfassung (siehe STATUS). Offen: Review, Merge, Abnahme im echten Browser (Passkey-Hinzufügen, echte Einsendung); optional ein lesender Endpunkt für SDK-Zugänge, falls sie als Beleg zählen sollen.
+
+## Import-Generalprobe (11.11.2026, Todolino 274A0A2B)
+
+Umgesetzt im Worktree-Branch `worktree-agent-af371e818a5d86ff4` (`docs/handoffs/Import-Generalprobe.md`, `docs/UMSTIEG-CHECKLISTE.md`). Nächste Schritte: unabhängiges Review, Merge, danach Prüflauf mit der echten Quelle nach der Checkliste. Offen: Durchsatz (34 Zeilen/s) bei Bedarf verbessern (Batch-Inserts), Altschlüssel-Übernahme mit echtem Schlüssel, B3/B4 aus dem Sicherheitsreview (Koordinator).
+
 ## Umstieg: Plan automatisch (11.11.2026, Todolino 1EA2CCBB)
 
 Umgesetzt im Worktree-Branch `worktree-agent-a0c0903c0d8bc9dce` (ADR 0040, `docs/handoffs/Umstieg-Plan-automatisch.md`). Nächste Schritte: unabhängiges Review, Merge, Image-Update und danach den Prüflauf mit der echten Quelle wiederholen. Zeigt die Schlüsselliste eine Warnung „nicht im Altbestand“, muss das vor dem Import im Altsystem geklärt werden. Offen als eigene Entscheidung: wie Einsendungen ohne vorhandene Schlüsselgeneration behandelt werden (heute bricht der Lauf ab) und die Zielnummern bei vorhandenen Zielkunden.
@@ -21,6 +29,7 @@ Prüfstand und nächste Browserbefehle: `docs/handoffs/E2E-Entries-Export.md`.
 Check (0 Fehler/0 Warnungen), Lint, 139 Vitest-Tests und diff --check bestanden.
 Ein Codex ohne Delegation/Commits; Playwright auf Nutzerauftrag nicht ausgeführt.
 Dateibesitz bei Übergabe frei, keine laufenden Jobs. Browserabnahme beim Nutzer.
+
 ## P12-B Abschlussimplementierung (03.11.2026, feature-keys2)
 
 Konto-Recovery mit bestätigter Einmalanzeige, Nicht-PRF-Datenentsperrung und gemeinsamer
@@ -49,19 +58,19 @@ Stand 25.10.2026: ausschließlich Gerüst/Planung. Keine aktive Implementierung 
 
 ## Empfohlene Reihenfolge
 
-| Paket | Ergebnis | Rolle | Abhängigkeit |
-| --- | --- | --- | --- |
-| P0 | Vollständige Funktions-/Daten-/Routenmatrix des Altbestands | Sonnet oder Codex | lesender Zugriff auf Altprojekt |
-| P1 | Offene Grundentscheidungen, Profil-/Ablaufsemantik und Modulgrenzen | Sonnet mit Claude-Koordination | P0, Nutzerentscheidungen |
-| P2 | Minimale gemeinsame API-/Ereignis-/Paketverträge und synthetische Beispiele | Sonnet oder Codex | P1 |
-| P3 | Technischer Durchstich Swift–MariaDB–PHP–Browser, Krypto und Passkey-Kompatibilität | Codex oder Sonnet; unabhängig prüfen | P2 |
-| P4 | Backend-/PWA-Grundaufbau mit reproduzierbarem Build/CI und synthetischer Umgebung | Sonnet/Codex parallel nach Dateibesitz | P3 |
-| P5 | Ein vollständiges Formular: Konfiguration, Ansicht, Eingang, verschlüsselte DB, Mail, Statistik | Sonnet/Codex | P4 |
-| P6 | Versionierte Ablaufengine, kleiner Bausteinkatalog, Ablaufeditor und Debug | Sonnet/Codex | P5, früh festgelegte Engineverträge |
-| P7 | Legacy/v2-Adapter, PHP-SDK, Pairing, Domainzuordnung und Guide | Sonnet/Codex | passende Kernverträge |
-| P8 | Alle Bestandsfunktionen, Import/Export, MCP-Konfiguration, S3/SFTP | einzelne abgegrenzte Pakete | P0-Matrix, Kernmodule |
-| P9 | Wiederholbare Datenmigration, Paritätsprüfung und Cutover-Probe | Codex/Sonnet, unabhängig reviewen | P0–P8 |
-| P10 | Mehrreplika-/Wiederanlauf-/Lasttests, Recovery, Betriebsabnahme | Sonnet/Codex | integriertes System |
+| Paket | Ergebnis                                                                                        | Rolle                                  | Abhängigkeit                        |
+| ----- | ----------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------- |
+| P0    | Vollständige Funktions-/Daten-/Routenmatrix des Altbestands                                     | Sonnet oder Codex                      | lesender Zugriff auf Altprojekt     |
+| P1    | Offene Grundentscheidungen, Profil-/Ablaufsemantik und Modulgrenzen                             | Sonnet mit Claude-Koordination         | P0, Nutzerentscheidungen            |
+| P2    | Minimale gemeinsame API-/Ereignis-/Paketverträge und synthetische Beispiele                     | Sonnet oder Codex                      | P1                                  |
+| P3    | Technischer Durchstich Swift–MariaDB–PHP–Browser, Krypto und Passkey-Kompatibilität             | Codex oder Sonnet; unabhängig prüfen   | P2                                  |
+| P4    | Backend-/PWA-Grundaufbau mit reproduzierbarem Build/CI und synthetischer Umgebung               | Sonnet/Codex parallel nach Dateibesitz | P3                                  |
+| P5    | Ein vollständiges Formular: Konfiguration, Ansicht, Eingang, verschlüsselte DB, Mail, Statistik | Sonnet/Codex                           | P4                                  |
+| P6    | Versionierte Ablaufengine, kleiner Bausteinkatalog, Ablaufeditor und Debug                      | Sonnet/Codex                           | P5, früh festgelegte Engineverträge |
+| P7    | Legacy/v2-Adapter, PHP-SDK, Pairing, Domainzuordnung und Guide                                  | Sonnet/Codex                           | passende Kernverträge               |
+| P8    | Alle Bestandsfunktionen, Import/Export, MCP-Konfiguration, S3/SFTP                              | einzelne abgegrenzte Pakete            | P0-Matrix, Kernmodule               |
+| P9    | Wiederholbare Datenmigration, Paritätsprüfung und Cutover-Probe                                 | Codex/Sonnet, unabhängig reviewen      | P0–P8                               |
+| P10   | Mehrreplika-/Wiederanlauf-/Lasttests, Recovery, Betriebsabnahme                                 | Sonnet/Codex                           | integriertes System                 |
 
 Haiku übernimmt darin klar begrenzte Zuarbeit mit festem Muster, keine pauschalen Gesamtpakete. Reihenfolge bei neuer Erkenntnis ändern und begründen; spätere Pakete weiter zerlegen.
 
@@ -84,6 +93,7 @@ P0–P2 erledigt bzw. Vertragsentwurf mit Reviews; P3 (Krypto, Schema, Passkey) 
 ## P5 Zerlegung (30.10.2026)
 
 P5 ist zu groß für ein Paket. Reihenfolge, je Paket exklusiver Dateibesitz:
+
 - **P5-A Ingest-Kern** (läuft, Claude implementer, Codex-Limit bis 04.11.): Eingangsendpunkt nach `contracts/ingest/ingest.openapi.yaml` (nur v2-Pfad, Adapter inaktiv laut ADR 0006): Signatur-/Zeitstempelprüfung, Idempotenz, Ablage des verschlüsselten Pakets in MariaDB (`stored_objects`, `ingest_idempotency`). Besitz: neues Target `backend/Sources/FormIngest/`, `backend/Tests/FormIngestTests/`, `Package.swift`-Eintrag, `docs/handoffs/P5-A.md`. Nicht: Mail, Statistik, UI, Ablaufengine.
 - P5-B Formular-Konfiguration/Release (Admin-API-Ausschnitt), P5-C Mail-Versand aus verschlüsseltem Eingang (Resend-Manifest), P5-D Statistik-Ereignis, P5-E PWA-Ansicht: erst nach P5-A und Review.
 - Login/Passkey-Route (R2 aus `review-code-korrektur-backend.md`) gehört zu P5-B/Auth, nicht zu P5-A.
@@ -97,9 +107,11 @@ Stand 31.10.2026 (P5-E): PWA-Verwaltungsoberfläche umgesetzt (`docs/handoffs/P5
 Stand 31.10.2026 (P5-F): Einsendungen lesen und im Browser entschlüsseln umgesetzt (`docs/handoffs/P5-F.md`). Offen in P5: Browser-Schlüsselverwaltung (PRF/Datenzugang/Recovery), P5-D Statistik, manueller Mail-Resend, Konten-/Rechte-/Passkey-Verwaltung, Review.
 
 ## Neuer Wunsch (02.11.2026): SDK-Selbstupdate durch das Backend (P7-U, nicht begonnen)
+
 Das Backend soll das PHP-SDK beim Kunden aktualisieren können: Zugangsdaten (FTP/SFTP) und genauer Zielpfad je Kunde/Formular hinterlegen (Secrets verschlüsselt wie `managed_secrets`), Version prüfen, hochladen, Rollback auf die vorherige Version. **Auto-Updates sind optional** (pro Kunde/Verbindung abschaltbar, Standard aus; manuell auslösbar). Offene Entwurfsfragen: Integritätsnachweis des SDK-Pakets (Signatur/Hash, Pinning), Atomarität (neues Verzeichnis + Umbenennen/Symlink statt Überschreiben), Verträglichkeit mit Hostern ohne Rename, Schutz vor Downgrade-Angriffen, Test-Aufruf nach Update (Smoketest-Einsendung), Audit, Zielschutz (SSRF/HostGuard für FTP-Ziele), Verhältnis zu den S3/SFTP-Verbindungen aus P8. Wird als eigenes Paket mit ADR und Review angelegt.
 
 ## Stand 02.11.2026 (P8-A)
+
 P8-A Löschung/Hold/Aufbewahrung/Chiffrat-Export im Backend umgesetzt (ADR 0012, `PrivacyTests`). Nächste P8-Pakete in dieser Reihenfolge: P8-A-UI (PWA: Löschen, Hold, Frist, Export-Download mit lokaler Entschlüsselung), Webhooks, Debug/Testziele, MCP/Tokens, S3/SFTP-Speicher, Domainzuordnung (P7). Danach P6, Rotation (inkl. Hold-Rewrap), P9, P10, externes Audit.
 
 ## P-Rotation (03.11.2026, Worktree feature-rotation)
@@ -109,6 +121,7 @@ Ziel: kundenbezogene Datenschlüsselrotation, CAS-Rewrap aller Inventarrollen, A
 P-Rotation Nachprüfung 03.11.2026: Nutzer-DB-Lauf 231 Tests/1 Fehler analysiert (`/tmp/rot.log`); Hold-Test erwartete bei fehlendem Pflichtfeld irrtümlich 422 statt des Decoder-Vertrags 400. Test auf exakt 400+bad_request korrigiert und um unveränderte Pakete/Flag/Audit sowie leere Liste→409 verstärkt; Server unverändert. Dateibesitz lokal: PrivacyTests und Fortsetzungsdokumentation. Nächster Schritt nach Kompilation: korrigierten Hold-Test mit MariaDB nachprüfen; Details `handoffs/P-Rotation.md`. Keine Commits.
 
 P-Rotation Astra-Nachprüfung 03.11.2026 abgeschlossen (Codex allein, Worktree/Branch feature-rotation): alle vier Befunde umgesetzt; Dateibesitz und Verträge in `handoffs/P-Rotation.md`, ADR 0016. Swift-Testtargets gebaut, PWA 71 Vitest/check/lint/build erfolgreich. DB-/TCP-Tests geschrieben und kompiliert, auf ausdrücklichen Auftrag nicht ausgeführt; kein Docker, Commit oder Push. Keine laufenden Jobs. Nächste Abnahme: Wiederaufnahme beider Generationen nach Zugangsverlust und große Hold-/Rewrap-Requests über echtes TCP mit MariaDB prüfen; anschließend Browser-Lock-Integration.
+
 ## P9 Importer (03.11.2026)
 
 Paket im Worktree `form-backend-migration` / Branch `feature-migration` implementiert, ungecommittet, Abnahme offen. Besitz: `backend/Sources/FormMigration/`, `backend/Tests/FormMigrationTests/`, Target-/CLI-Anbindung in Package.swift/main.swift, ADR 0014, Handoff P9, STATUS/ARBEITSPLAN. Keine laufenden Jobs oder parallelen Schreiber. Testziel ausschließlich `P3B_PORT=33419 P3B_NAME=migration-mariadb ./backend/integration-test.sh --filter Migration`; aktuell Docker-Zugriff gesperrt, kein Test ausgeführt. SwiftPM-Dependencyauflösung fehlt; alternative Typprüfung bestätigt nur Compilerverträglichkeit gegen vorhandene Module. Nächster Schritt: ausführbarer Build und Integrationstest, unabhängiges Review, danach offene Mappingteile aus `docs/handoffs/P9.md`. P9 ist ausdrücklich noch keine vollständige Cutover-/Produktionsabnahme.
@@ -118,6 +131,7 @@ P9-Nachtrag 03.11.2026: Vom Nutzer gemeldeten Startfehler beider DB-Tests auf nu
 ### P9 Reviewkorrekturen (03.11.2026)
 
 Drei beauftragte Befunde in `LegacyImporter.swift`/`Transform.swift` behoben: unbeschränkte erste Cursor-Seite einschließlich negativer IDs und Inventar-/Scan-Abgleich (`countMismatch` verhindert Verification), belegte unbekannte Formularspalten als `unmapped-column` auch bei Ledger-Wiederholung, Status/Abschlusszeit unabhängig von Berichtsänderung. Vier DB-Regressionsfälle ergänzt und kompiliert; wegen nicht verfügbarem Docker ausdrücklich nicht ausgeführt. SwiftPM-Build/Link mit lokalem Filter `MigrationDecodingTests` erfolgreich, 4 lokale Tests/0 Fehler, Diffprüfung erfolgreich. ADR 0014 und Handoff P9 aktualisiert. Dateibesitz: FormMigration-Importer/Transform, die zwei Migration-Testdateien und diese Dokumentation, keine parallelen Schreiber. Worktree `form-backend-migration`, Branch `feature-migration`, alles ungecommittet, kein Push, keine laufenden Jobs. Nächster Schritt: DB-Abnahme durch Nutzer mit `P3B_PORT=33419 P3B_NAME=migration-mariadb ./backend/integration-test.sh --filter Migration` (7 DB-/4 lokale Tests); Details/Grenzen in `docs/handoffs/P9.md`.
+
 ## P7/P8 Domainzuordnung und Ereignisstatistik (03.11.2026)
 
 Paket in Worktree `form-backend-domains`, Branch `feature-domains`, ohne Commit/Push. Ziel/Vertrag: ADR 0015 und bestehende Domain-/Ereignisverträge. Besitz: Backend DomainRoutes/Collector, Statistik/API/Eraser/Scheduler, Ingest-Statistikkontext; PWA Statistikkomponente/DTO/Tests; vier Domain-Testsuiten. Keine Schemaänderung. Umsetzung vorhanden; Backend-/Browserlaufzeitabnahme noch offen. Testbefehl ausschließlich `P3B_PORT=33420 P3B_NAME=domains-mariadb ./backend/integration-test.sh --filter Domain`. Nächster Schritt: offene DB-/Browserprüfungen in freigegebener Umgebung ausführen, Review und SDK-/Ansichtsinstrumentierung abnehmen; keine Veröffentlichung. Tatsächliche Ergebnisse und Jobs siehe STATUS sowie `docs/handoffs/P7-P8-Domains-Statistik.md`.
@@ -128,13 +142,11 @@ Ziel/Vertrag: Nutzerauftrag P6 ohne Skripte/Editor, `contracts/flow/`, ADR 0001�
 
 Abnahme ausstehend: Docker-MariaDB (vorgeschriebener Befehl mit Port33422/Name engine-mariadb Exit2 blockiert), SMTP-/Wiederanlauf-/Zweiworkerfälle und unabhängiges Sicherheitsreview. Ohne DB erfolgreich gebaut: 52 Fälle, 19 ausgeführt, 33 übersprungen, 0 Fehler. Nächster Schritt: DB-Befehl aus Handoff ausführen. Danach vollständiges Original-Mailmanifest (Mail-Resume bleibt bis dahin gesperrt), sichere aktive Testsenken/Testausführung und harte Transportzeitgrenzen ergänzen; Webhook-Dispatcher aus eigenem Paket integrieren. Kein Editor/Skriptumfang in diesem Paket, kein Commit/Push/Deployment.
 
-
 ## P6 Reviewkorrekturen (03.11.2026, feature-engine)
 
 Abgegrenztes Paket zu ADR 0017: Befunde 1/2/3/5/6/8 umgesetzt, Regressionstests geschrieben und alle Swift-Testtargets erfolgreich gebaut (kein Testlauf, DB-Tests laut Nutzer nicht ausführen). Dateiliste, Vertrag, Abnahmefälle und genauer Buildbefehl: `docs/handoffs/P6-Reviewkorrekturen.md`. Worktree `form-backend-engine`, Branch `feature-engine`, ungecommittet; Dateibesitz frei, keine laufenden Jobs.
 
 Nächste Schritte: nach Auftrag mit Docker Flow-DB-/SMTP-Regressionen und unabhängiges Review; danach eigene Pakete für **4 Budgetdurchsetzung** und **7 gemeinsame Sperrreihenfolge Eraser/Checkpoint** (offen, siehe ADR 0017). Vollständiges unveränderliches Mailmanifest bleibt Voraussetzung für Flow-Mail-Resume/Resend. Keine Migration/Veröffentlichung im aktuellen Paket.
-
 
 ## P6 DB-Fehlerkorrektur aus seq2-Lauf (03.11.2026)
 
@@ -145,17 +157,23 @@ Ursachen und Korrekturen: `FormFlow/FlowStore.swift` schrieb den nicht im Outbox
 Prüfung: `swift build --build-tests` mit den Cache-/Native-Optionen aus `docs/handoffs/P6-Reviewkorrekturen.md` Exit 0; Log `/tmp/seq2-engine-fix-build.log`. `git diff --check` bestanden. Auf Nutzerauftrag keine DB-Tests oder sonstigen Testläufe ausgeführt. Keine Commits, Migrationen oder Veröffentlichungen; vorhandene uncommittete Reviewkorrekturen erhalten. Dateibesitz frei, keine laufenden Jobs.
 
 **Merge offen:** Der angeforderte Merge von main konnte nicht gestartet werden: bereits die Sicherung der lokalen Änderungen mit `git stash push -u` scheiterte am Sandbox-Schreibverbot für `form-backend/.git/worktrees/form-backend-engine/index.lock` (außerhalb des erlaubten Worktrees). Kein Stash erzeugt, kein Mergezustand angelegt. Nächster Schritt: main in schreibberechtigter Umgebung ohne Commit mergen, dabei in STATUS/ARBEITSPLAN beide Seiten behalten und die vorhandenen lokalen Änderungen sichern/erhalten; danach Build wiederholen und die beiden DB-Tests durch den Nutzer ausführen lassen. Der vorliegende Build belegt nur den feature-engine-Stand vor diesem Merge.
+
 ## Reviewkorrekturen Domains/Statistik auf main (03.11.2026)
 
 Vier Befunde im Hauptverzeichnis behoben: zeitlich begrenzter Legacy-Einsendungszählpfad mit dauerhafter manueller Löschgrenze, Submit als einzige neue Zählgrundlage, Retention mit mehreren Batches/Arbeitsbudget und 60-s-Folgeausführung, getrennte gültige/ungültige Collectorbudgets für POST/OPTIONS. Abnahmefälle und Dateibesitz: docs/handoffs/Review-Domains-Statistik-Korrekturen.md, Vertrag ADR 0015. Ein schreibender Codex, keine Delegation. Keine Schemaänderung, kein Commit. DB-Lauf wegen unerreichbarem Docker-Daemon offen; nächster Schritt ist P3B_PORT=33420 P3B_NAME=domains-mariadb ./backend/integration-test.sh --filter Domain beim Nutzer. Endgültiger Swift-Prüfstand siehe STATUS.
+
 ## P8 Webhooks (03.11.2026, Branch feature-webhooks)
+
 Abgegrenztes Backendpaket: CRUD, verschlüsselte Signierschlüssel, Ingest-Outbox, HTTP-Zustellung/Scheduler und Tests. Dateibesitz: Codex Hauptagent (Package, Ingest, App, FormWebhooks/WebhookDispatcher, Dokumentation); Teilagent API (WebhookRoutes/FormRoutes); Teilagent HTTP (WebhookHTTP/FakeWebhookServer/WebhookHTTPTests); Teilagent Integration (WebhookTests). Keine Schemaänderung, keine PWA, keine Commits/Pushes. Vertrag ADR 0013. Integration läuft ausschließlich mit `P3B_PORT=33418 P3B_NAME=webhooks-mariadb ./backend/integration-test.sh --filter Webhook`; finaler Prüfstand folgt in STATUS/Handoff.
 
 ## Webhooks: Astra-Korrekturpaket (03.11.2026)
+
 Ziel/Abnahme: Quoten und terminaler Rückstau, kundenfaire parallele Zustellung ohne Netzwerk unter globalem Lock, begrenzter DNS-Resolver, finale Lease-Prüfung nach Lock-Wartezeit; Vertrag ADR 0013. Dateibesitz ausschließlich Codex-Hauptagent: FormWebhooks, WebhookRoutes, IngestRoutes/IngestConfig, HostGuard, Package, WebhookTests/WebhookHTTPTests/AdminFixture und Dokumentation. Keine Teilagents, keine Schemaänderung, Änderungen auf `feature-webhooks` uncommittet. Implementierung und Kompilierung abgeschlossen, zwei DNS-/Zieltests bestanden; DB-/HTTPS-Abnahme wegen Docker-/Socket-Sandbox offen. Keine laufenden Jobs. Nächster Schritt: Nutzer führt `P3B_PORT=33418 P3B_NAME=webhooks-mariadb ./backend/integration-test.sh --filter Webhook` mit Standardquoten aus; Details und Grenzen in STATUS.
+
 ## Fix SDKDeploy-Hänger (03.11.2026)
 
 Paket in `fix-sdkdeploy-hang` / Worktree `form-backend-hang` umgesetzt, nicht committet. Ziel/Vertrag: bestehende Deploy-/Rechte-/Locksemantik erhalten, unbegrenztes FTP-Warten und verschachtelte DB-Poolabhängigkeit beheben; kein Schemawechsel. Dateibesitz und tatsächliche Prüfungen siehe `docs/handoffs/Fix-SDKDeploy-Hang.md`. Abnahme offen: echte FTP-/MariaDB-Regressionsläufe mit einer Poolverbindung und mehrere serielle Gesamtläufe (hier Loopback/Docker gesperrt). Build, vier RemoveTree-Fälle, BlockedTarget, Watchdog und Shellsyntax geprüft. Keine laufenden Jobs, Dateibesitz frei.
+
 ## P8 externe Speicher (03.11.2026, feature-storage)
 
 Aktives Paket: ObjectStore DB/S3/SFTP, Inventar-/Uploadzustände, Lese-/Löschpfade, Ingest-Richtlinien, Adminzuordnung/-probe, Tests. Dateibesitz: Hauptagent StorageService, FormAdmin/FormIngest/App, Schema/Package und Doku; delegierte Adapter und Fakes/Adaptertests nach stabilem Protokoll. Worktree `form-backend-storage`, Branch `feature-storage`; keine Commits/Pushes. ADR 0019 beschreibt Vertrag und neue Chiffrat-Spooltabelle. Todolino-Tools sind in dieser Session nicht verfügbar. Prüfungen und Reststand werden im Handoff/STATUS gesichert.
@@ -183,6 +201,7 @@ Rendering/Shellprüfungen bestanden. Keine DB-Tests oder Docker-Laufzeitabnahme 
 Offen vor Übernahme: unabhängiges Sicherheitsreview und Zwei-Port-/Proxy-/DB-Abnahme.
 Ingest/Collector/MCP bewusst ausschließlich öffentlich; OAuth nur Erweiterungspunkt.
 Danach P11-B und P11-E gemäß Reihenfolge.
+
 ## P8 MCP/API-Tokens (03.11.2026)
 
 Paket im Worktree `form-backend-mcp`, Branch `feature-mcp`, ungecommittet umgesetzt; Dateibesitz frei, keine laufenden Jobs. Vertrag/Abgrenzung/Dateien/Abnahme: ADR 0018 und `docs/handoffs/P8-MCP.md`. Persönliche Tokens, selektive REST-Bearer-Auth, MCP-POST-Profil und PWA API-Tokens vorhanden. Keine Schemaänderung, keine OAuth-Implementierung, keine Altcredentials, keine Veröffentlichung oder Entschlüsselung durch Tokens. Build/PWA-Prüfungen bestanden; sieben Swift-DB-Fälle übersprungen, vorgeschriebener Docker-Lauf und Playwright blockiert. Nächster Schritt: `P3B_PORT=33423 P3B_NAME=mcp-mariadb ./backend/integration-test.sh --filter Token` sowie Playwright-Tokenseite nachholen, Sicherheitsreview, echte Zielclientabnahme; OAuth erst eigenes Paket gemäß Handoff.
@@ -204,6 +223,7 @@ Settings-Registry aus `feature-settings` übernommen und um OAuth-Origins ergän
 Keine DB-Läufe/produktiven Migrationen. Nächster Schritt: unabhängiges Sicherheitsreview,
 Docker-DB-Abnahme mit `--filter OAuthIntegrationTests`, Browser-/Claude-/ChatGPT-Abnahme und
 versionierter Bestandsupgradepfad. Prüfstand in STATUS; Dateibesitz bei Übergabe frei, keine Jobs.
+
 ## P11-B — Systemeinstellungen (03.11.2026)
 
 Ziel/Vertrag: ADR 0021, Todolino E5C65FC4-4409-49F3-A4D0-3E25E231BF7C.
@@ -219,13 +239,11 @@ DB-Tests auf Nutzeranweisung nicht ausführen. Prüfstand und nächste Schritte:
 
 Todolino D2EC6C64-AB8C-4234-A7CC-C94E80C1F89E, Worktree `form-backend-failover`, Branch `feature-failover`. Paket implementiert, ungecommittet: signierte geordnete SDK-Endpunkte, restriktive Fehlerklassen, Zeit-/Versuchsbudget, bytegleiche Wiederholungen; Backup über vorhandene API-Hostverwaltung ohne Migration. Dateibesitz ausschließlich Codex (SDK, KeyRoutes, DomainIngestStatisticsTests, ADR 0020/Signaturvertrag/Status/Plan/Handoff), bei Übergabe frei; keine laufenden Jobs oder Delegation. Abnahme/Vertrag und Dateiliste: `docs/handoffs/P7-F.md`. PHP 120+47 Prüfungen, Swift-Testbuild und 14 DB-freie Swift-Fälle sowie PHP/Swift-Interop bestanden. DB-Tests auf Nutzerauftrag nicht ausgeführt. Nächster Schritt: Domain-Integration mit Docker (Befehl im Handoff), unabhängiger Review und echte TLS-/Proxy-Failoverabnahme. Kein Commit/Push/Deployment.
 
-
 ## P9 Retry-Nachkorrektur (03.11.2026)
 
 Abgegrenzter Fix auf `feature-migration` / Worktree `form-backend-migration`: falsches Feld-Review durch JSON-Schlüsselsortierung beheben; bedingungslosen Status-/Abschluss-UPDATE und Issue-Sperre aus ADR 0014 erhalten. Dateibesitz ein Codex: Transform.swift, MigrationTests.swift, ADR 0014, STATUS/ARBEITSPLAN und P9-Handoff. Inhaltsvergleich implementiert, Erstlauf-Voraussetzungen im Retry-Test ergänzt. Kein Commit, keine Delegation, keine produktive Migration. Abnahme: `swift build --build-tests` mit nötigen lokalen Cache-/Sandboxoptionen; DB-Regressionslauf mangels Docker offen. Nächster Schritt: Nutzer wiederholt Migration-Integrationstest mit Port 33419 / Container migration-mariadb; Prüfstand im P9-Handoff.
 
 P9 Retry-Prüfabschluss: `swift build --build-tests` mit lokalen Caches, `--disable-sandbox --build-system native` und `TMPDIR=/private/tmp` erfolgreich (Exit 0, Tests kompiliert/verlinkt). Isolierter Inhaltsvergleich geprüft; `git diff --check` erfolgreich. Keine DB-Tests ausgeführt. Dateibesitz frei, keine laufenden Jobs, nichts committet. Nächster Schritt bleibt der Migration-DB-Lauf beim Nutzer; exakter Buildbefehl/Grenzen im P9-Handoff.
-
 
 ## P6 seq3-Ingest/Webhooks nach main-Merge (03.11.2026)
 
@@ -237,6 +255,7 @@ Prüfung: `swift build --build-tests` mit lokalen Caches und nativem Builder Exi
 
 - P12-A: PWA-Oberfläche im Stil von `timetrack-pwa` (Design-Tokens in OKLCH, shadcn-svelte, Sidebar/TopBar-Shell, Theme/Akzent, Hilfe). Erst Fundament und Shell mit Login/Setup/Überblick, danach alle Seiten.
 - P12-B: Schlüsselverwaltung für Nutzer unsichtbar. Keyring entsperrt sich nach Passkey-Login automatisch (PRF), Kundenschlüssel entstehen beim Anlegen automatisch, Rotation/Rewrap/Hold-Umhängen laufen im Hintergrund, manuelle Schlüsseleingabe entfällt. Sichtbar bleibt nur der einmalige Wiederherstellungscode im Setup und ein Hinweis, wenn ein Gerät kein PRF kann. Der Server bleibt zero-knowledge: Schlüsselarbeit geschieht nur in einer entsperrten Browsersitzung.
+
 ## Feature-Inventur und Abnahmegerüst Altbestand (03.11.2026)
 
 Paket `parity-inventory` dokumentarisch geliefert: `docs/paritaet/featureliste-alt.md` (151 FA-IDs: 53 vorhanden / 62 teilweise / 33 fehlt / 3 bewusst entfallen) und `docs/paritaet/abnahme-skript.md` (ausführbarer Pythonblock, sichere HTTP-Grundchecks, Ergebnis je ID, manuelle Durchläufe und Regressionsbefehle). Vertrag: erneute lesende Altcode-Inventur plus Gegenstücksuche ausschließlich im aktuellen Checkout; keine Implementierung/Architekturentscheidung, Secrets oder Altänderung. Dateibesitz ein Codex für diese zwei Dateien und STATUS/ARBEITSPLAN; bei Übergabe frei. Branch `parity-inventory`, Worktree `form-backend-parity`, Basis `2374ea0`.
@@ -274,7 +293,6 @@ Check/Lint/81 Vitest/Build bestanden. Browserabnahme ist ausdrücklich offen:
 Nächster Schritt: alle 45 Playwright-Fälle inklusive axe ausführen und visuell
 Desktop/Mobil prüfen; anschließend Schritt 2 (übrige Seiten) beauftragen.
 
-
 ## Hold-Playwright-Mock nach P12-B (03.11.2026)
 
 Paket `fix-e2e-hold` im Worktree `form-backend-fix2` ungecommittet korrigiert. Ein Codex, keine Delegation; Dateibesitz `pwa/e2e/admin.spec.ts`, P12-B-Handoff und STATUS/ARBEITSPLAN bei Übergabe frei, keine Jobs. Ursache: fehlendes Holdinventar (404), gesperrter Keyring bei Direktnavigation und veraltete Requesterwartung ohne Objekte. Mock bietet nun regulären Login/PRF-Autounlock mit echten synthetischen Schlüsselhüllen und zustandsbehaftete Holdobjekte; prüft CAS, sym-Rewrap/Nutzbyte-Erhalt und Fehler bei gesperrtem Zugang. UI zeigt Fehler bereits an, daher unverändert. Check/Lint/89 Vitest/diff --check bestanden; Playwright auf Nutzerauftrag nicht ausgeführt (bekannte EPERM-Grenze). Details/Vertrag/Dateien: `docs/handoffs/P12-B.md`, Nachkorrektur. Nächster Schritt beim Nutzer: `cd pwa && npx playwright test`; kein Commit oder Deployment, vollständiges P12-B weiterhin offen.
@@ -306,6 +324,7 @@ Spezialhandlerprüfung vor menschlicher Veröffentlichung. Keyimport/Delta/Rollb
 weitere P11-F-Teile. Kein Commit/Push/Deployment.
 
 Umfangsentscheidung (Nutzer, 03.11.2026): Alle Funktionen der Feature-Inventur werden genutzt (Turnstile/Captcha, TOTP, Google-Ads-Auswertung, MCP-Statistik) mit einer Ausnahme: Der Docker-Kundenagent (FA-119) entfällt, kein Kunde braucht ihn. Folge: Ads-Auswertung (FA-080/081/122) braucht im Neubau eine Erfassung der Ads-Merkmale (z. B. GCLID) in den Statistikereignissen; das ist ein eigenes Paket (P13-Ads).
+
 ## Auditfix Session/Keyring und DCR (03.11.2026)
 
 Paket auf `fix-audit` / `form-backend-auditfix` implementiert, ungecommittet.
@@ -319,6 +338,7 @@ Fortsetzung: Docker-OAuth-Tests und Browser-Zweittabfall/Sicherheitsreview.
 Auditfix-Abnahme lokal abgeschlossen: 107 Vitest, 4 DB-freie Registrytests,
 Swift-Testbuild, PWA Check/Lint/Format/Build und Diffprüfung bestanden.
 Dateibesitz frei, keine Jobs/Commits. Offen bleiben Docker- und Zweittab-Browserabnahme.
+
 ## Export/Auskunft — Übergabe 03.11.2026
 
 Paket FA-061/068/073–075 auf `feature-export`, Worktree `form-backend-export`.
@@ -334,6 +354,7 @@ PWA check/lint/118 Vitest-Tests und diff --check bestanden. DB-Tests geschrieben
 und kompiliert, nicht ausgeführt. Dateibesitz frei, keine laufenden Jobs.
 ADR 0026 und `docs/handoffs/Export-Auskunft.md` enthalten Dateien, Vertrag,
 Prüfungen und Grenzen. Nächster Schritt: externe DB-/Browserabnahme und Review.
+
 ## Betrieb — Paketvertrag (03.11.2026)
 
 Ziel: FA-085/086/089/063 mit autorisierter Aufbewahrung (FA-134/135).
@@ -353,11 +374,13 @@ Kein Commit, Deployment oder produktiver Lauf.
 Betrieb-Nachprüfung: Quittierung pro Ereignis und festgehaltene Mailzielkennung
 integriert, Testbuild/10 DB-freie Tests erneut grün. Weiter mit dem DB-/SMTP-Review
 laut Betrieb-Handoff; keine laufenden Jobs.
+
 ## Paket Konten (03.11.2026)
 
 Ziel/Vertrag/Abnahme: FA-091/092/093/145/098/100/102/103, ADR 0026, `docs/handoffs/Konten.md`. Ein schreibender Codex auf `feature-accounts` / `form-backend-accounts`, Dateibesitz FormAuth, ergänzende AccountRoutes, PWA Account/Members sowie notwendige Login-/API-Integration, Tests/DDL 0026/i18n/Dokumentation. Keine Delegation oder Commits. Swift-Testbuild, DB-freie Unit-Tests, PWA check/lint/vitest; DB-Tests nur kompilieren, Docker/Playwright auf Nutzerauftrag nicht ausführen. Nächster Schritt nach lokalem Prüfabschluss: DB-/Browserabnahme und unabhängiger Sicherheitsreview; exakter Befehl im Handoff.
 
 Konten-Prüfabschluss: Implementierung lokal geliefert; Swift-Testbuild, 18 DB-freie Tests, PWA check/lint/105 Vitest und diff --check bestanden. Keine laufenden Jobs, Dateibesitz frei, kein Commit. DB-/Browserlauf und unabhängiger Sicherheitsreview offen; nächster konkreter Befehl/Grenzen in `docs/handoffs/Konten.md`.
+
 ## Paket Missbrauchsschutz (03.11.2026)
 
 Ziel/Abnahme: FA-012/013/014 Turnstile, FA-016/017 Sperren/Listen, FA-033/034
@@ -369,6 +392,7 @@ DB- und Browserabnahme beim Nutzer offen; keine produktive Migration ausführen.
 Prüfabschluss Missbrauchsschutz: Testbuild/46 Swift-Unit-/105 Vitest-Fälle und
 PWA-Check/Lint/diff --check bestanden; keine DB-Tests, keine laufenden Jobs,
 Dateibesitz frei. Nächste Schritte und Validator-/DDL-Grenzen im Handoff.
+
 ## P11-C/D – internes Setup und Migrationsjobs (03.11.2026)
 
 In Bearbeitung auf `feature-assist`, Hauptcheckout `form-backend-assist`; ein Codex,
@@ -385,6 +409,7 @@ DB-freie Tests, PWA check/lint/112 Vitest/Build erfolgreich; keine DB-/Playwrigh
 Dateibesitz frei, keine Jobs/Commits. **Gesamtpaket offen:** kontoweite P12-B-Recovery
 fehlt, Setup blockiert Schritt 2; Schritte 3–6 als geführter Abschluss mit realer
 Datenprobe noch ergänzen. Verbindlicher nächster Einstieg: `docs/handoffs/P11-CD.md`.
+
 ## MCP-Werkzeuge – FA-122/123/124 (03.11.2026)
 
 Aktiv auf `feature-mcpstat` / `form-backend-mcpstat`, ein Codex ohne Delegation.
@@ -404,6 +429,7 @@ aus Klickkennung. Dateibesitz frei, keine Jobs oder Commits. Swift-Testbuild,
 10 reine Swift-Tests und PWA Check/Lint/136 Vitest bestanden. DB-Tests nur
 kompiliert. Fortsetzung: unabhängiger Review und DB-/Browserabnahme gemäß Handoff;
 Hostansichten müssen den optionalen Indikator liefern, Altbestand bleibt unbekannt.
+
 ## Auditpaket 8B72B9D6 — 03.11.2026
 
 Begrenztes Paket auf `audit-run` / `form-backend-audit` (Basis `298b6c0`), ein Codex,
@@ -429,6 +455,7 @@ Orchestrierung mit Kommando-Doubles. Shellsyntax und `git diff --check` bestande
 Keine Laufzeit-/TLS-/nginx-/DB-Abnahme, kein Deployment/Migrationslauf/Commit.
 Dateibesitz frei, keine laufenden Jobs; nächster Schritt: Review und isolierte
 Proxy-/Listener-Abnahme mit zwei synthetischen Client-IPs gemäß Handoff.
+
 ## P11-F Rest — Übergabe 03.11.2026
 
 Paket 8B72B9D6-1FAE-4B18-AA1D-0876B1EE7D5D, `feature-keyimport` /

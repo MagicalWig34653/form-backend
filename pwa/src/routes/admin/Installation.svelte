@@ -43,6 +43,52 @@
   let formBusy = $state(false);
   let formMessage = $state('');
 
+  /** Where each step sends the user; null = no page (inline step). */
+  function targetOf(id: StepId): string | null {
+    const f = onboarding.facts;
+    switch (id) {
+      case 'account':
+      case 'passkeys':
+      case 'recovery':
+        return '/account';
+      case 'token':
+        return '/api-tokens';
+      case 'mail':
+        return '/connections';
+      case 'addresses':
+        return '/settings';
+      case 'migration':
+        return '/migration';
+      case 'customer':
+        return '/tenants';
+      case 'form': {
+        const u = f.forms?.unpublished;
+        return u ? formPath(u.tenant, u.form, 'publish') : '/forms';
+      }
+      case 'testEntry': {
+        const e = f.testEntries;
+        const target = e?.withEntries ?? e?.first;
+        return target ? formPath(target.tenant, target.form, 'entries') : null;
+      }
+    }
+  }
+  /** Steps that are a plain "go to page" button (the others have inline forms). */
+  const NAV_STEPS: readonly StepId[] = [
+    'account',
+    'passkeys',
+    'mail',
+    'addresses',
+    'token',
+    'testEntry',
+    'migration',
+  ];
+  /** Snapshot taken when the setup is finished: what is still to do, with direct links. */
+  let summary = $state<{
+    done: number;
+    total: number;
+    skipped: { id: StepId; path: string }[];
+  } | null>(null);
+
   const steps = $derived(onboarding.steps);
   const progress = $derived(onboarding.progress);
   const skippedCount = $derived(steps.filter((s) => s.state === 'skipped').length);
@@ -134,6 +180,13 @@
     });
     finishing = false;
     if (r.ok) {
+      summary = {
+        done: progress.done,
+        total: progress.total,
+        skipped: steps
+          .filter((x) => x.state === 'skipped')
+          .map((x) => ({ id: x.id, path: targetOf(x.id) ?? '/forms' })),
+      };
       finished = true;
       onboarding.markFinished();
       await tick();
@@ -219,7 +272,7 @@
                       .replace('{m}', String(steps.length))}:
                   </span>{text.title}
                 </h2>
-                {#if step.skippable && step.id === 'migration'}
+                {#if step.optional}
                   <span class="text-muted-foreground text-xs">{ui.optional}</span>
                 {/if}
               </div>
@@ -229,40 +282,19 @@
           <div class="mt-2 flex flex-col gap-3 pl-10 max-sm:pl-0">
             {#if step.state === 'done'}
               <p class="text-muted-foreground m-0 text-sm">{text.doneNote}</p>
-              {#if step.id === 'account'}
-                <div>
-                  <a
-                    class="text-brand-ink text-sm underline underline-offset-4"
-                    href="/account"
-                    onclick={(e) => link(e, 'account', '/account')}>{ui.steps.account.action}</a
-                  >
-                </div>
-              {:else if step.id === 'mail'}
-                <div>
-                  <a
-                    class="text-brand-ink text-sm underline underline-offset-4"
-                    href="/connections"
-                    onclick={(e) => link(e, 'mail', '/connections')}>{ui.steps.mail.actionDone}</a
-                  >
-                </div>
-              {:else if step.id === 'addresses'}
-                <div>
-                  <a
-                    class="text-brand-ink text-sm underline underline-offset-4"
-                    href="/settings"
-                    onclick={(e) => link(e, 'addresses', '/settings')}
-                    >{ui.steps.addresses.actionDone}</a
-                  >
-                </div>
-              {:else if step.id === 'migration'}
-                <div>
-                  <a
-                    class="text-brand-ink text-sm underline underline-offset-4"
-                    href="/migration"
-                    onclick={(e) => link(e, 'migration', '/migration')}
-                    >{ui.steps.migration.actionDone}</a
-                  >
-                </div>
+              {#if NAV_STEPS.includes(step.id)}
+                {@const path = targetOf(step.id)}
+                {@const label =
+                  'actionDone' in text ? text.actionDone : 'action' in text ? text.action : ''}
+                {#if path}
+                  <div>
+                    <a
+                      class="text-brand-ink text-sm underline underline-offset-4"
+                      href={path}
+                      onclick={(e) => link(e, step.id, path)}>{label}</a
+                    >
+                  </div>
+                {/if}
               {/if}
             {:else}
               <p class="m-0 text-sm">{text.purpose}</p>
@@ -281,28 +313,17 @@
                 </div>
               {:else if step.id === 'recovery'}
                 <RecoveryStep oncomplete={() => void onboarding.refreshStep('recovery')} />
-              {:else if step.id === 'account'}
-                <div>
-                  <Button onclick={() => go('account', '/account')}
-                    >{ui.steps.account.action}</Button
-                  >
-                </div>
-              {:else if step.id === 'mail'}
-                <div>
-                  <Button onclick={() => go('mail', '/connections')}>{ui.steps.mail.action}</Button>
-                </div>
-              {:else if step.id === 'addresses'}
-                <div>
-                  <Button onclick={() => go('addresses', '/settings')}
-                    >{ui.steps.addresses.action}</Button
-                  >
-                </div>
-              {:else if step.id === 'migration'}
-                <div>
-                  <Button onclick={() => go('migration', '/migration')}
-                    >{ui.steps.migration.action}</Button
-                  >
-                </div>
+              {:else if step.id === 'testEntry' && step.detail === 'needsPublished'}
+                <p class="text-muted-foreground m-0 text-sm">{ui.steps.testEntry.needsPublished}</p>
+              {:else if NAV_STEPS.includes(step.id)}
+                {@const path = targetOf(step.id)}
+                {#if path}
+                  <div>
+                    <Button onclick={() => go(step.id, path)}
+                      >{'action' in text ? text.action : ''}</Button
+                    >
+                  </div>
+                {/if}
               {:else if step.id === 'customer'}
                 <form class="flex max-w-md flex-col gap-3" onsubmit={(e) => void createCustomer(e)}>
                   <Row id="setup-customer-name" label={ui.steps.customer.nameLabel}
@@ -415,6 +436,37 @@
         </div>
       {:else}
         <p class="text-muted-foreground m-0 text-sm">{ui.complete.noRight}</p>
+      {/if}
+      {#if summary}
+        <div class="mt-4 flex flex-col gap-2 border-t pt-4" data-testid="setup-summary">
+          <h3 class="m-0 text-base font-semibold">{ui.summary.title}</h3>
+          <p class="m-0 text-sm">
+            {ui.summary.handled
+              .replace('{done}', String(summary.done))
+              .replace('{total}', String(summary.total))}
+          </p>
+          {#if summary.skipped.length === 0}
+            <p class="text-muted-foreground m-0 text-sm">{ui.summary.skippedNone}</p>
+          {:else}
+            <p class="m-0 text-sm font-medium">
+              {ui.summary.skippedTitle}: {ui.summary.skippedHint}
+            </p>
+            <ul class="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+              {#each summary.skipped as item (item.id)}
+                <li>
+                  <a
+                    class="text-brand-ink underline underline-offset-4"
+                    href={item.path}
+                    onclick={(e) => {
+                      e.preventDefault();
+                      router.navigate(item.path);
+                    }}>{ui.summary.openLink.replace('{name}', ui.steps[item.id].title)}</a
+                  >
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {/if}
       <div class="mt-4 flex flex-wrap gap-2">
         <Button onclick={() => router.navigate('/overview')}>{ui.complete.overview}</Button>

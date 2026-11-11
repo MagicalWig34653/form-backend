@@ -298,7 +298,10 @@
       <p role="status" class="sr-only">
         {flat.length === 0 ? '' : t.palette.count.replace('{n}', String(flat.length))}
       </p>
-      <p class="text-muted-foreground border-border border-t px-4 py-2 text-xs">
+      <p
+        data-testid="palette-keyhints"
+        class="text-muted-foreground border-border border-t px-4 py-2 text-xs [@media(pointer:coarse)]:hidden"
+      >
         {t.palette.hintsLabel}
       </p>
     </DialogPrimitive.Content>

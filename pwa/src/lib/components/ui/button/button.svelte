@@ -10,7 +10,7 @@
     "focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive rounded-lg border border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-3 aria-invalid:ring-3 active:not-aria-[haspopup]:translate-y-px [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center max-w-full text-center transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-60 [&_svg]:pointer-events-none [&_svg]:shrink-0";
   const variants: Record<ButtonVariant, string> = {
     default:
-      'bg-primary text-primary-foreground hover:brightness-90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100',
+      'bg-primary text-primary-foreground hover:brightness-90 disabled:bg-muted disabled:border-border disabled:text-muted-foreground disabled:opacity-100',
     outline:
       'border-border bg-background disabled:text-muted-foreground disabled:opacity-100 hover:bg-muted hover:text-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 aria-expanded:bg-muted aria-expanded:text-foreground',
     secondary:

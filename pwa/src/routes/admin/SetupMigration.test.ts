@@ -10,6 +10,8 @@ vi.mock('$lib/api', () => ({
     keyBundle: async () => ({ ok: true, data: { accountPublicKey: null, recovery: null } }),
     tenants: async () => ({ ok: true, data: { items: [] } }),
     connections: async () => ({ ok: false, error: { kind: 'network', message: 'x' } }),
+    passkeys: async () => ({ ok: false, error: { kind: 'network', message: 'x' } }),
+    entries: async () => ({ ok: false, error: { kind: 'network', message: 'x' } }),
     forms: async () => ({ ok: true, data: { items: [], nextCursor: null } }),
   },
 }));
@@ -44,7 +46,7 @@ it('zeigt nur echte Schritte mit Status aus den Daten und verschiebt optionale',
   const list = await screen.findByLabelText('Einrichtungsschritte');
   await waitFor(() => expect(list.querySelector('[data-testid="step-addresses"]')).toBeTruthy());
   // Konto und Adressen erledigt, Wiederherstellung offen, nicht ladbare Daten als Fehler.
-  expect(list.querySelectorAll('li')).toHaveLength(6);
+  expect(list.querySelectorAll('li')).toHaveLength(9);
   expect(list.querySelector('[data-testid="step-account"]')?.getAttribute('data-state')).toBe(
     'done',
   );
@@ -52,8 +54,16 @@ it('zeigt nur echte Schritte mit Status aus den Daten und verschiebt optionale',
     'done',
   );
   expect(list.querySelector('[data-testid="step-mail"]')?.getAttribute('data-state')).toBe('error');
+  for (const id of ['passkeys', 'token'])
+    expect(list.querySelector(`[data-testid="step-${id}"]`)?.getAttribute('data-state')).toBe(
+      'error',
+    );
+  // Ohne veröffentlichtes Formular ist die Probe-Einsendung offen, nicht erledigt.
+  expect(list.querySelector('[data-testid="step-testEntry"]')?.getAttribute('data-state')).toBe(
+    'open',
+  );
   expect(list.querySelector('[aria-current="step"]')).toBeTruthy();
-  expect(screen.getByText(/2 von 6 Schritten erledigt/)).toBeTruthy();
+  expect(screen.getByText(/2 von 9 Schritten erledigt/)).toBeTruthy();
   // Es wird nichts mehr als Einrichtungsfortschritt gespeichert.
   expect(request.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
 });

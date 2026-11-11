@@ -114,6 +114,26 @@
   const confMissing = $derived(
     f.confirmation.enabled ? missing(['confToField', 'confSubject', 'confBody']) : 0,
   );
+  const labelOf: Record<string, string> = {
+    orgTo: t.admin.mail.orgTo,
+    orgBcc: t.admin.mail.orgBcc,
+    orgSubject: t.admin.mail.subject,
+    orgBody: t.admin.mail.body,
+    confToField: t.admin.mail.confTo,
+    confSubject: t.admin.mail.subject,
+    confBody: t.admin.mail.body,
+  };
+  const missingList = (keys: string[]): string =>
+    keys
+      .filter((k) => problems[k])
+      .map((k) => (labelOf[k] ?? k).replace(/ \(.*\)$/, ''))
+      .join(', ');
+  const orgMissingText = $derived(
+    orgMissing > 0 ? missingList(['orgTo', 'orgBcc', 'orgSubject', 'orgBody']) : '',
+  );
+  const confMissingText = $derived(
+    confMissing > 0 ? missingList(['confToField', 'confSubject', 'confBody']) : '',
+  );
   const derivedNames = $derived(f.derived.map((d) => d.name.trim()).filter(Boolean));
 
   // Load the form state once per draft revision (own saves reload it with the canonical document).
@@ -216,10 +236,15 @@
       {#if pending}<p class="text-muted-foreground m-0 text-sm" id="mail-connection-pending">
           {t.formWork.routePending}
         </p>{/if}
-      {#if canAssign}<div>
-          <Button disabled={!pending || assigning} onclick={() => void saveConnection()}
-            >{t.formWork.saveRoute}</Button
+      {#if canAssign}<div class="flex flex-col items-start gap-1.5">
+          <Button
+            disabled={!pending || assigning}
+            aria-describedby={!pending ? 'mail-route-why' : undefined}
+            onclick={() => void saveConnection()}>{t.formWork.saveRoute}</Button
           >
+          {#if !pending}<p class="text-muted-foreground m-0 text-sm" id="mail-route-why">
+              {t.admin.mail.pickConnectionFirst}
+            </p>{/if}
         </div>{:else}<p class="text-muted-foreground m-0 text-sm">{t.formWork.contactAdmin}</p>{/if}
     {/if}
     <Notice
@@ -260,22 +285,24 @@
       onsubmit={(e) => void save(e)}
       oninput={() => (changed = true)}
       onchange={() => (changed = true)}
-      class="flex max-w-[560px] flex-col gap-5"
+      class="flex max-w-[720px] flex-col gap-5"
     >
       <fieldset disabled={editor.saving} class="m-0 flex min-w-0 flex-col gap-5 border-0 p-0">
-        <Row id="mail-from" label={t.admin.mail.fromAddress} error={problem('fromAddress')}>
-          <Input
-            id="mail-from"
-            aria-invalid={!!problem('fromAddress')}
-            aria-describedby={problem('fromAddress') ? 'mail-from-error' : undefined}
-            type="email"
-            bind:value={f.fromAddress}
-            autocomplete="off"
-          />
-        </Row>
-        <Row id="mail-from-name" optional label={t.admin.mail.fromName}>
-          <Input id="mail-from-name" bind:value={f.fromName} maxlength={100} autocomplete="off" />
-        </Row>
+        <div class="grid gap-5 sm:grid-cols-2" data-testid="mail-sender">
+          <Row id="mail-from" label={t.admin.mail.fromAddress} error={problem('fromAddress')}>
+            <Input
+              id="mail-from"
+              aria-invalid={!!problem('fromAddress')}
+              aria-describedby={problem('fromAddress') ? 'mail-from-error' : undefined}
+              type="email"
+              bind:value={f.fromAddress}
+              autocomplete="off"
+            />
+          </Row>
+          <Row id="mail-from-name" optional label={t.admin.mail.fromName}>
+            <Input id="mail-from-name" bind:value={f.fromName} maxlength={100} autocomplete="off" />
+          </Row>
+        </div>
 
         <section
           class="border-border flex flex-col gap-4 border-t pt-5"
@@ -295,6 +322,12 @@
               ><Switch bind:checked={f.organisation.enabled} />{t.admin.mail.orgEnabled}</label
             >
           </div>
+          {#if orgMissingText}<p
+              class="text-muted-foreground m-0 text-sm"
+              data-testid="org-missing"
+            >
+              {t.admin.mail.missingList.replace('{list}', orgMissingText)}
+            </p>{/if}
           {#if f.organisation.enabled}
             <details open class="flex flex-col gap-4">
               <summary class="text-muted-foreground min-h-8 cursor-pointer text-sm font-medium"
@@ -447,6 +480,12 @@
               ><Switch bind:checked={f.confirmation.enabled} />{t.admin.mail.confEnabled}</label
             >
           </div>
+          {#if confMissingText}<p
+              class="text-muted-foreground m-0 text-sm"
+              data-testid="conf-missing"
+            >
+              {t.admin.mail.missingList.replace('{list}', confMissingText)}
+            </p>{/if}
           {#if f.confirmation.enabled}
             <details open class="flex flex-col gap-4">
               <summary class="text-muted-foreground min-h-8 cursor-pointer text-sm font-medium"

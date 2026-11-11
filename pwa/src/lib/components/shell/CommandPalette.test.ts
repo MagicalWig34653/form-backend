@@ -57,6 +57,13 @@ it('opens with Ctrl+K, filters, navigates with arrows and Enter', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
 
+it('hides the keyboard hint line on touch devices (coarse pointer)', async () => {
+  render(CommandPalette);
+  await fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+  const hint = await screen.findByTestId('palette-keyhints');
+  expect(hint.className).toContain('[@media(pointer:coarse)]:hidden');
+});
+
 it('arrow keys move the selection and wrap', async () => {
   render(CommandPalette);
   shellState.paletteOpen = true;

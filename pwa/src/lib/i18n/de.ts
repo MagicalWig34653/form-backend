@@ -100,6 +100,7 @@ export const de = {
     hintActive: 'Formulare, die veröffentlicht und eingeschaltet sind.',
     activeOf: '{active} von {n} live',
     noData: 'Keine Daten',
+    conversionFormula: 'Einsendungen ÷ Besuche',
     noConversion: 'Ohne Besuche nicht definiert',
     unavailable: 'Nicht verfügbar',
     unavailableReason: 'Die Statistik konnte nicht geladen werden.',
@@ -120,6 +121,8 @@ export const de = {
     lockedAction: 'Zugriff freigeben',
     noMail: '{form}: Kein Versandweg für Mails gewählt.',
     noMailAction: 'Versandweg wählen',
+    attentionMore: '{n} weitere anzeigen',
+    attentionLess: 'Weniger anzeigen',
     unpublished: '{form}: Noch nicht veröffentlicht, nimmt keine Einsendungen an.',
     unpublishedAction: 'Veröffentlichen',
     inactive: '{form}: Ist ausgeschaltet und nimmt keine Einsendungen an.',
@@ -811,6 +814,7 @@ try {
       lastOneLabel: 'Kann nicht entfernt werden (letzter Passkey)',
       unlocksKeys: 'entsperrt Datenschlüssel',
       passkeyLine: '{label} · angelegt {date}',
+      passkeyMeta: ' · angelegt {date}',
       unlocksLong: 'kann Einsendungen entsperren',
       addPasskey: 'Passkey hinzufügen',
       addDefaultLabel: 'Passkey vom {date}',
@@ -974,6 +978,8 @@ try {
       connection: 'Versandverbindung',
       noConnection: 'Versandweg wählen',
       missing: '{n} Angaben unvollständig',
+      missingList: 'Es fehlen: {list}',
+      pickConnectionFirst: 'Wählen Sie zuerst eine Versandverbindung aus.',
       noConnections:
         'Diesem Kunden ist noch keine Verbindung zugewiesen. Ein Systemadministrator kann sie unter „Verbindungen“ zuweisen.',
       connectionSaved: 'Die Verbindung wurde gespeichert.',
@@ -1291,6 +1297,8 @@ try {
         'Aufbewahrung: 1–3650 Tage. Leer lassen: Automatische Löschung aus. Geschützte Einsendungen bleiben erhalten. Änderungen betreffen auch den Bestand.',
     },
     statisticsPage: {
+      sparse:
+        'Ereignisse liegen nur an {n} von {m} Tagen vor; der Verlauf sagt dadurch wenig aus. Die Datentabelle nennt die Werte je Tag.',
       title: 'Statistik',
       notes: 'Hinweise zur Statistik',
       scope: 'Produktion · UTC',
@@ -1608,6 +1616,8 @@ try {
     query: 'Person oder Suchbegriff',
     from: 'Von (UTC)',
     until: 'Bis (UTC)',
+    periodShow: 'Zeitraum einschränken',
+    periodHide: 'Zeitraum ausblenden',
     search: 'Lokal durchsuchen',
     clear: 'Suchdaten verwerfen',
     invalidPeriod: 'Das Enddatum muss nach dem Startdatum liegen.',
@@ -1754,6 +1764,31 @@ try {
         publish: 'Formular veröffentlichen',
         manage: 'Formulare ansehen',
       },
+      passkeys: {
+        title: 'Zweiten Passkey als Absicherung hinterlegen',
+        purpose:
+          'Mit nur einem Passkey sperren Sie sich aus, wenn dieses Gerät verloren geht oder ersetzt wird. Registrieren Sie einen zweiten Passkey auf einem anderen Gerät oder in einem Passwortmanager.',
+        doneNote: 'Mindestens zwei Passkeys sind hinterlegt.',
+        action: 'Passkey hinzufügen',
+        actionDone: 'Passkeys verwalten',
+      },
+      token: {
+        title: 'API-Token für Anbindungen anlegen',
+        purpose:
+          'Ein API-Token verbindet Werkzeuge und Automatisierungen mit Ihrem Konto. Die Einsendungen Ihrer Webseite sendet das PHP-SDK aus dem Repository mit eigenen SDK-Zugangsdaten je Formular; diese legen Sie auf der Formularseite an und sie zählen hier nicht.',
+        doneNote: 'Mindestens ein gültiger API-Token ist vorhanden.',
+        action: 'API-Token anlegen',
+        actionDone: 'API-Tokens ansehen',
+      },
+      testEntry: {
+        title: 'Probe-Einsendung prüfen',
+        purpose:
+          'Erst eine echte Einsendung zeigt, dass Formular, Versandweg und Schlüssel zusammenarbeiten. Senden Sie über Ihre Webseite oder das SDK eine Probe ab und prüfen Sie sie bei den Einsendungen.',
+        doneNote: 'In einem veröffentlichten Formular liegt mindestens eine Einsendung.',
+        needsPublished: 'Veröffentlichen Sie zuerst ein Formular.',
+        action: 'Einsendungen prüfen',
+        actionDone: 'Einsendungen ansehen',
+      },
       migration: {
         title: 'Daten aus dem alten System übernehmen',
         purpose:
@@ -1762,6 +1797,14 @@ try {
         action: 'Umstieg öffnen',
         actionDone: 'Importläufe ansehen',
       },
+    },
+    summary: {
+      title: 'Zusammenfassung',
+      handled: '{done} von {total} Schritten erledigt.',
+      skippedTitle: 'Auf später verschoben',
+      skippedNone: 'Es wurde nichts übersprungen.',
+      skippedHint: 'Diese Schritte können Sie jederzeit nachholen:',
+      openLink: '{name}',
     },
     completeLead: 'Stand der Erstinstallation dieses Systems.',
     complete: {
@@ -2015,6 +2058,8 @@ try {
       resetField: 'Auf Standard',
       resetFieldLabel: '{name} auf Standard zurücksetzen',
       jumpTo: 'Springen zu',
+      metaShow: 'Technische Angaben anzeigen',
+      metaHide: 'Technische Angaben ausblenden',
       groupTitles: {
         Limits: 'Betrieb und Alarm',
         Hosts: 'Adressen',
@@ -2207,6 +2252,7 @@ try {
         updatedPending: 'Wird geladen …',
         retry: 'Erneut versuchen',
         noRight: 'Keine Berechtigung oder der Umstieg ist deaktiviert.',
+        busy: 'Es läuft bereits eine Quellprüfung. Bitte kurz warten und erneut versuchen.',
         connection:
           'Die Verbindung wurde unterbrochen oder die Prüfung ist fehlgeschlagen. Der bestätigte Fortschritt bleibt erhalten. Bitte Phase prüfen und erneut versuchen.',
         planInvalid: 'Bitte Zuordnung und zusätzliche Planangaben prüfen.',
@@ -2305,6 +2351,8 @@ try {
           summaryConnections: 'Mailverbindungen',
           summaryKeys: 'Schlüssel',
           summaryAssigned: '{n} von {m} zugeordnet',
+          statsNotice:
+            'Die Quelle enthält {n} Statistikzeilen. Ohne öffentliche Statistik-Schlüssel (Erweitert: statisticsReview, statisticsPublicKeys) werden sie nicht übernommen, sondern je Zeile als Prüffall gemeldet.',
           ready: 'Der Plan ist vollständig.',
           sourceChanged:
             'Die Verbindungsangaben wurden nach der Prüfung geändert. Prüfen Sie die Quelle erneut.',
@@ -2343,6 +2391,35 @@ try {
           running: 'Import läuft',
           failed: 'Phase {phase}: {error}. Danach denselben Lauf fortsetzen.',
           errorColumn: 'Spalte',
+          processed: 'Bisher verarbeitete Zeilen',
+          tablesCaption: 'Übernommene Zeilen je Tabelle des Altsystems',
+          colTable: 'Tabelle',
+          colSource: 'Quelle',
+          colImported: 'Ziel',
+          colReview: 'Prüfen',
+          tableNames: {
+            datenschluessel: 'Datenschlüssel',
+            datenschluesselRecovery: 'Recovery-Hüllen',
+            outgoingMailServer: 'SMTP-Verbindungen',
+            outgoingMailProxy: 'Mail-Proxy-Verbindungen',
+            formulare: 'Formulare',
+            formularFelder: 'Formularfelder',
+            anfragen: 'Einsendungen',
+            anfrageIdempotenz: 'Idempotenzschlüssel',
+            formularWebhooks: 'Webhooks',
+            statistics: 'Statistik',
+          } as Record<string, string>,
+          issuesTitle: 'Offene Prüffälle',
+          issueNames: {
+            'unsupported-content':
+              'Einsendungen mit nicht übernehmbarem Inhalt (defektes Paket, Klartextanhang, Fehlertext oder Dateiname); sie bleiben im Altbestand',
+            'unmapped-table':
+              'Tabellen des Altsystems ohne Abbildung (z. B. Benutzer, Konfiguration)',
+            'unmapped-column': 'Formulare mit Konfigurationswerten ohne Abbildung',
+            'migration-review':
+              'Zeilen, die nicht übernommen wurden (z. B. Statistik ohne Schlüssel)',
+            'source-deletion-review': 'Tabellen mit weniger Zeilen als beim früheren Lauf',
+          } as Record<string, string>,
           errorCodes: {
             migration_failed:
               'Unbekannter Fehler (Details stehen im Server-Log unter „migration job failed“)',
@@ -2353,6 +2430,16 @@ try {
             database: 'Datenbankfehler beim Schreiben ins Ziel',
             lock: 'Ein anderer Import läuft bereits',
             interrupted: 'Pausiert',
+            source_auth: 'Anmeldung an der Quelle abgelehnt: Benutzer oder Passwort prüfen',
+            source_unreachable:
+              'Die Quelle ist nicht erreichbar: Adresse, Port und Netzwerkfreigabe prüfen',
+            source_database:
+              'Die Quelldatenbank existiert nicht oder ist für den Benutzer nicht lesbar',
+            source_rights: 'Der Quellbenutzer hat mehr als Leserechte (nur SELECT erlaubt)',
+            source_no_tls: 'Die Quelle bietet kein TLS an: TLS an der Quelle aktivieren',
+            source_not_allowed:
+              'Quelladresse nicht freigegeben oder nicht auflösbar: Einstellung „migration.allowedNets“ prüfen',
+            source_failed: 'Die Quelle konnte nicht sicher geprüft werden',
           },
           errorReasons: {
             missingColumn: 'Spalte fehlt in der Quelle',

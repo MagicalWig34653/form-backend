@@ -37,6 +37,13 @@ const stats: Statistics = {
   ],
 };
 
+describe('StatisticsChart sparse data', () => {
+  it('explains a mostly empty period instead of leaving a lonely spike unexplained', () => {
+    render(StatisticsChart, { stats });
+    expect(screen.getByTestId('sparse-note').textContent).toContain('nur an 2 von 30 Tagen');
+  });
+});
+
 describe('StatisticsChart', () => {
   it('labels all event counts and conversion in the same period', () => {
     render(StatisticsChart, { stats });

@@ -17,6 +17,9 @@
   }
   let { tenant = '', items, loading = false, partial = false }: Props = $props();
 
+  const LIMIT = 3;
+  let showAll = $state(false);
+  const shown = $derived(showAll ? items : items.slice(0, LIMIT));
   const ui = t.overview;
   const copy: Record<AttentionItem['kind'], { text: string; action?: string; tab: Tab }> = {
     locked: { text: ui.locked, action: ui.lockedAction, tab: 'overview' },
@@ -43,7 +46,7 @@
     {:else}
       {#if items.length > 0}
         <ul class="divide-border flex flex-col divide-y">
-          {#each items as item (item.id)}
+          {#each shown as item (item.id)}
             <li
               class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2.5 first:pt-0"
             >
@@ -67,6 +70,17 @@
             </li>
           {/each}
         </ul>
+        {#if items.length > LIMIT}
+          <Button
+            variant="ghost"
+            class="mt-2"
+            aria-expanded={showAll}
+            onclick={() => (showAll = !showAll)}
+            >{showAll
+              ? ui.attentionLess
+              : ui.attentionMore.replace('{n}', String(items.length - LIMIT))}</Button
+          >
+        {/if}
       {:else}
         <p class="text-muted-foreground">{ui.attentionNone}</p>
       {/if}

@@ -28,3 +28,9 @@ it('is a link navigation with one current page, not an ARIA tab widget', async (
   await fireEvent.click(screen.getByRole('link', { name: 'Felder' }));
   expect(router.path).toBe('/x/fields');
 });
+
+it('scrolls with snap points so that a tab is never cut in the middle', () => {
+  const { container } = render(PageTabs, { label: 'Reiter', tabs });
+  expect(container.querySelector('ul')!.className).toContain('snap-x');
+  expect(container.querySelector('li')!.className).toContain('snap-start');
+});

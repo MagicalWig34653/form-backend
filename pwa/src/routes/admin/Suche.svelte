@@ -27,6 +27,8 @@
   let query = $state(''),
     from = $state(''),
     until = $state('');
+  let showPeriod = $state(false);
+  const periodOpen = $derived(showPeriod || from !== '' || until !== '');
   let fromInvalid = $state(false),
     untilInvalid = $state(false);
   let rows = $state<LocalRow[]>([]),
@@ -180,27 +182,40 @@
       <label class="flex min-w-52 flex-[2] flex-col gap-1.5 text-sm font-medium"
         >{ui.query}<Input type="search" bind:value={query} disabled={busy} /></label
       >
-      <DateField
-        id="local-from"
-        label={ui.from}
-        bind:value={from}
-        bind:invalid={fromInvalid}
-        onchange={invalidatePeriod}
-        disabled={busy}
-        class="min-w-36 flex-1"
-      />
-      <DateField
-        id="local-until"
-        label={ui.until}
-        bind:value={until}
-        bind:invalid={untilInvalid}
-        onchange={invalidatePeriod}
-        disabled={busy}
-        class="min-w-36 flex-1"
-      />
+      {#if periodOpen}
+        <DateField
+          id="local-from"
+          label={ui.from}
+          bind:value={from}
+          bind:invalid={fromInvalid}
+          onchange={invalidatePeriod}
+          disabled={busy}
+          class="min-w-36 flex-1"
+        />
+        <DateField
+          id="local-until"
+          label={ui.until}
+          bind:value={until}
+          bind:invalid={untilInvalid}
+          onchange={invalidatePeriod}
+          disabled={busy}
+          class="min-w-36 flex-1"
+        />
+      {/if}
       {#snippet trailing()}
-        <Button type="submit" disabled={busy}>{ui.search}</Button>
-        <Button type="button" variant="outline" onclick={clear}>{ui.clear}</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          class="max-sm:flex-1"
+          aria-expanded={periodOpen}
+          disabled={from !== '' || until !== ''}
+          onclick={() => (showPeriod = !showPeriod)}
+          >{periodOpen ? ui.periodHide : ui.periodShow}</Button
+        >
+        <Button type="submit" class="max-sm:flex-1" disabled={busy}>{ui.search}</Button>
+        <Button type="button" variant="outline" class="max-sm:flex-1" onclick={clear}
+          >{ui.clear}</Button
+        >
       {/snippet}
     </FilterBar>
   </form>

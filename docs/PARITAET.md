@@ -4,12 +4,12 @@ Stand 26.10.2026. Einstieg und Korrekturstand zu den Teilberichten unter `docs/p
 
 ## Teilberichte und Reviews
 
-| Teil | Bericht | Unabhängiges Review | Gesamturteil |
-| --- | --- | --- | --- |
-| A Routen, Handler, Rechte | `paritaet/A-routen-handler.md` | `paritaet/review-A.md` (22 bestätigt, 3 falsch, 3 fehlend) | tragfähig; Korrekturen F01–F03 und Ergänzungen M01–M03 offen einzuarbeiten |
-| B Funktionen, Felder, Validierung | `paritaet/B-funktionen-felder.md` | noch keins | ungeprüft |
-| C Daten, Migration | `paritaet/C-daten-migration.md` | `paritaet/review-C.md` | nur als Tabellenübersicht nutzbar; **Vertragsdetails stehen in review-C** (Spalten, Enums, FKs, Indizes, Runner) |
-| D Krypto, Protokolle | `paritaet/D-krypto-protokolle.md` | `paritaet/review-D.md` (27 Stichproben) | überwiegend richtig; Korrektur W13/§14.5, W5 und W12 nicht belegt, W7/W11 abgrenzen |
+| Teil                              | Bericht                           | Unabhängiges Review                                        | Gesamturteil                                                                                                     |
+| --------------------------------- | --------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A Routen, Handler, Rechte         | `paritaet/A-routen-handler.md`    | `paritaet/review-A.md` (22 bestätigt, 3 falsch, 3 fehlend) | tragfähig; Korrekturen F01–F03 und Ergänzungen M01–M03 offen einzuarbeiten                                       |
+| B Funktionen, Felder, Validierung | `paritaet/B-funktionen-felder.md` | noch keins                                                 | ungeprüft                                                                                                        |
+| C Daten, Migration                | `paritaet/C-daten-migration.md`   | `paritaet/review-C.md`                                     | nur als Tabellenübersicht nutzbar; **Vertragsdetails stehen in review-C** (Spalten, Enums, FKs, Indizes, Runner) |
+| D Krypto, Protokolle              | `paritaet/D-krypto-protokolle.md` | `paritaet/review-D.md` (27 Stichproben)                    | überwiegend richtig; Korrektur W13/§14.5, W5 und W12 nicht belegt, W7/W11 abgrenzen                              |
 
 Modellhinweis: Codex-Aufträge wurden mit `--model gpt-6.1-sol` gestartet, liefen ohne Limit-Fehler; die Ausgaben nennen das Modell nicht, ob es tatsächlich lief, ist unbestätigt.
 

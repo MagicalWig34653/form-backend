@@ -1,6 +1,7 @@
 # Fortsetzung für eine neue Session (Stand 30.10.2026)
 
 ## AKTUELLER STAND (03./04.11.2026, Vorrang vor allem darunter)
+
 **Die Abschnitte darunter sind historisch. Verbindlich: `docs/ARBEITSPLAN.md` (P11–P13), ADRs 0007–0035, `docs/paritaet/featureliste-alt.md` (Inventur, teils veraltet), `docs/ux/konzept.md`.**
 
 - **Ziel:** altes Backend ersetzen. Frist laut Nutzer: 04.11. abends, spätestens 06.11. 08:00. Ein Kunde, drei Formulare, :2-Pakete werden übernommen, ältere Einsendungen `migration-review`.
@@ -14,28 +15,32 @@
 Dieses Dokument genügt, um ohne alten Chat weiterzuarbeiten. Lies danach `AGENTS.md`, `docs/STATUS.md`, `docs/ARBEITSPLAN.md`, `docs/OFFENE-ENTSCHEIDUNGEN.md` und die ADRs `docs/decisions/0001–0006`.
 
 ## Projekt in einem Satz
+
 Neubau des Formular-Backends (Swift/Vapor + Fluent + MariaDB, Svelte/shadcn-PWA, PHP-SDK 8.2+, optionaler Docker-Agent), AGPL-3.0-only. Altprojekt nur lesend: `<workspace>/form-backend_bvk` (nie `secrets/`, `keys/secrets.ini` öffnen). Nutzer spricht Deutsch; Doku und Nutzertexte deutsch, Code/Kommentare englisch. Nutzervorgabe: ca. 75 % der delegierbaren Arbeit an Codex (`gpt-6.1-sol`), Claude (Sonnet/Haiku) als Fallback. Commits nur auf Anfrage, ohne Attributionszeilen; bisher kein Commit, kein Remote.
 
 ## Paketstand
-| Paket | Stand |
-| --- | --- |
-| P0 Parität | erledigt (`docs/PARITAET.md`, `docs/paritaet/`); Review-Korrekturen A–D noch nicht in die Teilberichte eingearbeitet |
-| P1 Entscheidungen | erledigt (ADR 0001–0006); offen nur Detailfragen |
-| P2 Verträge | Entwurf in `contracts/{ingest,crypto,data,flow,auth}/` nach 4 Korrekturrunden und 3 Reviews (`review-P2-vertraege*.md`, `review-krypto-adapter.md`); Validatoren bestehen (nur statisch) |
-| P3-A Krypto | `backend/Sources/FormCrypto` + `sdk/php/tests/form_crypto.php`; Tests bestanden |
-| P3-B Schema | `backend/db/check.sh`: 96 Prüfungen, 0 Fehler (MariaDB 12.3.3 in Docker) |
-| P3-C Passkey | Eigene swift-crypto-Verifikation (`backend/poc-passkey`, 9 Tests); Vertrag um user_handle, cose_algorithm, pem-spki ergänzt |
-| P4-A Backend | Vapor/Fluent-Grundaufbau, /health, /ready, Migrationsrunner; 14 Tests bestanden |
-| P4-B PWA | Svelte-5-Grundgerüst; lint/check/test/build/Playwright bestanden |
-| P5–P10 | nicht begonnen |
+
+| Paket             | Stand                                                                                                                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 Parität        | erledigt (`docs/PARITAET.md`, `docs/paritaet/`); Review-Korrekturen A–D noch nicht in die Teilberichte eingearbeitet                                                                     |
+| P1 Entscheidungen | erledigt (ADR 0001–0006); offen nur Detailfragen                                                                                                                                         |
+| P2 Verträge       | Entwurf in `contracts/{ingest,crypto,data,flow,auth}/` nach 4 Korrekturrunden und 3 Reviews (`review-P2-vertraege*.md`, `review-krypto-adapter.md`); Validatoren bestehen (nur statisch) |
+| P3-A Krypto       | `backend/Sources/FormCrypto` + `sdk/php/tests/form_crypto.php`; Tests bestanden                                                                                                          |
+| P3-B Schema       | `backend/db/check.sh`: 96 Prüfungen, 0 Fehler (MariaDB 12.3.3 in Docker)                                                                                                                 |
+| P3-C Passkey      | Eigene swift-crypto-Verifikation (`backend/poc-passkey`, 9 Tests); Vertrag um user_handle, cose_algorithm, pem-spki ergänzt                                                              |
+| P4-A Backend      | Vapor/Fluent-Grundaufbau, /health, /ready, Migrationsrunner; 14 Tests bestanden                                                                                                          |
+| P4-B PWA          | Svelte-5-Grundgerüst; lint/check/test/build/Playwright bestanden                                                                                                                         |
+| P5–P10            | nicht begonnen                                                                                                                                                                           |
 
 ## Wie man die Prüfungen ausführt (Koordinator hat sie selbst bestätigt)
+
 - Swift (hier nur mit nativem Builder wegen Codesign/FinderInfo): `sh backend/run-tests.sh`; Backend inkl. DB: `P3B_PORT=33417 bash backend/integration-test.sh`; Passkey-PoC: `cd backend/poc-passkey && swift test --build-system native`.
 - DB-Schema: `P3B_PORT=33417 sh backend/db/check.sh` (Port 33306 war lokal belegt, Ursache unbekannt). `backend/db/schema-p3.sql` muss identisch mit `contracts/data/schema-entwurf.sql` sein (`cmp`). Nie zwei DB-Tests gleichzeitig (gleicher Containername/Port).
 - Vertragsvalidatoren: benötigen jsonschema und pyyaml; venv im Scratchpad der alten Session ist weg → neu: `python3 -m venv /tmp/venv && /tmp/venv/bin/pip install jsonschema pyyaml`, dann `python contracts/flow/validate.py` und `python contracts/auth/validate.py`.
 - PWA: `cd pwa && npm ci && npm run lint && npm run check && npm test && npm run build && npx playwright test`.
 
 ## Offene Arbeit, Reihenfolge
+
 1. **Code-Review-Korrekturen** (`docs/paritaet/review-code-p3-p4.md`, F1–F10):
    - Backend-Korrekturen F1–F4, F6–F9 und Backend-Teil F10 sind UMGESETZT und vom Koordinator nachgeprüft (30.10.2026): `sh backend/run-tests.sh` Exit 0 (31 Tests, 5 DB-Tests ohne DB übersprungen; PHP inkl. 15 strikter Ed25519-Vektoren bestanden), `P3B_PORT=33417 bash backend/integration-test.sh` 31 Tests, 0 Fehler, `backend/poc-passkey` 11 Tests, 0 Fehler, Container entfernt. Übergabe: `docs/handoffs/Code-Review-Korrektur-Backend.md`. Offen daraus: unabhängiges Review von `Ed25519Strict`, `phpURLPath` (parse_url-Nachbau nur gegen 34 Fälle belegt) und Migrationsablauf; CryptoKit-Verhalten ohne Vorprüfung und Linux-Build nicht gemessen; HTTP-Anbindung der einheitlichen Passkey-Fehlerkategorie; Hinweis `FORM_DB_TLS=disable` braucht jetzt `FORM_ALLOW_INSECURE_DEV=1` (in `docs/handoffs/P4-A.md` und `backend/README.md` nachziehen). `backend/run-tests.sh` ist nicht ausführbar: mit `sh` aufrufen. Die SourceKit-Meldung "No such module 'Crypto'" in MigrationRunner.swift ist eine IDE-Anzeige; der Build läuft.
    - PWA-Korrekturen F5 (Service Worker: Build-gebundene Cache-Version, Network-first für unversionierte Dateien, Content-Type-Prüfung, `/admin/api/` ausschließen, Test) und F10-PWA (API-Basispfad `/admin/api/v1` konfigurierbar, Abbruch nicht als parse, router.navigate trennt Query/Hash, PNG-/maskable-Icons) sind UMGESETZT (30.10.2026, Koordinator direkt; lint/check/Vitest 11/Build/Playwright 5 bestanden; offen nur PNG-/maskable-Icons, siehe STATUS.md).
@@ -45,17 +50,21 @@ Neubau des Formular-Backends (Swift/Vapor + Fluent + MariaDB, Svelte/shadcn-PWA,
 4. **P5** erstes vollständiges Formular (Konfiguration, Ansicht, Eingang, verschlüsselte DB, Mail, Statistik), danach P6 (Engine ohne Skripte; Skript-Sandbox JavaScript in Isolation separat, P6-S), P7 (v2-SDK, Pairing, Domains), P8 (alle Bestandsfunktionen), P9 (Migration, Cutover-Voraussetzung: alle Kunden auf v2-SDK), P10 (Last-/Recovery-Tests).
 
 ## Beschlossene Kernentscheidungen (Kurzform, Details in den ADRs)
+
 Vapor+Fluent; Kunde>Formulare mit frei konfigurierbaren Einzelrechten und selbst anlegbaren Rechtegruppen (Admin/Betreuer/Kunde nur Vorlagen); Altformate nur im Migrationswerkzeug; Ed25519-Pflicht mit befristeter Ausnahme; Lockout/Rate-Limit; Quiesce vor Cutover; Mail-Cron meldet, manueller Resend nur unverändert/originalgebunden; Klartext/Schlüssel nie dauerhaft auf Server; Wiederaufnahme nach Warten/Crash nur mit menschlicher Freigabe; Domain folgt Release nicht automatisch (auch an Zugriffsadressen koppelbar); Alt-Adapter NICHT aktivieren, SDK-Umstellung vor Cutover; Transporthülle schützt nur Anfragen, pro Formular wählbar; Alt-OAuth/MCP-Tokens inkl. mcp_tokens nicht übernehmen (Neuanmeldung); Replay nach Löschung → 409; Altstatistik komplett übernehmen (IP-Bezug vor Import am Dump prüfen, Herkunft legacy); Scannerfehler/418/424 Altverhalten; Secrets verschlüsselt in der DB (Hauptschlüssel aus Betriebsumgebung); Rewrap nur mit gesicherter Quelle; Vorschlagswerte (Lockout, Limits, Laufzeiten) bestätigt; Altdaten pro Formular dem Kunden zuordnen, dann Rewrap; Passkeys eigene Verifikation (kein webauthn-swift); Skriptknoten: JavaScript in Isolation (eigenes Review, P6-S).
 
 ## Berechtigungen und Umgebung (nicht im Repo, bei neuer Maschine erneut setzen)
+
 - `~/.claude/settings.json` → `autoMode.allow`/`environment`: Codex als vertrauenswürdiger Dienst, Lesezugriff auf Alt- und Neuprojekt (ohne `secrets/`, `keys/secrets.ini`), Subagenten schreiben nur zugewiesene Dateien, SwiftPM-/npm-Downloads erlaubt, zuletzt Regel für lokale Tests/Docker-MariaDB (127.0.0.1). Der Classifier lehnte Agent-Starts trotz `/permissions` oft mit „Auto-Mode Bypass“/„Data Exfiltration“ ab; Änderungen an Einstellungen durch mich werden als „Self-Modification“ blockiert (der Nutzer führt sie aus). Nach Änderung der Regeln Session neu starten.
 - Codex-Limit bis 04.11.2026 08:13 (Companion: `node ~/.claude/plugins/cache/openai-codex/codex/1.0.6/scripts/codex-companion.mjs status`). Bis dahin Claude als Fallback.
 - Toolchain: Swift 6.4, Docker, PHP 8.5, Node 26; kein lokaler MariaDB-Client (Docker).
 
 ## Grenzen der bisherigen Nachweise
+
 Nur statische Vertragsprüfung, Stichproben-DB-Tests (kein Nebenläufigkeits-/Last-/Linux-Test), Krypto nur mit eigenen Vektoren plus RFC-9180-Fixture, PRF/Browser-Passkey-Test nicht möglich ohne echten Authenticator, kein Produktivdaten-Abgleich, kein Cutover-Test, keine CI. Fast alles ist von Claude-/Codex-Agenten erstellt und von mir nur über Testläufe geprüft, nicht zeilenweise gelesen.
 
 ## Nachtrag 31.10.2026 (Stand nach Nachtarbeit)
+
 - **Neu und getestet** (alle von mir selbst ausgeführt, siehe `docs/STATUS.md`): `FormAuth` (Passkey-Login + Passwort-Zweitfaktor, DB-Sitzung/CSRF/Origin, Throttles, Rechteprüfung), `FormAdmin` (listForms/createForm/getForm), `FormCore/JCS.swift` (RFC 8785), Konfiguration `FORM_SERVER_KEY_FILE`/`FORM_ADMIN_ORIGIN`/`FORM_RP_ID` + Verdrahtung in `main.swift`, `backend/smoke-admin.sh`. Übergaben: `docs/handoffs/P5-B1.md`, `P5-B2.md`, `P5-A.md` (Nachtrag).
 - **Befehle:** `sh backend/run-tests.sh`; `P3B_PORT=33417 bash backend/integration-test.sh` (112 Tests); `P3B_PORT=33417 bash backend/smoke-admin.sh` (echte Binary); `P3B_PORT=33418 bash backend/e2e-admin.sh` (kompletter Verwaltungsablauf im Browser gegen echtes Backend); `P3B_PORT=33417 bash backend/e2e-login.sh` (Chromium virtueller Authenticator → Proxy → App → MariaDB, belegt echte WebAuthn-Antworten); PWA: `cd pwa && npm run lint && npm run check && npm test && npm run build && npx playwright test` (19 Vitest, 9 Playwright inkl. 3 axe). Nie zwei DB-Skripte parallel (Containername/Port). Bei SIGSEGV im Test zuerst `rm -rf backend/.build/arm64-apple-macosx` (veralteter Inkrementalbuild).
 - **Agent-Starts** (implementer/reviewer) werden vom Auto-Mode-Classifier abgelehnt, auch nach Neustart; Koordinator hat B1/B2a selbst umgesetzt. Kein unabhängiges Review von FormAuth/FormAdmin/JCS.

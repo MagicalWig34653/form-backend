@@ -68,7 +68,10 @@
         aria-label={hint}><NavIcon name="info" size={16} /></span
       >{/if}
     {#if trailing || (onreset && activeCount > 0)}
-      <div class="flex max-w-full flex-wrap items-end gap-2">
+      <div
+        class="flex max-w-full flex-wrap items-end gap-2 max-sm:w-full"
+        data-testid="filterbar-trailing"
+      >
         {@render trailing?.()}
         {#if onreset && activeCount > 0}
           <Button type="button" variant="ghost" onclick={onreset}>{t.listUi.filterClear}</Button>

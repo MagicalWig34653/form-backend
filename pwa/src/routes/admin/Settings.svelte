@@ -46,6 +46,10 @@
   const tones: Record<Source, Tone> = { env: 'info', db: 'ok', default: 'idle' };
   let query = $state('');
   let sourceFilter = $state('');
+  /** Technical lines (key, ENV name, default, range) are folded away on narrow screens. */
+  let showMeta = $state(
+    typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 640px)').matches,
+  );
   const sourceOf = (item: Item): Source =>
     item.source in ui.sources ? (item.source as Source) : 'default';
   const knownGroups = [
@@ -235,6 +239,14 @@
           >{/each}
       </Select>
     </div>
+    <Button
+      type="button"
+      variant="outline"
+      class="self-start"
+      aria-pressed={showMeta}
+      data-testid="meta-toggle"
+      onclick={() => (showMeta = !showMeta)}>{showMeta ? ui.metaHide : ui.metaShow}</Button
+    >
     {#if groupCounts.length > 0}
       <nav aria-label={text.groupsLabel} class="flex flex-wrap items-center gap-2">
         <span class="text-muted-foreground text-xs">{ui.jumpTo}</span>
@@ -289,24 +301,30 @@
                       <p
                         class="text-muted-foreground m-0 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5"
                       >
-                        <span class="font-mono">{key}</span>
-                        <span aria-hidden="true">·</span>
-                        <span
-                          >{item.definition.envName
-                            ? ui.envLine.replace('{env}', item.definition.envName)
-                            : ui.noEnv}</span
-                        >
-                        {#if def !== undefined}<span aria-hidden="true">·</span><span
-                            >{ui.defaultLine.replace(
-                              '{value}',
-                              shown(def, item.definition.type),
-                            )}</span
-                          >{/if}
-                        {#if item.definition.minimum !== undefined}<span aria-hidden="true">·</span
-                          ><span
-                            >{ui.range}: {item.definition.minimum}–{item.definition.maximum}</span
-                          >{/if}
-                        <StatusChip tone={tones[source]} label={ui.sources[source]} />
+                        <span class={showMeta ? 'contents' : 'hidden'} data-meta>
+                          <span class="font-mono">{key}</span>
+                          <span aria-hidden="true">·</span>
+                          <span
+                            >{item.definition.envName
+                              ? ui.envLine.replace('{env}', item.definition.envName)
+                              : ui.noEnv}</span
+                          >
+                          {#if def !== undefined}<span aria-hidden="true">·</span><span
+                              >{ui.defaultLine.replace(
+                                '{value}',
+                                shown(def, item.definition.type),
+                              )}</span
+                            >{/if}
+                          {#if item.definition.minimum !== undefined}<span aria-hidden="true"
+                              >·</span
+                            ><span
+                              >{ui.range}: {item.definition.minimum}–{item.definition.maximum}</span
+                            >{/if}
+                        </span>
+                        {#if source !== 'default'}<StatusChip
+                            tone={tones[source]}
+                            label={ui.sources[source]}
+                          />{/if}
                         <span class="sr-only">{text.source}: {ui.sourceLong[source]}</span>
                         {#if item.definition.restartRequired}<StatusChip
                             tone="warn"

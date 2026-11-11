@@ -67,7 +67,9 @@ it('bereinigt erst nach Bestätigung und nennt die Gesamtzahl', async () => {
           : { items: [], next: null },
   }));
   render(Ops);
-  await fireEvent.click(await screen.findByRole('button', { name: 'Jetzt bereinigen' }));
+  const cleanupButton = await screen.findByRole('button', { name: 'Jetzt bereinigen' });
+  expect(cleanupButton.className).toContain('text-destructive');
+  await fireEvent.click(cleanupButton);
   expect(request).not.toHaveBeenCalledWith('POST', '/ops/cleanup', expect.anything());
   await waitFor(() => expect(confirmState.current).not.toBeNull());
   confirmState.settle(true);

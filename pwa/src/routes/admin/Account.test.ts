@@ -51,8 +51,9 @@ beforeEach(() => {
 it('nennt Datum und Nutzen je Passkey und ersetzt den doppelten Satz', async () => {
   render(Account);
   expect(
-    await screen.findByText('Laptop · angelegt 03.10.2026 · kann Einsendungen entsperren'),
+    await screen.findByText('· angelegt 03.10.2026 · kann Einsendungen entsperren'),
   ).toBeTruthy();
+  expect(screen.getByText('Laptop').className).toContain('font-medium');
   expect(screen.queryByText('Sichern Sie Ihren Wiederherstellungscode.')).toBeNull();
 });
 

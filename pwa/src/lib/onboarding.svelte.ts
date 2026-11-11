@@ -9,6 +9,8 @@ import {
   emptyFacts,
   isStepId,
   progressOf,
+  STEP_IDS,
+  type EntryFacts,
   type Facts,
   type FormFacts,
   type StepId,
@@ -26,6 +28,14 @@ interface SetupState {
 
 /** At most this many customers are asked for their forms. */
 const FORM_TENANT_LIMIT = 10;
+/** At most this many published forms are asked for submissions. */
+const ENTRY_FORM_LIMIT = 8;
+/** API tokens count seconds since 2001-01-01 (Apple reference date). */
+const REFERENCE_OFFSET = 978307200;
+interface TokenRow {
+  expires_at: number;
+  revoked_at: number | null;
+}
 const CONTEXT_KEY = 'setup.context';
 const skippedKey = (owner: string) => `setup.skipped.${owner}`;
 
@@ -68,20 +78,41 @@ export async function loadFacts(
         facts.addresses = set('admin.origin') && set('admin.rpID');
       }),
     );
-  if (want('customer') || want('form'))
+  if (want('passkeys'))
+    jobs.push(
+      deps.adminApi.passkeys().then((r) => {
+        facts.passkeys = r.ok && Array.isArray(r.data.items) ? r.data.items.length : null;
+      }),
+    );
+  if (want('token'))
+    jobs.push(
+      deps.http.request<{ items: TokenRow[] }>('GET', '/account/tokens').then((r) => {
+        const now = Date.now() / 1000 - REFERENCE_OFFSET;
+        facts.tokens =
+          r.ok && Array.isArray(r.data.items)
+            ? r.data.items.filter((x) => x.revoked_at == null && x.expires_at > now).length
+            : null;
+      }),
+    );
+  const needForms = want('form') || want('testEntry');
+  if (want('customer') || needForms)
     jobs.push(
       deps.adminApi.tenants().then(async (r) => {
         if (!r.ok || !Array.isArray(r.data.items)) {
           if (want('customer')) facts.customers = null;
           if (want('form')) facts.forms = null;
+          if (want('testEntry')) facts.testEntries = null;
           return;
         }
         if (want('customer')) facts.customers = r.data.items.length;
-        if (want('form'))
-          facts.forms = await loadForms(
+        if (needForms) {
+          const forms = await loadForms(
             deps,
             r.data.items.map((x) => x.id),
           );
+          if (want('form')) facts.forms = forms;
+          if (want('testEntry')) facts.testEntries = forms ? await loadEntries(deps, forms) : null;
+        }
       }),
     );
   if (want('migration')) {
@@ -117,12 +148,33 @@ async function loadForms(deps: Deps, tenants: string[]): Promise<FormFacts | nul
     }
     for (const form of r.data.items) {
       out.total += 1;
-      if (form.currentReleaseId) out.published += 1;
-      else if (!out.unpublished) out.unpublished = { tenant, form: form.id };
+      if (form.currentReleaseId) {
+        out.published += 1;
+        (out.publishedForms ??= []).push({ tenant, form: form.id });
+      } else if (!out.unpublished) out.unpublished = { tenant, form: form.id };
     }
   }
   // A failed list may hide the very form that proves the step: unknown, not "open".
   return failed && out.published === 0 ? null : out;
+}
+
+/** Asks published forms for submissions; null when a failed list could hide the proof. */
+async function loadEntries(deps: Deps, forms: FormFacts): Promise<EntryFacts | null> {
+  const list = (forms.publishedForms ?? []).slice(0, ENTRY_FORM_LIMIT);
+  if (list.length === 0) return { checked: 0 };
+  const results = await Promise.all(
+    list.map(async (target) => ({
+      target,
+      r: await deps.adminApi.entries(target.tenant, target.form),
+    })),
+  );
+  const out: EntryFacts = { checked: list.length, first: list[0] };
+  let failed = false;
+  for (const { target, r } of results) {
+    if (!r.ok || !Array.isArray(r.data.items)) failed = true;
+    else if (r.data.items.length > 0 && !out.withEntries) out.withEntries = target;
+  }
+  return failed && !out.withEntries ? null : out;
 }
 
 function read(storage: () => Storage, key: string): string | null {
@@ -205,9 +257,7 @@ class Onboarding {
         return;
       }
     }
-    const ids =
-      which ??
-      (['account', 'recovery', 'mail', 'addresses', 'customer', 'form', 'migration'] as const);
+    const ids = which ?? STEP_IDS;
     const loaded = await loadFacts(this.deps, ids, this.setupState, session.status === 'ready');
     if (run !== this.run) return;
     this.facts = { ...this.facts, ...loaded.facts };
@@ -219,7 +269,12 @@ class Onboarding {
   /** Re-checks only what one step depends on (cheap, used while a target page is open). */
   async refreshStep(id: StepId): Promise<void> {
     if (this.required !== true) return;
-    const which: StepId[] = id === 'customer' ? ['customer', 'form'] : [id];
+    const which: StepId[] =
+      id === 'customer'
+        ? ['customer', 'form', 'testEntry']
+        : id === 'form'
+          ? ['form', 'testEntry']
+          : [id];
     const loaded = await loadFacts(this.deps, which, this.setupState, session.status === 'ready');
     this.facts = { ...this.facts, ...loaded.facts };
     if (loaded.revision !== undefined) this.revision = loaded.revision;

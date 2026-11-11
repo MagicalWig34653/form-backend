@@ -306,11 +306,11 @@
             class="border-border flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-b-0"
           >
             <span class="min-w-0 break-words"
-              >{a.passkeyLine
-                .replace('{label}', k.label)
-                .replace('{date}', formatDay(k.createdAt))}{k.unlocksKeys
-                ? ` · ${a.unlocksLong}`
-                : ''}</span
+              ><span class="font-medium">{k.label}</span><span class="text-muted-foreground"
+                >{a.passkeyMeta.replace('{date}', formatDay(k.createdAt))}{k.unlocksKeys
+                  ? ` · ${a.unlocksLong}`
+                  : ''}</span
+              ></span
             >
             {#if keys.length < 2}
               <span class="text-muted-foreground inline-flex items-center gap-1.5 text-sm"

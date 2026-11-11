@@ -14,6 +14,11 @@ it('zeigt ohne Hinweis kein Info-Symbol', () => {
   render(CardHeader, { title: 'Felder' });
   expect(screen.queryByRole('img')).toBeNull();
 });
+it('nutzt ohne Beschreibung eine schmale Titelbasis, damit Aktionen neben dem Titel bleiben', () => {
+  const { container } = render(CardHeader, { title: 'Token' });
+  expect(container.querySelector('.basis-40')).toBeTruthy();
+  expect(container.querySelector('.basis-72')).toBeNull();
+});
 it('nennt im Ruhezustand "Keine Änderungen"', () => {
   render(SaveStatus, { state: 'idle', idle: t.saveStatus.idle });
   expect(screen.getByRole('status').textContent).toContain('Keine Änderungen');

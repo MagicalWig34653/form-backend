@@ -3,9 +3,11 @@
 **Nutzerentscheidung:** Die Mail soll – wie im Altsystem – auch den Inhalt der Einsendung enthalten können.
 
 ## Folge für das Sicherheitsmodell
+
 Der Server versiegelt Einsendungen beim Eingang; der Klartext liegt dort ohnehin kurz im Arbeitsspeicher. Mails mit Inhalt werden **aus diesem Speicher** gerendert und versendet. Der Klartext wird für die Mail **nirgends gespeichert** (keine Mail-Warteschlange mit Inhalt, kein `mailBody` in der Datenbank). Der Inhalt verlässt den Server aber im Klartext Richtung Mailserver und Empfänger (SMTP über TLS bzw. HTTPS zum Proxy); ab dann gilt der Schutz der Mailkette, nicht mehr der der Datenbank. Das ist dokumentiert und pro Formular nur aktiv, wenn `form.mail` konfiguriert ist.
 
 ## Entscheidungen
+
 1. **Konfiguration** liegt im Formular (`form.mail`, Teil des veröffentlichten, unveränderlichen Release): Absender, Organisationsmail (Empfänger, BCC, Betreff, Text, Antwortadresse aus Feld), Bestätigungsmail (Empfängeradresse aus Feld, Betreff, Text). Platzhalter wie im Altsystem `#=[Feldname]=#`. Bestätigung und Organisation sind unabhängig schaltbar (wie `MailVersandArt`).
 2. **Verbindungen** (`connections`: `smtp`, `mail-proxy`) verwaltet ein Systemadministrator (`system.manage`, frische Anmeldung); Passwort/ACODE liegen verschlüsselt im `SecretStore`. Ein Kunde nutzt nur Verbindungen, die ihm zugeordnet sind (`customer_connections`); ein Formular wählt eine davon (`form_connections`, Zweck `mail`, Umgebung `production`).
 3. **Transporte:** SMTP (SMTPS oder STARTTLS, AUTH PLAIN/LOGIN, Zertifikat- und Hostprüfung standardmäßig an, Klartext nur mit `FORM_ALLOW_INSECURE_DEV`) und der **Altsystem-Mail-Proxy** (HTTPS-POST mit Header `ACODE`, base64-Felder; Erfolg nur HTTP 200).
@@ -15,4 +17,5 @@ Der Server versiegelt Einsendungen beim Eingang; der Klartext liegt dort ohnehin
 7. **Antwort an den Absender:** Die Einsendung gilt als angenommen (200), unabhängig vom Mailergebnis; der Mailstatus ist nur für Administratoren sichtbar (`GET …/mail-deliveries`, ohne Inhalt).
 
 ## Nicht Teil
+
 Anhänge (Uploads fehlen noch), Test-/Produktionsempfänger-Trennung und Empfängerschranke (`MailGuard`), Webhooks, Mail-Editor, manueller Wiederversand.

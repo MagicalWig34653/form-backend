@@ -68,9 +68,13 @@ public enum SetupMigrationRoutes {
         root.post("test") { req async throws -> Response in
             let actor = try await authorize(req, mutation: true, fresh: true)
             let input: MigrationSource = try decode(req, allowed: ["host", "port", "database", "username", "password", "tls"])
+            // Each check opens connections to a foreign host: one per account, two overall (B6).
             let key = try await service.key()
+            guard await MigrationService.sourceTests.enter(actor) else { throw SourceBusy() }
+            let gate = MigrationService.sourceTests
             // Shared with jobs: strict migration.allowedNets check and a pinned socket, even for source tests.
-            let inventory: [String: Any] = try await service.withSource(input) { source in
+            let inventory: [String: Any]
+            do { inventory = try await service.withSource(input) { source in
                 let hmac = try await LegacyImporter(source: source, target: sql, secrets: secrets, hmacKey: key).inspectSchema()
                 struct F: Decodable { let id: String }
                 let forms = try await source.raw("SELECT CAST(UUID AS CHAR) AS id FROM formulare ORDER BY ID LIMIT 1001").all(decoding: F.self)
@@ -107,7 +111,14 @@ public enum SetupMigrationRoutes {
                 let keys = try await LegacyKeyInventory.scan(source)
                 return (["schemaHMAC": hmac, "readOnly": true, "formIds": forms.map { $0.id.lowercased() }, "connectionIds": connectionIds, "counts": counts,
                          "forms": formItems, "connections": connections] as [String: Any]).merging(keys.json) { current, _ in current }
+            } } catch {
+                // Failures are audited with the cause code only (no host, user, password or driver text).
+                let cause = (error as? SourceFailure)?.jobCode ?? "other"
+                try? await service.audit(sql, actor: actor, action: "migration.source.test.failed", details: "{\"cause\":\"\(cause)\"}")
+                await gate.leave(actor)
+                throw error
             }
+            await gate.leave(actor)
             try await service.audit(sql, actor: actor, action: "migration.source.test")
             return try response(inventory)
         }

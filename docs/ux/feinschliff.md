@@ -60,14 +60,22 @@ Bestehende shadcn-Tokens bleiben unverändert (Kompatibilität mit `ui/*`). Neu 
   --border-subtle: oklch(0.94 0.004 286.32);
 
   /* Status (Text/Punkt auf Soft-Fläche) */
-  --ok: oklch(0.52 0.13 155);          --ok-soft: oklch(0.96 0.04 155);
-  --warn: oklch(0.55 0.14 70);         --warn-soft: oklch(0.97 0.05 85);
-  --danger: oklch(0.52 0.2 27);        --danger-soft: oklch(0.97 0.03 25);
-  --info: oklch(0.5 0.16 255);         --info-soft: oklch(0.96 0.03 255);
-  --idle: oklch(0.55 0.01 286);        --idle-soft: oklch(0.967 0.001 286);
+  --ok: oklch(0.52 0.13 155);
+  --ok-soft: oklch(0.96 0.04 155);
+  --warn: oklch(0.55 0.14 70);
+  --warn-soft: oklch(0.97 0.05 85);
+  --danger: oklch(0.52 0.2 27);
+  --danger-soft: oklch(0.97 0.03 25);
+  --info: oklch(0.5 0.16 255);
+  --info-soft: oklch(0.96 0.03 255);
+  --idle: oklch(0.55 0.01 286);
+  --idle-soft: oklch(0.967 0.001 286);
 
   /* Radien (Basis bleibt 0.625rem) */
-  --r-chip: 999px; --r-ctl: 0.5rem; --r-card: 0.875rem; --r-pop: 1rem;
+  --r-chip: 999px;
+  --r-ctl: 0.5rem;
+  --r-card: 0.875rem;
+  --r-pop: 1rem;
 
   /* Schatten */
   --shadow-card: 0 1px 2px #0000000a, 0 1px 1px #00000005;
@@ -75,44 +83,65 @@ Bestehende shadcn-Tokens bleiben unverändert (Kompatibilität mit `ui/*`). Neu 
   --shadow-pop: 0 12px 40px #0002;
 
   /* Verlaufs-/Glas-Akzent im Seitenkopf (nur Dekor, hinter Text) */
-  --hero-wash: radial-gradient(60rem 14rem at 15% -40%,
-      color-mix(in srgb, var(--ui-accent) 14%, transparent), transparent 70%);
+  --hero-wash: radial-gradient(
+    60rem 14rem at 15% -40%,
+    color-mix(in srgb, var(--ui-accent) 14%, transparent),
+    transparent 70%
+  );
   --glass-edge: color-mix(in srgb, #fff 55%, transparent);
 
   /* Typografie-Skala (Inter Variable) */
-  --fs-display: 2rem;    /* Kennzahl groß, 32/36, 650, tabular-nums */
-  --fs-h1: 1.75rem;      /* Seitentitel, 28/34, 650, tracking -0.02em */
-  --fs-h2: 1.125rem;     /* Kartentitel, 18/26, 600 */
-  --fs-body: 0.9375rem;  /* 15/22 */
+  --fs-display: 2rem; /* Kennzahl groß, 32/36, 650, tabular-nums */
+  --fs-h1: 1.75rem; /* Seitentitel, 28/34, 650, tracking -0.02em */
+  --fs-h2: 1.125rem; /* Kartentitel, 18/26, 600 */
+  --fs-body: 0.9375rem; /* 15/22 */
   --fs-small: 0.8125rem; /* 13/18, muted */
   --fs-micro: 0.6875rem; /* 11/14, Versalien, +0.06em, Bereichsüberschriften */
 
   /* Abstände (4-px-Raster) */
-  --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
-  --sp-6: 1.5rem; --sp-8: 2rem; --sp-12: 3rem;
-  --gutter: 1rem;            /* mobil */
-  --sidebar-w: 16rem; --topbar-h: 3.75rem;
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --sp-12: 3rem;
+  --gutter: 1rem; /* mobil */
+  --sidebar-w: 16rem;
+  --topbar-h: 3.75rem;
 
   /* Bewegung */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 600ms;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 600ms;
 }
 .dark {
   --surface-page: oklch(0.12 0.005 285.8);
-  --surface-card: oklch(0.17 0.006 285.8);   /* Karte hebt sich ab: heute = Hintergrund */
+  --surface-card: oklch(
+    0.17 0.006 285.8
+  ); /* Karte hebt sich ab: heute = Hintergrund */
   --surface-raised: oklch(0.2 0.006 285.8);
   --surface-sunken: oklch(0.14 0.005 285.8);
   --border-subtle: oklch(1 0 0 / 8%);
-  --ok: oklch(0.78 0.15 155);   --ok-soft: oklch(0.28 0.06 155);
-  --warn: oklch(0.82 0.14 85);  --warn-soft: oklch(0.3 0.06 80);
-  --danger: oklch(0.74 0.17 22); --danger-soft: oklch(0.3 0.07 25);
-  --info: oklch(0.76 0.12 255); --info-soft: oklch(0.28 0.06 255);
-  --idle: oklch(0.7 0.01 286);  --idle-soft: oklch(0.25 0.006 286);
+  --ok: oklch(0.78 0.15 155);
+  --ok-soft: oklch(0.28 0.06 155);
+  --warn: oklch(0.82 0.14 85);
+  --warn-soft: oklch(0.3 0.06 80);
+  --danger: oklch(0.74 0.17 22);
+  --danger-soft: oklch(0.3 0.07 25);
+  --info: oklch(0.76 0.12 255);
+  --info-soft: oklch(0.28 0.06 255);
+  --idle: oklch(0.7 0.01 286);
+  --idle-soft: oklch(0.25 0.006 286);
   --shadow-card: 0 0 0 1px oklch(1 0 0 / 6%);
   --shadow-hover: 0 6px 20px #0006;
   --glass-edge: color-mix(in srgb, #fff 12%, transparent);
-  --hero-wash: radial-gradient(60rem 14rem at 15% -40%,
-      color-mix(in srgb, var(--ui-accent) 22%, transparent), transparent 70%);
+  --hero-wash: radial-gradient(
+    60rem 14rem at 15% -40%,
+    color-mix(in srgb, var(--ui-accent) 22%, transparent),
+    transparent 70%
+  );
 }
 ```
 
@@ -285,14 +314,14 @@ Rückkehrplan als einklappbare Panels statt Textwand; Rohfelder („JSON“) in 
 
 Jeder Schritt = ein Paket mit einem schreibenden Agent je Datei (AGENTS.md). Reihenfolge: 1 zuerst (Tokens/Shell sind Vertrag für alle); 2–6 danach parallelisierbar, wenn die gemeinsamen Komponenten aus Schritt 1 (Tokens) und 2 (Kennzahlen) stehen; Schritte 3 und 4 benötigen `PageHeader`/`Panel`/`StatusChip`/`Banner`/`Skeleton`, die in Schritt 1 angelegt werden. Tests je Schritt: vorhandene Vitest- und Playwright-Tests (inklusive axe) bleiben grün; Texte nur in `pwa/src/lib/i18n/de.ts`.
 
-| # | Paket | Dateibesitz (exklusiv) | Inhalt |
-| --- | --- | --- | --- |
-| 1 | Tokens, Shell, Seitenleiste, TopBar, Befehlspalette | `pwa/src/app.css`; `pwa/src/lib/components/shell/*` (SidebarNav, TopBar, AppearanceMenu, HelpDialog, VersionInfo, NavIcon, neu `CommandPalette.svelte`); `pwa/src/routes/admin/Shell.svelte`; neue gemeinsame Bausteine `pwa/src/lib/components/admin/{PageHeader,Panel,StatusChip,Banner,EmptyState,Skeleton,Breadcrumb}.svelte`; `pwa/src/lib/i18n/de.ts` (nur Abschnitte `shell`, `palette`, `common`) | Tokens aus (b); Seitenleiste mit Gruppen (Arbeit / Kunde / Betrieb), Suche + ⌘K-Auslöser, Konto-/Hilfe-/Onlinestatus unten, Symbole einheitlich; TopBar mit Breadcrumb, Kundenwahl als durchsuchbare Combobox (bei einem Kunden statisch), Konto-Menü (Hilfe, Version, Darstellung, Abmelden); globales Sperr-Banner als `Banner`; Befehlspalette; Effekt-Einstellung; mobiler Drawer erhalten. |
-| 2 | Übersicht, Kennzahlen, Sparkline | `pwa/src/routes/admin/Forms.svelte` (wird zur Kundenübersicht), neu `pwa/src/routes/admin/overview/{TenantOverview,KpiTile,Sparkline,CountUp,AttentionList,SetupProgress,RecentEntries}.svelte` und zugehörige `*.test.ts`; `pwa/src/lib/stats/*` (neue reine Aggregations-/Zeitreihenhilfen) | Wireframe „Übersicht“; Sparkline als reines SVG (kein Chart-Paket); `CountUp` mit reduced-motion; paralleles Laden mit Obergrenze, Teil-Ausfälle je Kachel; Formularliste mit Status-Badge/Sparkline. Aggregationsendpunkt nicht vorwegnehmen. |
-| 3 | Formularseite, Tabs, Karten | `FormPage.svelte`, `OverviewTab.svelte`, `StatisticsChart.svelte`, `AdsStatisticsPanel.svelte`, `AdsStatisticsTable.svelte`, `PublishTab.svelte`, `FieldsTab.svelte`, `KeysTab.svelte`, `Installation.svelte` (alle unter `pwa/src/routes/admin/`) | Kopf mit Statusbadges, Tabs mit Scroll auf Mobil, Kennzahlenkacheln (nutzt `KpiTile` aus 2 als Import, nicht ändern), Diagramm mit Direktbeschriftung und lesbarer Darstellung bei wenigen Punkten, Datentabelle ohne Überlauf, Google-Ads-Block als optionaler Hinweis, Einrichtungsliste mit Statusikonen. |
-| 4 | Einsendungen, Listen/Tabellen, Filter | `EntriesTab.svelte`, `Export.svelte`, `SealedExport.svelte`, `Suche.svelte`, `Tenants.svelte`, `pwa/src/lib/components/admin/{FilterBar,DataTable}.svelte` (neu), `pwa/src/lib/components/ui/table/*` | Wireframe „Einsendungen“; kompakte 44-px-Zeilen, Auswahlleiste, `FilterBar`, lokalisierte Datumseingabe, Begründung direkt am deaktivierten Button, Kundenliste mit echten Zuständen statt „Nicht verfügbar“ (nur wenn Daten vorliegen, sonst Spalte ausblenden). |
-| 5 | Einstellungen, Umstieg, Konto, Betrieb, Tokens: Formularstil | `Settings.svelte`, `Migration.svelte`, `Account.svelte`, `Ops.svelte`, `AbusePanel.svelte`, `ApiTokens.svelte`, `Connections.svelte`, `Members.svelte`, `MailTab.svelte`, `WebhooksPanel.svelte`, `KeyringPanel.svelte`, `RotationPanel.svelte`, `AccessStatus.svelte`, `ActiveSwitch.svelte`, `pwa/src/lib/components/admin/{Row,Notice,Select,Textarea,FormSection,Stepper}.svelte`, `pwa/src/lib/components/ui/{input,label,select,textarea,switch,checkbox}/*` | Einheitliches Formularraster (Label oben, Hilfetext, Fehler, 820 px), `FormSection`-Panels, Stepper für Umstieg, Quellen-Badges in Einstellungen, Rechtegruppen bei Mitgliedern, harte Rahmen durch `--border-subtle` ersetzen. Sicherheitslogik unverändert. |
-| 6 | Anmeldung, Setup, Leer-/Fehler-/Ladezustände | `pwa/src/routes/Login*.svelte` bzw. Anmelderoute und `pwa/src/lib/components/shell/AuthShell`-Äquivalent (Datei vor Start per `grep` festlegen), `pwa/src/routes/admin/{Installation,DraftGate,Notice}`-Ladepfade nur für Zustände, `pwa/src/lib/components/admin/{EmptyState,ErrorState,Skeleton}.svelte` (Feinschliff), `pwa/src/lib/i18n/de.ts` (Abschnitte `auth`, `states`) | Wireframe „Anmeldung“; einheitliche Zustände: Skeleton (Laden), `EmptyState` mit Primäraktion, `ErrorState` mit „Erneut versuchen“, 401/403/404-Texte aus konzept.md; Anmeldekarte mit Logo. |
+| #   | Paket                                                        | Dateibesitz (exklusiv)                                                                                                                                                                                                                                                                                                                                                                                                                                             | Inhalt                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Tokens, Shell, Seitenleiste, TopBar, Befehlspalette          | `pwa/src/app.css`; `pwa/src/lib/components/shell/*` (SidebarNav, TopBar, AppearanceMenu, HelpDialog, VersionInfo, NavIcon, neu `CommandPalette.svelte`); `pwa/src/routes/admin/Shell.svelte`; neue gemeinsame Bausteine `pwa/src/lib/components/admin/{PageHeader,Panel,StatusChip,Banner,EmptyState,Skeleton,Breadcrumb}.svelte`; `pwa/src/lib/i18n/de.ts` (nur Abschnitte `shell`, `palette`, `common`)                                                          | Tokens aus (b); Seitenleiste mit Gruppen (Arbeit / Kunde / Betrieb), Suche + ⌘K-Auslöser, Konto-/Hilfe-/Onlinestatus unten, Symbole einheitlich; TopBar mit Breadcrumb, Kundenwahl als durchsuchbare Combobox (bei einem Kunden statisch), Konto-Menü (Hilfe, Version, Darstellung, Abmelden); globales Sperr-Banner als `Banner`; Befehlspalette; Effekt-Einstellung; mobiler Drawer erhalten. |
+| 2   | Übersicht, Kennzahlen, Sparkline                             | `pwa/src/routes/admin/Forms.svelte` (wird zur Kundenübersicht), neu `pwa/src/routes/admin/overview/{TenantOverview,KpiTile,Sparkline,CountUp,AttentionList,SetupProgress,RecentEntries}.svelte` und zugehörige `*.test.ts`; `pwa/src/lib/stats/*` (neue reine Aggregations-/Zeitreihenhilfen)                                                                                                                                                                      | Wireframe „Übersicht“; Sparkline als reines SVG (kein Chart-Paket); `CountUp` mit reduced-motion; paralleles Laden mit Obergrenze, Teil-Ausfälle je Kachel; Formularliste mit Status-Badge/Sparkline. Aggregationsendpunkt nicht vorwegnehmen.                                                                                                                                                  |
+| 3   | Formularseite, Tabs, Karten                                  | `FormPage.svelte`, `OverviewTab.svelte`, `StatisticsChart.svelte`, `AdsStatisticsPanel.svelte`, `AdsStatisticsTable.svelte`, `PublishTab.svelte`, `FieldsTab.svelte`, `KeysTab.svelte`, `Installation.svelte` (alle unter `pwa/src/routes/admin/`)                                                                                                                                                                                                                 | Kopf mit Statusbadges, Tabs mit Scroll auf Mobil, Kennzahlenkacheln (nutzt `KpiTile` aus 2 als Import, nicht ändern), Diagramm mit Direktbeschriftung und lesbarer Darstellung bei wenigen Punkten, Datentabelle ohne Überlauf, Google-Ads-Block als optionaler Hinweis, Einrichtungsliste mit Statusikonen.                                                                                    |
+| 4   | Einsendungen, Listen/Tabellen, Filter                        | `EntriesTab.svelte`, `Export.svelte`, `SealedExport.svelte`, `Suche.svelte`, `Tenants.svelte`, `pwa/src/lib/components/admin/{FilterBar,DataTable}.svelte` (neu), `pwa/src/lib/components/ui/table/*`                                                                                                                                                                                                                                                              | Wireframe „Einsendungen“; kompakte 44-px-Zeilen, Auswahlleiste, `FilterBar`, lokalisierte Datumseingabe, Begründung direkt am deaktivierten Button, Kundenliste mit echten Zuständen statt „Nicht verfügbar“ (nur wenn Daten vorliegen, sonst Spalte ausblenden).                                                                                                                               |
+| 5   | Einstellungen, Umstieg, Konto, Betrieb, Tokens: Formularstil | `Settings.svelte`, `Migration.svelte`, `Account.svelte`, `Ops.svelte`, `AbusePanel.svelte`, `ApiTokens.svelte`, `Connections.svelte`, `Members.svelte`, `MailTab.svelte`, `WebhooksPanel.svelte`, `KeyringPanel.svelte`, `RotationPanel.svelte`, `AccessStatus.svelte`, `ActiveSwitch.svelte`, `pwa/src/lib/components/admin/{Row,Notice,Select,Textarea,FormSection,Stepper}.svelte`, `pwa/src/lib/components/ui/{input,label,select,textarea,switch,checkbox}/*` | Einheitliches Formularraster (Label oben, Hilfetext, Fehler, 820 px), `FormSection`-Panels, Stepper für Umstieg, Quellen-Badges in Einstellungen, Rechtegruppen bei Mitgliedern, harte Rahmen durch `--border-subtle` ersetzen. Sicherheitslogik unverändert.                                                                                                                                   |
+| 6   | Anmeldung, Setup, Leer-/Fehler-/Ladezustände                 | `pwa/src/routes/Login*.svelte` bzw. Anmelderoute und `pwa/src/lib/components/shell/AuthShell`-Äquivalent (Datei vor Start per `grep` festlegen), `pwa/src/routes/admin/{Installation,DraftGate,Notice}`-Ladepfade nur für Zustände, `pwa/src/lib/components/admin/{EmptyState,ErrorState,Skeleton}.svelte` (Feinschliff), `pwa/src/lib/i18n/de.ts` (Abschnitte `auth`, `states`)                                                                                   | Wireframe „Anmeldung“; einheitliche Zustände: Skeleton (Laden), `EmptyState` mit Primäraktion, `ErrorState` mit „Erneut versuchen“, 401/403/404-Texte aus konzept.md; Anmeldekarte mit Logo.                                                                                                                                                                                                    |
 
 Abhängigkeiten: Schritt 5 und 6 ändern keine Dateien aus 1–4; `de.ts` ist geteilt: jeder Schritt besitzt nur seine genannten Abschnitte, Konflikte beim Merge durch den Koordinator. Schritte 3 und 4 importieren aus 1 und 2, ändern sie nicht. Falls Schritt 2 hinter 3 liegt, liefert Schritt 3 temporär die Kennzahlenkacheln selbst und wird bei der Integration auf `KpiTile` umgestellt (Koordinator entscheidet).
 
@@ -319,3 +348,58 @@ Abhängigkeiten: Schritt 5 und 6 ändern keine Dateien aus 1–4; `de.ts` ist ge
 1. Kein kundenweiter Aggregationsendpunkt jetzt: Übersicht lädt Statistik/Einsendungen parallel je Formular (Obergrenze 8, Rest nachladen). Endpunkt bleibt Option für später.
 2. Effektstufe: Standard „Dezent“, gespeichert pro Gerät (`localStorage`); „Aus“ folgt automatisch aus `prefers-reduced-motion`.
 3. Befehlspalette als eigener Dialog auf `ui/dialog`, ohne neues Paket.
+
+## UI-Note: Bewertung und Feinschliff (11.11.2026, Todolino 52B48C94)
+
+Methode: Screenshots aller 22 Seiten (hell/dunkel, 1280/390 px, `SHOTS=dir npx playwright test e2e/screens.spec.ts`) plus Menüs/Dialoge (Bereichsauswahl per G, B bzw. mobiler Drawer, Palette, Darstellung; `-g menus`). Eigenbewertung durch Sichtprüfung; unabhängige Zweitbewertung durch einen Agenten mit frischem Kontext, nur Screenshots.
+
+**Noten.** Eigen (Skala 1-5, 5 = best): Gesamt vorher ca. 4,5 (deckt sich mit dem externen Review); nachher unverändert ca. 4,5, weil nur kleine Mängel behoben wurden. Das Ziel 4,7 je Seite ist NICHT belegt erreicht. Die Zweitbewertung lieferte Noten von 2,0 bis 3,3 (Gesamt 2,6) ohne eindeutig festgelegte Skalenrichtung und stark abweichend von Eigen- und externem Urteil; sie ist als Mängelquelle brauchbar, als Zahl nicht belastbar. Eine Wiederholung nach den Fixes fand nicht statt.
+
+**Behoben (Commits im Worktree-Branch):**
+
+- KPI-Kachel ohne Verlauf (Conversion bei zu wenigen Tagen mit Besuchen) zeigt sichtbar „Kein Verlauf verfügbar“ statt Leerfläche (`KpiTile.svelte`, Test in `overview.test.ts`).
+- Passkey-Zeile: Name hervorgehoben, Metadaten gedämpft (`Account.svelte`, `Account.test.ts`).
+- Befehlspalette: Tastaturhinweis bei Touchgeräten (`pointer: coarse`) ausgeblendet (`CommandPalette.svelte`, Test).
+- Screenshot-Spec um Menüs/Dialoge erweitert.
+
+**Bewusst offen (aus beiden Bewertungen, nach Wirkung/Aufwand; ungeprüft bis auf Sichtbefund):**
+
+1. Mobil: Formular-Übersicht stellt Einrichtung/Aktionen vor die Zeitreihe; Kopfbuttons mobil gekürzt („Bearbeiten“/„Veröffentlichen“).
+2. Einsendungen: „Lokale Suche“ als zweite große Karte mit eigenem Zeitraum neben dem Filter; mobil Buttons nicht volle Breite.
+3. Redundanz „Versandweg wählen“ in Auffälligkeiten, Einrichtung und Prüfpunkten.
+4. Mikrotexte/Kontrast kleiner grauer Hilfetexte (hell und dunkel) und deaktivierte Buttons ohne Begründung (Mitglieder, Weiter).
+5. Einstellungen: Metazeilen je Eintrag dicht; „Auf Standard“ ohne Button-Optik.
+6. Betrieb: Filterkarte vor Ergebnis; Priorität „1“ ohne Beschriftung; „Jetzt bereinigen“ ohne Warnstil.
+7. Konten mobil: Halb-Liste/Halb-Tabelle; Kunden: Rechte als Kommaliste statt Chips.
+8. Mail-Seite nur ca. 510 px breit; Speicherverhalten nicht sichtbar (Gegenprüfung nötig, ob Autosave/Entwurfslogik; Befund der Zweitbewertung ungeprüft).
+9. Umstieg (nicht angefasst, anderer Agent): Stepper mobil nur aktueller Schritt beschriftet; Fußzeile „Schritt 1 von 5 · …“ bricht unschön um; disabled „Weiter“ im Dunkelmodus kaum erkennbar. Einrichtung/Setup: keine Befunde über die Screenshots hinaus.
+
+### Runde 2 (11.11.2026)
+
+Geprüft statt angenommen: „Kein Speichern-Button“ ist kein Mangel (Speicherleiste `SaveBar` erscheint erst bei Änderungen); „Ablauf gleich Formular“ ist ein Screenshot-Artefakt (Route `flow` existiert nicht, Fallback). Betrieb: Priorität hat `title`, „Jetzt bereinigen“ hat bereits einen Bestätigungsdialog; „Auf Standard“ ist bereits ein Button; Kunden-Rechtespalte ist mobil ausgeblendet.
+
+Umgesetzt (mit Vitest und Playwright `e2e/ui-feinschliff.spec.ts`, 320 px und axe hell/dunkel):
+
+- Formularseite mobil: Einrichtung, Kennzahlen, Zeitreihe, dann Aktionen (vorher Aktionen vor der Zeitreihe); Desktop unverändert.
+- Auffälligkeiten ab vier Einträgen einklappbar („n weitere anzeigen“).
+- Lokale Suche mobil: Buttons über die volle Breite (`FilterBar` trailing).
+- Kundenrechte als Chips; Mail-Formular 720 statt 560 px; „Jetzt bereinigen“ im Warnstil; deaktivierte Primärbuttons mit Rahmen.
+- Einstellungen: Quellen-Chip „Standard“ entfällt (Quelle bleibt für Screenreader und in der Zeile „Standard: …“).
+- Kartenkopf ohne Beschreibung hält Aktionen mobil neben dem Titel.
+- Umstieg/Schritt-Navigation (`StepNav.svelte`, nicht `Migration.svelte`): Zähler und Begründung als ein Satz mit Trenner, Buttons darunter.
+
+Noten (Skala 1-5, 5 = bestmöglich, unabhängige Zweitbewertung mit frischem Kontext, nur Screenshots): Gesamt 4,0 (Desktop/Mobil je Seite 3,2 bis 4,3; z. B. Gesamt 4,3/4,2, Aufbewahrung 4,3/4,2, Mail 3,6/3,7, Einstellungen 3,7/3,2, Umstieg 3,8/3,6, Tokens 4,1/3,6). Die Zweitbewertung ist deutlich strenger als der externe Profi (4,5) und dessen Vorgänger; die Skalen sind nicht gleichgesetzt. Die erste Zweitbewertung hatte keine Skalenvorgabe und ist nicht vergleichbar. Der Screenshot-Stand der Runde 2 enthielt die StepNav-Trenner- und Quellen-Chip-Änderung noch nicht.
+
+Ziel 4,7 je Seite: NICHT erreicht. Bewusst offen: Einstellungen mobil (Metazeilen dicht), Mail überlang/„3 Angaben unvollständig“ ohne Nennung, mobile Tab-Leiste (abgeschnittene Tabs), mobile Tabellenspalten (Konten, Formularverzeichnis), Einbindung mobil (Codeblock horizontal scrollend), dünne Desktop-Tabellen ohne Zusatzspalten, doppelte Datumsfilter in Einsendungen, Stepper mobil nur aktueller Schritt beschriftet (bewusst, Platz), Zeitreihe mit einem Datenpunkt.
+
+### Runde 3 (11.11.2026)
+
+Umgesetzt (Vitest, Playwright `ui-feinschliff.spec.ts` mit 28 Tests inkl. 320 px und axe hell/dunkel): Einstellungen mobil mit Schalter „Technische Angaben“; Mail nennt fehlende Angaben und begründet „Versandweg zuweisen“; lokaler Zeitraum der Suche per Schalter; Hinweis bei dünner Statistik; Tab-Leiste mit Snap; DataTable-Zusatzzeilen mit Spaltenname; Code in Einbindung bleibt horizontal scrollbar (der Umbruchversuch wurde nach der Bewertung zurückgenommen, weil er Bezeichner zerriss).
+
+Zweitbewertung Runde 3 (Skala 1-5, 5 = best, frischer Agent): Gesamt 4,1; Desktop/Mobil u. a. Gesamt 4,3/4,2, Tokens 4,3/4,3, Aufbewahrung 4,3/4,2, Mail 3,6/3,6, Felder 3,9/3,8, Einstellungen 3,8/4,2, Einbindung 4,1/3,6, Konten 4,1/3,9. Ziel >= 4,5 im Schnitt NICHT erreicht (4,1). Darunter bleiben ehrlich: Mail (lange Formularwand ohne Gruppierung), Felder, Einstellungen Desktop (immer sichtbare Technikzeilen), Konten mobil (Spalten in Namenszelle), leere Conversion-Karte, Einbindung mobil, lange Seite „Formulare“, Leerflächen kurzer Seiten, deaktivierte Primärbuttons nur grau. Die Skala der Zweitbewertung ist strenger als der externe Profi (4,5).
+
+### Runde 4 (11.11.2026)
+
+Umgesetzt: Conversion-Karte nennt „Einsendungen ÷ Besuche“ statt Leerfläche; Mail-Absenderadresse/-name zweispaltig; Zusatzangaben in Tabellen mobil gebündelt unter dem Namen (Konten, Kunden). Einbindung-Code bleibt scrollbar mit Verlaufsrand und Kopieren-Button (bereits vorhanden). Nicht umgesetzt: Mail-Gruppierung/Einklappen, Felder-Seite, Einstellungen Desktop kompakter, Leerflächen kurzer Seiten, Einsendungen-Suchzeile.
+
+Zweitbewertung Runde 4 (Skala 1-5, 5 = Linear/Stripe, 3,5 = shadcn-Standard): Gesamt 3,7 (Runde 3: 4,1). Die Zahl ist KEIN Rückschritt der UI: Der Bewerter war mit neuem Kontext deutlich strenger (Ankerskala im Prompt), Varianz zwischen frischen Bewertern ca. ±0,4. Schwächste: Mail 3,3/3,2, Einrichtung 3,4/3,4, Felder 3,6/3,4, Einstellungen 3,6/3,6, Formularverzeichnis 3,6/3,6. Ziel >= 4,5 nicht erreicht; mit dieser Methodik ist der Zahlenvergleich über Runden nicht belastbar.

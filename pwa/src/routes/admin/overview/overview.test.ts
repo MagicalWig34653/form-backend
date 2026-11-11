@@ -67,6 +67,20 @@ it('KpiTile shows a dash and a reason instead of a zero', () => {
   render(KpiTile, { label: 'Conversion', value: null, reason: 'Ohne Besuche nicht definiert' });
   expect(screen.getByText('Ohne Besuche nicht definiert')).toBeTruthy();
 });
+it('KpiTile shows a visible note when the trend has too few points', () => {
+  render(KpiTile, { label: 'Conversion', value: 25, series: [null, 0.2, null] });
+  expect(screen.getByText('Kein Verlauf verfügbar').className).not.toContain('sr-only');
+});
+it('KpiTile with a note and no trend shows the note instead of a placeholder box', () => {
+  render(KpiTile, {
+    label: 'Conversion',
+    value: 25,
+    series: [null, 0.2, null],
+    note: 'Einsendungen ÷ Besuche',
+  });
+  expect(screen.getByText('Einsendungen ÷ Besuche')).toBeTruthy();
+  expect(screen.getByText('Kein Verlauf verfügbar').className).toContain('sr-only');
+});
 it('KpiTile shows value, sparkline and delta text', () => {
   render(KpiTile, {
     label: 'Einsendungen',
@@ -90,6 +104,30 @@ it('AttentionList names the form and opens the right tab', async () => {
   expect(screen.getByText('Kontakt: Kein Versandweg für Mails gewählt.')).toBeTruthy();
   await fireEvent.click(screen.getByRole('button', { name: /Versandweg wählen/ }));
   expect(mocks.navigate).toHaveBeenCalledWith('/t/t/f/f/mail');
+});
+it('AttentionList folds hints beyond three behind a toggle', async () => {
+  const items = ['a', 'b', 'c', 'd', 'e'].map((n) => ({
+    id: n,
+    tone: 'warn' as const,
+    kind: 'noMail' as const,
+    formId: n,
+    formName: `Form ${n}`,
+  }));
+  render(AttentionList, { tenant: 't', items });
+  expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  const more = screen.getByRole('button', { name: '2 weitere anzeigen' });
+  expect(more.getAttribute('aria-expanded')).toBe('false');
+  await fireEvent.click(more);
+  expect(screen.getAllByRole('listitem')).toHaveLength(5);
+  expect(screen.getByRole('button', { name: 'Weniger anzeigen' })).toBeTruthy();
+});
+it('TenantOverview does not repeat missing-route hints that the setup panel names', async () => {
+  const forms = [{ id: 'f', name: 'Kontakt', active: true, currentReleaseId: 'r' }];
+  const api = { statistics: vi.fn(fail), form: vi.fn(fail), entries: vi.fn(fail) };
+  const loader = new OverviewLoader(api as never);
+  render(TenantOverview, { tenant: 't', forms, loader, locked: false, showSetup: true });
+  await loader.load('t', forms);
+  expect(screen.queryByText(/Kein Versandweg für Mails gewählt/)).toBeNull();
 });
 it('AttentionList says so when there is nothing to report', () => {
   render(AttentionList, { tenant: 't', items: [] });

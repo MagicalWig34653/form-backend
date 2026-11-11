@@ -6,13 +6,13 @@ Claude Code koordiniert. Agents mit Sonnet und Haiku nach Schwierigkeit; Codex d
 
 ## Rollen
 
-| Rolle | Modell/Werkzeug | Typische Pakete |
-| --- | --- | --- |
-| Koordination | Claude Code; Hauptmodell nach Nutzerkonfiguration | Zerlegen, Verträge abstimmen, Kontext auswählen, Integration und Abnahme |
-| Architektur | Sonnet | Sicherheitsprofile, Ablaufsemantik, Verträge, Datenmodell |
-| Implementierung | Sonnet oder Codex | abgegrenzte Backend-/PWA-/SDK-Aufgaben, Fehleranalyse, Adapter |
-| Routine | Haiku | klar beschriebene Dokumentpflege, einfache Zuordnungen, repetitive Anpassungen nach bewährtem Muster |
-| Review | Sonnet oder Codex unabhängig vom Autor | Rechte, Nebenläufigkeit, Kryptokompatibilität, Migration, Fehlerpfade |
+| Rolle           | Modell/Werkzeug                                   | Typische Pakete                                                                                      |
+| --------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Koordination    | Claude Code; Hauptmodell nach Nutzerkonfiguration | Zerlegen, Verträge abstimmen, Kontext auswählen, Integration und Abnahme                             |
+| Architektur     | Sonnet                                            | Sicherheitsprofile, Ablaufsemantik, Verträge, Datenmodell                                            |
+| Implementierung | Sonnet oder Codex                                 | abgegrenzte Backend-/PWA-/SDK-Aufgaben, Fehleranalyse, Adapter                                       |
+| Routine         | Haiku                                             | klar beschriebene Dokumentpflege, einfache Zuordnungen, repetitive Anpassungen nach bewährtem Muster |
+| Review          | Sonnet oder Codex unabhängig vom Autor            | Rechte, Nebenläufigkeit, Kryptokompatibilität, Migration, Fehlerpfade                                |
 
 Haiku bekommt keine eigenständigen Sicherheits-, Migrations- oder Architekturentscheidungen. Bei Unklarheit stoppt die abhängige Änderung und die Rolle eskaliert an die Koordination. Sonnet muss ebenfalls keine unklaren Produktentscheidungen erraten.
 

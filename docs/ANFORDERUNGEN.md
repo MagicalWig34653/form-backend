@@ -32,22 +32,22 @@ Vollständige Datenmigration vom alten in das neue Backend ermöglichen.
 
 Diese Liste ist aus Dokumentation und ausgewählten Quelltexten abgeleitet. In der Bestandsaufnahme vollständig gegen aktuelle Routen, Tests und Schema inklusive Migrationen abgleichen.
 
-| Bereich | Zu erhaltendes Verhalten |
-| --- | --- |
-| Eingang | v1-/v2-Routen, Konfiguration/Feldschema, Antworten und Statuscodes, Signaturen, Idempotenz |
-| Felder und Handler | Typen, Pflichtfelder, Regeln, generische und individuelle Kundenhandler |
-| Betriebsarten | Test/Produktion, IP-/CIDR-/DNS-basierte Autorisierung, vertrauenswürdige Netze/Proxys |
-| Missbrauchsschutz | Rate-Limits, Sperren, Turnstile und vorhandene Bot-/Netzprüfungen |
-| Uploads | Größen-/Typprüfung, Scanstatus und Schadsoftwareprüfung mit sichtbaren Fehlerzuständen |
-| Speicherung | verschlüsselte Felder, Anhänge und Mailinhalte; alle vorhandenen Paketgenerationen |
-| Versand | SMTP, separater Mail-Proxy, Empfängerbegrenzung, Organisations-/Bestätigungsmail, Vorlagen, Zustellstatus und Wiederholungen |
-| Verlauf | Filter, Suche, Mailvorschau, Anhänge, Einzel-/Stapelaktionen, erneuter Versand und Versandumfang |
-| Datenschutz | Aufbewahrung, Löschschutz, Auskunft/Löschung, Exporte und Protokollierung |
-| Konten | Rollen/Zuständigkeiten, Verwaltung/Sperrung, Passwort, TOTP, Passkeys, Sitzungsrichtlinien und Anmeldeprotokoll |
-| Schlüssel | formularbezogene SDK-Schlüssel, Provisionierung/Rotation, Browserentschlüsselung, Datenzugänge, Recovery und Bestandsumstieg |
-| Betrieb | Dashboard, Statistik inkl. Google Ads/GCLID, Fehler-/Auditprotokolle, Konfiguration, Benachrichtigungen/Pushover, Aufräumjobs, Healthcheck |
-| MCP | bestehende Statistikwerkzeuge, persönliche Tokens, OAuth, Freigaben und Zugriffsprotokolle |
-| PWA/UI | bestehende Einstellungen, Darstellungsoptionen und PWA-Funktionen |
+| Bereich            | Zu erhaltendes Verhalten                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Eingang            | v1-/v2-Routen, Konfiguration/Feldschema, Antworten und Statuscodes, Signaturen, Idempotenz                                                 |
+| Felder und Handler | Typen, Pflichtfelder, Regeln, generische und individuelle Kundenhandler                                                                    |
+| Betriebsarten      | Test/Produktion, IP-/CIDR-/DNS-basierte Autorisierung, vertrauenswürdige Netze/Proxys                                                      |
+| Missbrauchsschutz  | Rate-Limits, Sperren, Turnstile und vorhandene Bot-/Netzprüfungen                                                                          |
+| Uploads            | Größen-/Typprüfung, Scanstatus und Schadsoftwareprüfung mit sichtbaren Fehlerzuständen                                                     |
+| Speicherung        | verschlüsselte Felder, Anhänge und Mailinhalte; alle vorhandenen Paketgenerationen                                                         |
+| Versand            | SMTP, separater Mail-Proxy, Empfängerbegrenzung, Organisations-/Bestätigungsmail, Vorlagen, Zustellstatus und Wiederholungen               |
+| Verlauf            | Filter, Suche, Mailvorschau, Anhänge, Einzel-/Stapelaktionen, erneuter Versand und Versandumfang                                           |
+| Datenschutz        | Aufbewahrung, Löschschutz, Auskunft/Löschung, Exporte und Protokollierung                                                                  |
+| Konten             | Rollen/Zuständigkeiten, Verwaltung/Sperrung, Passwort, TOTP, Passkeys, Sitzungsrichtlinien und Anmeldeprotokoll                            |
+| Schlüssel          | formularbezogene SDK-Schlüssel, Provisionierung/Rotation, Browserentschlüsselung, Datenzugänge, Recovery und Bestandsumstieg               |
+| Betrieb            | Dashboard, Statistik inkl. Google Ads/GCLID, Fehler-/Auditprotokolle, Konfiguration, Benachrichtigungen/Pushover, Aufräumjobs, Healthcheck |
+| MCP                | bestehende Statistikwerkzeuge, persönliche Tokens, OAuth, Freigaben und Zugriffsprotokolle                                                 |
+| PWA/UI             | bestehende Einstellungen, Darstellungsoptionen und PWA-Funktionen                                                                          |
 
 „Erhalten“ bedeutet fachliche Parität. Alte Sicherheitslücken oder technische Zufälligkeiten werden nicht ungeprüft zum neuen Vertrag. Jede bewusste Verhaltensänderung muss dokumentiert und mit ihrer Kompatibilitätsfolge entschieden werden.
 

@@ -66,10 +66,10 @@
   <ul
     bind:this={list}
     onscroll={measure}
-    class="m-0 flex list-none gap-1 overflow-x-auto p-0 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    class="m-0 flex list-none snap-x snap-proximity scroll-px-10 gap-1 overflow-x-auto p-0 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
   >
     {#each tabs as tab (tab.id)}
-      <li class="shrink-0">
+      <li class="shrink-0 snap-start">
         <a
           href={tab.href}
           aria-current={tab.active ? 'page' : undefined}

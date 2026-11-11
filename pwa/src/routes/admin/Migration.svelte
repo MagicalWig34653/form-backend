@@ -16,6 +16,7 @@
     assignForms,
     assignKeys,
     buildPlan,
+    snapshotOf,
     canAdvance,
     countRows,
     describeJobError,
@@ -26,6 +27,7 @@
     landingStep,
     reachedStep,
     reportRows,
+    summarizeReport,
     sourceConnections,
     sourceForms,
     suggestNamespace,
@@ -169,6 +171,10 @@
     }),
   );
   const warnings = $derived(keyWarnings(keys, usage, built.plan));
+  /** Statistics rows need public recipient keys in the plan; without them every row becomes a review case. */
+  const statsRows = $derived(
+    Object.keys(built.plan.statisticsPublicKeys).length ? 0 : (inventory?.counts?.statistics ?? 0),
+  );
   const usageOf = (kid: string) => usage.find((u) => u.kid === kid)?.submissions ?? 0;
   const customerName = (id: string | undefined) => {
     const index = customers.findIndex((c) => c.id === id);
@@ -197,11 +203,13 @@
     error =
       r.error.status === 403
         ? f.noRight
-        : r.error.status === 422 && r.error.detail
-          ? r.error.detail
-          : r.error.status === 422 && unprocessable
-            ? unprocessable
-            : f.connection;
+        : r.error.status === 429
+          ? f.busy
+          : r.error.status === 422 && r.error.detail
+            ? r.error.detail
+            : r.error.status === 422 && unprocessable
+              ? unprocessable
+              : f.connection;
   }
   async function load() {
     if (!tenants.length) {
@@ -237,11 +245,7 @@
   async function prefill(r: SourceInventory) {
     if (!customers.length) customers = [{ id: crypto.randomUUID(), name: '' }];
     expectedSchema = r.schemaHMAC;
-    const bytes = new TextEncoder().encode(
-      JSON.stringify({ s: r.schemaHMAC, c: r.counts, f: r.formIds }),
-    );
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    snapshot = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    snapshot = await snapshotOf(r);
     const proposal = suggestNamespace(host, database);
     if (!namespace.trim() || namespace === suggestedNamespace) namespace = proposal;
     suggestedNamespace = proposal;
@@ -383,7 +387,55 @@
 
 {#snippet report(job: Job)}
   {@const rows = reportRows(job.report)}
-  {#if rows.length}
+  {@const sum = summarizeReport(job.report)}
+  {#if sum.processed !== null && !sum.tables.length}
+    <p class="m-0 flex justify-between gap-2 text-sm" data-testid="migration-processed">
+      <span class="text-muted-foreground">{f.run.processed}</span>
+      <span class="font-medium tabular-nums">{sum.processed}</span>
+    </p>
+  {:else if sum.tables.length}
+    <div class="flex min-w-0 flex-col gap-4" data-testid="migration-report">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable region must be keyboard focusable, axe) -->
+      <div class="overflow-x-auto" role="region" aria-label={f.run.tablesCaption} tabindex="0">
+        <table class="w-full text-left text-xs sm:text-sm">
+          <caption class="sr-only">{f.run.tablesCaption}</caption>
+          <thead>
+            <tr class="text-muted-foreground">
+              <th scope="col" class="py-1 pr-2 font-medium">{f.run.colTable}</th>
+              <th scope="col" class="px-1 py-1 text-right font-medium">{f.run.colSource}</th>
+              <th scope="col" class="px-1 py-1 text-right font-medium">{f.run.colImported}</th>
+              <th scope="col" class="px-1 py-1 text-right font-medium">{f.run.colReview}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-border divide-y">
+            {#each sum.tables as row (row.table)}
+              <tr>
+                <th scope="row" class="py-1 pr-2 font-normal">
+                  {f.run.tableNames[row.table] ?? row.table}
+                </th>
+                <td class="px-1 py-1 text-right tabular-nums">{row.source}</td>
+                <td class="px-1 py-1 text-right tabular-nums">{row.imported}</td>
+                <td class="px-1 py-1 text-right tabular-nums">{row.review}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      {#if sum.issues.length}
+        <div class="flex flex-col gap-1">
+          <h4 class="m-0 text-sm font-semibold">{f.run.issuesTitle}</h4>
+          <ul class="m-0 list-disc pl-5 text-sm">
+            {#each sum.issues as issue (issue.code)}
+              <li>
+                <span class="font-medium tabular-nums">{issue.count}</span>
+                {f.run.issueNames[issue.code] ?? issue.code}
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </div>
+  {:else if rows.length}
     <dl class="divide-border m-0 divide-y">
       {#each rows as row (row.key)}
         <div class={rowClass}>
@@ -880,6 +932,11 @@
               <dd class="m-0 font-mono text-xs break-all">{built.plan.namespace}</dd>
             </div>
           </dl>
+          {#if statsRows > 0}
+            <p class="m-0 text-sm" data-testid="migration-stats-notice">
+              {f.mapping.statsNotice.replace('{n}', String(statsRows))}
+            </p>
+          {/if}
           {#if issues.length}
             <p class="text-muted-foreground m-0 text-sm" id="mig-missing">
               {f.mapping.missing.replace(

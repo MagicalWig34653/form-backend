@@ -27,7 +27,17 @@ extension LegacyImporter {
         let packet = try PackageV2(wire)
         guard try await scalar(db,"SELECT HEX(generation_id) AS v FROM customer_key_generations WHERE customer_id=\(customer) AND kid=\(val(packet.kid))") != nil else { throw ImportFailure.invalidSourceAt(table:"stored_objects",column:"kid",reason:.unknownKeyGeneration) }
         let id = bin(DB.bin(UUID()).data), data = Data(wire.utf8)
-        return try await insert(db,"stored_objects",["id":id,"customer_id":customer,"form_id":form,"submission_id":submission ?? "NULL","object_role":val(role),"backend":"'db'","ciphertext":bin(data),"packet_format":"'KUBUS-AEAD:2'","wrap_kind":val(packet.wrap),"kid":val(packet.kid),"content_encoding":val(encoding),"ciphertext_sha256":bin(Data(SHA256.hash(data:data))),"payload_sha256":bin(Data(SHA256.hash(data:packet.iv + packet.ciphertext + packet.tag))),"byte_count":String(data.count),"state":"'ready'"],key:["id":id])
+        // One statement carries the hex of its values (twice the bytes) and must stay below max_allowed_packet: large
+        // ciphertexts are written empty first and appended in chunks.
+        let chunk = LegacyImporter.bigCellBytes
+        let ref = try await insert(db,"stored_objects",["id":id,"customer_id":customer,"form_id":form,"submission_id":submission ?? "NULL","object_role":val(role),"backend":"'db'","ciphertext":bin(data.count > chunk ? Data() : data),"packet_format":"'KUBUS-AEAD:2'","wrap_kind":val(packet.wrap),"kid":val(packet.kid),"content_encoding":val(encoding),"ciphertext_sha256":bin(Data(SHA256.hash(data:data))),"payload_sha256":bin(Data(SHA256.hash(data:packet.iv + packet.ciphertext + packet.tag))),"byte_count":String(data.count),"state":"'ready'"],key:["id":id])
+        var offset = chunk
+        if data.count > chunk { try await exec(db,"UPDATE stored_objects SET ciphertext=\(bin(data.prefix(chunk))) WHERE id=\(id)") }
+        while offset < data.count {
+            try await exec(db,"UPDATE stored_objects SET ciphertext=CONCAT(ciphertext,\(bin(data[offset..<min(offset+chunk,data.count)]))) WHERE id=\(id)")
+            offset += chunk
+        }
+        return ref
     }
     func transform(_ src: SQLDatabase, _ db: SQLDatabase, _ p: ImportPlan, _ table: String, _ r: LegacyRow) async throws -> [Destination] {
         switch table {
@@ -90,7 +100,11 @@ extension LegacyImporter {
             return [Destination(table:"form_versions",predicate:"form_id=\(f) AND version_no=1")]
         case "anfragen":
             let (c,f) = try owner(p,r), id = try r.uuid("UUID")
-            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft")],key:["id":id])
+            // The legacy ingest writes the id of the sending mail server on every submission (mapping contract: legacy_sent_server).
+            // Only a UUID is taken over as a transport id; any other value stays an examination case.
+            let sentText = try r.text("sentServer")
+            let sentServer = sentText.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
+            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft"),"legacy_sent_server":sentServer.map(val) ?? "NULL"],key:["id":id])
             var refs = [sub]
             // Each package is checked independently. Unsupported packages stay in the immutable source dump.
             var review = false
@@ -102,7 +116,7 @@ extension LegacyImporter {
                     } else { review = true }
                 }
             }
-            if try r.bytes("file1") != nil || r.text("errors") != nil || r.text("sentServer") != nil || r.text("file1Name") != nil { review = true }
+            if try r.bytes("file1") != nil || r.text("errors") != nil || (sentText != nil && sentServer == nil) || r.text("file1Name") != nil { review = true }
             // Preserve the submission even when packages require browser-assisted conversion.
             if review { try await reviewIssue(db,p,table,try r.required("ID"),"unsupported-content") }
             return refs

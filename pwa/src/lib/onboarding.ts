@@ -3,13 +3,17 @@
 // loaded is "error", never guessed. Pure functions: the store (onboarding.svelte.ts) fetches the facts.
 import type { Route } from './routes';
 
+/** Working order. Stored "skipped" values are keyed by id, so reordering never invalidates them. */
 export const STEP_IDS = [
   'account',
   'recovery',
-  'mail',
+  'passkeys',
   'addresses',
+  'mail',
   'customer',
   'form',
+  'token',
+  'testEntry',
   'migration',
 ] as const;
 export type StepId = (typeof STEP_IDS)[number];
@@ -28,6 +32,12 @@ export interface Facts {
   /** Number of customers visible to the account. */
   customers: number | null;
   forms: FormFacts | null;
+  /** Number of passkeys of the signed-in account. */
+  passkeys: number | null;
+  /** Number of API tokens that are neither revoked nor expired. */
+  tokens: number | null;
+  /** Submissions found in published forms. */
+  testEntries: EntryFacts | null;
   /** Import runs; `available: false` hides the step (no right or switched off). */
   migration: { available: boolean; jobs: number | null };
 }
@@ -36,6 +46,16 @@ export interface FormFacts {
   published: number;
   /** First form that still lacks a release (target of "publish"). */
   unpublished?: { tenant: string; form: string };
+  /** Published forms (bounded), where a test submission can be checked. */
+  publishedForms?: { tenant: string; form: string }[];
+}
+export interface EntryFacts {
+  /** Published forms that were asked. */
+  checked: number;
+  /** Form holding at least one submission (target of the entries link). */
+  withEntries?: { tenant: string; form: string };
+  /** Entries of the first published form, used as target when none has any yet. */
+  first?: { tenant: string; form: string };
 }
 
 export interface Step {
@@ -43,8 +63,10 @@ export interface Step {
   state: StepState;
   /** Optional steps can be postponed ("Später"). */
   skippable: boolean;
+  /** Marked "optional" in the list. */
+  optional: boolean;
   /** Extra situation that changes the wording of an open step. */
-  detail?: 'draftOnly' | 'needsCustomer';
+  detail?: 'draftOnly' | 'needsCustomer' | 'needsPublished';
 }
 
 export const emptyFacts: Facts = {
@@ -54,11 +76,18 @@ export const emptyFacts: Facts = {
   addresses: null,
   customers: null,
   forms: null,
+  passkeys: null,
+  tokens: null,
+  testEntries: null,
   migration: { available: false, jobs: null },
 };
 
 /** Steps whose absence blocks finishing; everything else may be postponed. */
 const REQUIRED: readonly StepId[] = ['account', 'recovery'];
+/** Steps that are explicitly optional (marked as such in the list). */
+export const OPTIONAL: readonly StepId[] = ['passkeys', 'token', 'testEntry', 'migration'];
+/** Passkeys needed so that losing one device does not lock the account out. */
+export const PASSKEYS_WANTED = 2;
 
 function doneOf(id: StepId, f: Facts): boolean | null {
   switch (id) {
@@ -74,6 +103,15 @@ function doneOf(id: StepId, f: Facts): boolean | null {
       return f.customers === null ? null : f.customers > 0;
     case 'form':
       return f.forms === null ? null : f.forms.published > 0;
+    case 'passkeys':
+      return f.passkeys === null ? null : f.passkeys >= PASSKEYS_WANTED;
+    case 'token':
+      return f.tokens === null ? null : f.tokens > 0;
+    case 'testEntry':
+      // Without a published form there can be no proof; with unknown form data nothing is known.
+      if (f.forms === null) return null;
+      if (f.forms.published === 0) return false;
+      return f.testEntries === null ? null : !!f.testEntries.withEntries;
     case 'migration':
       return f.migration.jobs === null ? null : f.migration.jobs > 0;
   }
@@ -89,11 +127,13 @@ export function deriveSteps(facts: Facts, skipped: readonly StepId[] = []): Step
     if (done === true) state = 'done';
     else if (skippable && skipped.includes(id)) state = 'skipped';
     else state = done === null ? 'error' : 'open';
-    const step: Step = { id, state, skippable };
+    const step: Step = { id, state, skippable, optional: OPTIONAL.includes(id) };
     if (id === 'form' && state === 'open' && facts.forms) {
       if ((facts.customers ?? 0) === 0) step.detail = 'needsCustomer';
       else if (facts.forms.total > 0) step.detail = 'draftOnly';
     }
+    if (id === 'testEntry' && state === 'open' && facts.forms?.published === 0)
+      step.detail = 'needsPublished';
     steps.push(step);
   }
   return steps;
@@ -128,7 +168,12 @@ export function stepScope(id: StepId, route: Route): boolean {
   switch (id) {
     case 'account':
     case 'recovery':
+    case 'passkeys':
       return route.name === 'account';
+    case 'token':
+      return route.name === 'apiTokens';
+    case 'testEntry':
+      return route.name === 'form' || route.name === 'forms' || route.name === 'formDirectory';
     case 'mail':
       return route.name === 'connections';
     case 'addresses':

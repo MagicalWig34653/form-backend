@@ -79,6 +79,20 @@ export interface PlanCustomer {
   name: string;
 }
 
+/**
+ * Snapshot id of a source check (plan field dumpSHA256): SHA-256 over schema HMAC, table counts and form ids,
+ * so that a changed source yields another id. Shared by the migration page and the golden test.
+ */
+export async function snapshotOf(
+  r: Pick<SourceInventory, 'schemaHMAC' | 'counts' | 'formIds'>,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    JSON.stringify({ s: r.schemaHMAC, c: r.counts, f: r.formIds }),
+  );
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Forms of the source with names; older answers without `forms` fall back to the bare ids. */
 export function sourceForms(inventory: SourceInventory | undefined): SourceForm[] {
   if (!inventory) return [];
@@ -450,4 +464,27 @@ export function describeJobError(
     if (text) return `${text} (${texts.column} ${column})`;
   }
   return code;
+}
+
+export interface ReportSummary {
+  processed: number | null;
+  tables: Array<{ table: string; source: number; imported: number; review: number }>;
+  issues: Array<{ code: string; count: number }>;
+}
+/** Reads the job report into table counts and open cases for display; unknown shapes yield empty lists. */
+export function summarizeReport(report: unknown): ReportSummary {
+  const r = (report && typeof report === 'object' ? report : {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const tables = Object.entries((r.tables ?? {}) as Record<string, Record<string, unknown>>)
+    .map(([table, p]) => ({
+      table,
+      source: num(p?.sourceCount),
+      imported: num(p?.importedCount),
+      review: num(p?.reviewCount),
+    }))
+    .sort((a, b) => a.table.localeCompare(b.table));
+  const issues = (Array.isArray(r.issues) ? r.issues : [])
+    .map((i: Record<string, unknown>) => ({ code: String(i?.code ?? ''), count: num(i?.count) }))
+    .filter((i) => i.code);
+  return { processed: typeof r.processed === 'number' ? r.processed : null, tables, issues };
 }

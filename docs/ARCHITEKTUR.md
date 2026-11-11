@@ -8,19 +8,19 @@ API und Hintergrundworker können getrennte Prozesse desselben Images sein. Kein
 
 ## Grenzen
 
-| Modul | Verantwortung |
-| --- | --- |
-| Kunden und Rechte | Mandanten, Konten, Rollen, Zuständigkeiten |
-| Formulardefinitionen | Feldmodell, Ansichten, Versionen, Veröffentlichung |
-| Darstellung | gehostete Formulare, PHP-/Vanilla-Integration, Themes |
-| Domainzuordnung | bekannte Hostnamen auf Formular/Ansicht/Umgebung abbilden |
-| Ablaufengine | Definitionen, Bausteine, Durchläufe, Zustände, Debug |
-| Eingang | Protokolladapter, Prüfung, Annahme und Idempotenz |
-| Zustellung | Mailaufbau, SMTP/Proxy, Webhooks und Wiederholungen |
-| Speicher | MariaDB als Standard, S3/SFTP optional |
-| Kryptografie | Profile, Schlüsselhüllen, Rotation, Datenzugang und Recovery |
-| Statistik und Audit | fachliche Ereignisse, Aggregate, Betriebskennzahlen, Protokolle |
-| Integrationen | Legacy/v2/neue API, MCP und Kundenagenten |
+| Modul                | Verantwortung                                                   |
+| -------------------- | --------------------------------------------------------------- |
+| Kunden und Rechte    | Mandanten, Konten, Rollen, Zuständigkeiten                      |
+| Formulardefinitionen | Feldmodell, Ansichten, Versionen, Veröffentlichung              |
+| Darstellung          | gehostete Formulare, PHP-/Vanilla-Integration, Themes           |
+| Domainzuordnung      | bekannte Hostnamen auf Formular/Ansicht/Umgebung abbilden       |
+| Ablaufengine         | Definitionen, Bausteine, Durchläufe, Zustände, Debug            |
+| Eingang              | Protokolladapter, Prüfung, Annahme und Idempotenz               |
+| Zustellung           | Mailaufbau, SMTP/Proxy, Webhooks und Wiederholungen             |
+| Speicher             | MariaDB als Standard, S3/SFTP optional                          |
+| Kryptografie         | Profile, Schlüsselhüllen, Rotation, Datenzugang und Recovery    |
+| Statistik und Audit  | fachliche Ereignisse, Aggregate, Betriebskennzahlen, Protokolle |
+| Integrationen        | Legacy/v2/neue API, MCP und Kundenagenten                       |
 
 Genaue Paket-/Target-Grenzen erst nach Funktionsinventar und Vertragsentwurf. Keine Tabelle ohne dokumentierten fachlichen Besitzer.
 

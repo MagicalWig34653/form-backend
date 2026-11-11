@@ -20,17 +20,14 @@
   const f = t.formKit.migration.flow;
 </script>
 
-<div class="border-border mt-5 flex flex-col gap-3 border-t pt-4">
+<div class="border-border mt-5 flex flex-col gap-3 border-t pt-4" data-testid="step-nav">
+  <p class="text-muted-foreground min-w-0 text-sm">
+    <span class="text-foreground font-medium tabular-nums"
+      >{f.stepOf.replace('{n}', String(step + 1)).replace('{m}', String(total))}</span
+    >{#if hint && !canNext && step < total - 1}<span id="step-hint">&nbsp;· {hint}</span>{/if}
+  </p>
   <div class="flex flex-wrap items-center gap-2">
     {#if step > 0}<Button type="button" variant="outline" onclick={onback}>{f.back}</Button>{/if}
-    <span class="text-muted-foreground text-sm tabular-nums"
-      >{f.stepOf.replace('{n}', String(step + 1)).replace('{m}', String(total))}</span
-    >
-    {#if hint && !canNext && step < total - 1}
-      <span class="text-muted-foreground min-w-0 flex-1 basis-48 text-sm" id="step-hint"
-        >· {hint}</span
-      >
-    {/if}
     <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
       {@render children?.()}
       {#if step < total - 1}
