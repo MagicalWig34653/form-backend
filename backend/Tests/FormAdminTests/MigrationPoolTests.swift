@@ -94,7 +94,8 @@ final class MigrationPoolTests: XCTestCase {
                 try await setupSQL.raw("INSERT INTO accounts (id, username, password_hash, active, mcp_allowed, rights_version, created_at) VALUES (\(bind: DB.bin(actor)), 'pool-actor', 'x', 1, 0, 0, \(bind: at))").run()
                 try await setupSQL.raw("INSERT INTO permission_assignments (id, account_id, permission, scope_kind, revision, granted_by, granted_at) VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(actor)), 'migration.run', 'system', 1, \(bind: DB.bin(actor)), \(bind: at))").run()
                 try await SystemSettings.write(setupSQL, key: "migration.enabled", value: "true", at: at)
-                try await SystemSettings.write(setupSQL, key: "migration.allowedNets", value: "127.0.0.0/8", at: at)
+                try await SystemSettings.write(setupSQL, key: "migration.allowedNets", value: "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", at: at)
+                // The database host is loopback locally but a container address (private range) in the CI network.
                 let secrets = SecretStore(db: setup.db(.mysql), keys: keys)
                 let service = MigrationService(app: setup, secrets: secrets, allowInsecure: true)
                 let hmac = try await service.key()
