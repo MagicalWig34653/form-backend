@@ -9,10 +9,15 @@ import XCTest
 /// Time and memory with many submissions (REHEARSAL_ROWS, default 3000; the measurement for 50 000 is in the handover).
 extension ImportRehearsalTests {
     static func residentMegabytes() -> Int {
-        var usage = rusage(); getrusage(RUSAGE_SELF, &usage)
         #if os(Linux)
-        return usage.ru_maxrss / 1024
+        // Peak resident set from /proc (getrusage's `who` type differs between glibc and Darwin).
+        guard let status = try? String(contentsOfFile: "/proc/self/status", encoding: .utf8),
+              let line = status.split(separator: "\n").first(where: { $0.hasPrefix("VmHWM:") }),
+              let kilobytes = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).dropFirst().first.flatMap({ Int($0) })
+        else { return 0 }
+        return kilobytes / 1024
         #else
+        var usage = rusage(); getrusage(RUSAGE_SELF, &usage)
         return Int(usage.ru_maxrss) / 1_048_576
         #endif
     }

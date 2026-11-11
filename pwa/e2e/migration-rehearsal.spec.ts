@@ -273,7 +273,7 @@ test('320 px: Zuordnung und Ergebnis ohne horizontales Scrollen und ohne axe-Ver
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   // Buttons fade from the disabled to the enabled colours; axe must not sample in the middle of that transition.
   await page.waitForFunction(() =>
-    document.getAnimations().every((a) => a.playState !== 'running' && a.playState !== 'pending'),
+    document.getAnimations().every((a) => !a.pending && a.playState !== 'running'),
   );
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
