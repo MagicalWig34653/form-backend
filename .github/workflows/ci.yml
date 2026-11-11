@@ -100,8 +100,9 @@ jobs:
         run: |
           # The Ubuntu mirrors are sometimes unreachable from the runners (DNS/timeouts); retry, then fall back to the browser
           # download alone (the runner image already ships most system libraries).
+          printf 'Acquire::http::Timeout "8";\nAcquire::https::Timeout "8";\nAcquire::Retries "0";\n' | sudo tee /etc/apt/apt.conf.d/99fast-fail >/dev/null
           for attempt in 1 2 3; do
-            npx playwright install --with-deps chromium && exit 0
+            timeout 5m npx playwright install --with-deps chromium && exit 0
             echo "playwright install --with-deps failed (attempt $attempt)"; sleep 30
           done
           npx playwright install chromium
@@ -153,8 +154,9 @@ jobs:
         working-directory: pwa
         run: |
           npm ci
+          printf 'Acquire::http::Timeout "8";\nAcquire::https::Timeout "8";\nAcquire::Retries "0";\n' | sudo tee /etc/apt/apt.conf.d/99fast-fail >/dev/null
           for attempt in 1 2 3; do
-            npx playwright install --with-deps chromium && exit 0
+            timeout 5m npx playwright install --with-deps chromium && exit 0
             echo "playwright install --with-deps failed (attempt $attempt)"; sleep 30
           done
           npx playwright install chromium
