@@ -318,6 +318,77 @@ paths:
       description: 'Recht system.manage. Body {kind, name, config, credential}; Zugangsdaten werden verschlüsselt abgelegt.'
       security: [{ Session: [] }]
       responses: { '201': { description: Angelegt. } }
+  /migration/test:
+    post:
+      operationId: testMigrationSource
+      description: 'Nur interner Listener. Recht migration.run (System), migration.enabled, frische Anmeldung, CSRF. Body {host, port, database, username, password, tls}; Quelle nur über migration.allowedNets und nur mit lesendem Grant. Antwort no-store, nur Metadaten (ADR 0040): nie Zugangsdaten, Hüllen, Public-Key-Bytes oder Inhalte. Schlüssel- und kid-Zählung begrenzt (200 Schlüssel, 200000 Einsendungen, 200 kids, 20 s); bei Überschreitung complete=false, Zähler sind dann Mindestwerte. Audit migration.source.test.'
+      security: [{ Session: [] }]
+      responses:
+        '200':
+          description: Quellinventar. formIds, connectionIds, counts, schemaHMAC, readOnly unverändert; forms, connections, keys, keysComplete, invalidKeys, keyUsage additiv.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schemaHMAC, readOnly, formIds, connectionIds, counts]
+                properties:
+                  schemaHMAC: { type: string, pattern: '^[0-9a-f]{64}$' }
+                  readOnly: { type: boolean, const: true }
+                  formIds: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+                  connectionIds: { type: array, items: { type: string, format: uuid } }
+                  counts: { type: object, additionalProperties: { type: integer } }
+                  forms:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, connectionIds]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: [string, 'null'], maxLength: 200, description: 'formulare.name, getrimmt, ohne Steuerzeichen.' }
+                        connectionIds: { type: array, items: { type: string, format: uuid }, description: 'outgoingProductionServer/outgoingTestingServer, nur wenn UUID einer gelisteten Verbindung.' }
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, kind, name]
+                      properties:
+                        id: { type: string, format: uuid }
+                        kind: { type: string, enum: [smtp, mail-proxy] }
+                        name: { type: [string, 'null'], maxLength: 200 }
+                  keys:
+                    type: array
+                    maxItems: 200
+                    items:
+                      type: object
+                      required: [kid, status, createdAt, publicKeyValid]
+                      additionalProperties: false
+                      properties:
+                        kid: { type: string, pattern: '^[0-9a-f]{16}$' }
+                        status: { type: string, enum: [aktiv, auslaufend, andere] }
+                        createdAt: { type: [integer, 'null'], description: 'datenschluessel.erstelltAm, Unix-Sekunden.' }
+                        publicKeyValid: { type: boolean, description: '32 Byte und keyID(publicKey) == kid (Importerregel).' }
+                  keysComplete: { type: boolean }
+                  invalidKeys: { type: integer, minimum: 0 }
+                  keyUsage:
+                    type: object
+                    required: [complete, scannedSubmissions, items]
+                    properties:
+                      complete: { type: boolean }
+                      scannedSubmissions: { type: integer, minimum: 0 }
+                      items:
+                        type: array
+                        maxItems: 200
+                        items:
+                          type: object
+                          required: [kid, submissions, inKeyStore, formIds, formIdsComplete]
+                          properties:
+                            kid: { type: string, pattern: '^[0-9a-f]{16}$', description: 'Aus dem Kopf KUBUS-AEAD:2|kid| einer Inhaltsspalte (data, file1Enc, mailBody, mailBodyFiller).' }
+                            submissions: { type: integer, description: 'Einsendungen mit mindestens einem Paket dieser kid.' }
+                            inKeyStore: { type: boolean }
+                            formIds: { type: array, maxItems: 100, items: { type: string, format: uuid } }
+                            formIdsComplete: { type: boolean }
+        '403': { description: 'Recht fehlt, Umstieg deaktiviert, csrf_invalid oder reauthentication_required.' }
+        '422': { description: 'Quelle nicht freigegeben (migration.allowedNets), nicht lesend, oder Bestand über den Grenzen (Formulare > 1000, Verbindungen > 100).' }
   /me/preferences:
     get:
       operationId: getOwnPreferences

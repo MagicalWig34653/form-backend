@@ -1,5 +1,13 @@
 # Tatsächlicher Stand
 
+## Umstieg: Plan automatisch aus der Quellprüfung (11.11.2026, Worktree-Branch `worktree-agent-a0c0903c0d8bc9dce`, lokal committet, ungemergt)
+
+- ADR 0040. Ursache des Abbruchs `unknownKeyGeneration@kid` in Phase `anfragen`: Die PWA hat `keyCustomers` und `keyGenerationNumbers` nie gefüllt.
+- Backend: `POST /migration/test` liefert zusätzlich die Schlüssel (kid, Status, erstelltAm, Public-Key-Prüfung), die kid-Nutzung der Einsendungen mit Zählern (begrenzt, `complete=false` bei Überschreitung) sowie Formular- und Verbindungsnamen. Keine Geheimnisse, keine Public-Key-Bytes. Code: `FormMigration/KeyInventory.swift`, `SetupMigrationRoutes.swift`. Vertrag: `p5-implementiert.openapi.yaml`.
+- PWA: Formulare, Kunden-UUID, Namespace (`legacy-<db>`), Schema/Snapshot, Verbindungen, Schlüssel und lückenlose Generationen werden automatisch gefüllt; nur der Kundenname ist Eingabe. Bei mehreren Kunden gibt es Auswahlfelder mit Vorbelegung. Warnung bei kids ohne Altbestand. Am Ende steht eine Zusammenfassung; der Start ist erst bei vollständigem Plan möglich. Das JSON unter „Erweitert“ bleibt als Überschreibung.
+- Importer unverändert: Eine fehlende Generation bricht weiterhin den Lauf ab (Begründung in ADR 0040).
+- Geprüft: Swift-Gesamtlauf gegen Wegwerf-MariaDB 456 Tests, 5 übersprungen, 0 Fehler (neu: `SetupMigrationKeyTests` 3/3); `validate.py` grün; svelte-check 0, eslint und prettier sauber, vitest 436, Playwright 191 bestanden / 9 übersprungen (Screenshots). Nicht mit echter Quelle geprüft; unabhängiges Review steht aus.
+
 ## DB-Pool-Deadlock bei Umstieg und Hintergrunddiensten (11.11.2026, Worktree-Branch `worktree-agent-aa30f66e51e219486`, lokal committet, ungemergt)
 
 - Belegt in `backend/Tests/FormAdminTests/MigrationPoolTests.swift`: Bei 4 Verbindungen je Event-Loop blockierten sich die Lock-haltenden Dienste (Mail, Auth, Flow, Webhooks) und der Umstiegsjob gegenseitig. Alle bekamen nach 10 s `ConnectionPoolTimeoutError`, wie im Produktionslog. Der Job hielt 3 Verbindungen gleichzeitig und scheiterte mit 2 je Loop selbst (`migration_failed`).

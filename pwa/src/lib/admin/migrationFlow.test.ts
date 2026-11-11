@@ -8,6 +8,16 @@ import {
   mappingIssues,
   reachedStep,
   reportRows,
+  assignConnections,
+  assignForms,
+  assignKeys,
+  buildPlan,
+  generationNumbers,
+  keyWarnings,
+  sourceConnections,
+  sourceForms,
+  suggestNamespace,
+  type SourceKey,
 } from './migrationFlow';
 
 describe('reachedStep', () => {
@@ -31,30 +41,274 @@ describe('canAdvance', () => {
     expect(canAdvance(4, 4)).toBe(false);
   });
 });
-describe('mappingIssues', () => {
-  const ok = {
-    customer: '11111111-1111-4111-8111-111111111111',
-    name: 'Kunde',
-    forms: '22222222-2222-4222-8222-222222222222\n33333333-3333-4333-8333-333333333333',
-    namespace: 'alt',
-    snapshot: 'a'.repeat(64),
-    expectedSchema: 'b'.repeat(64),
-  };
-  it('meldet nichts bei vollständigen Angaben', () => {
-    expect(mappingIssues(ok)).toEqual([]);
+const A = '11111111-1111-4111-8111-111111111111';
+const B = '44444444-4444-4444-8444-444444444444';
+const F1 = '22222222-2222-4222-8222-222222222222';
+const F2 = '33333333-3333-4333-8333-333333333333';
+const C1 = '55555555-5555-4555-8555-555555555555';
+const key = (kid: string, status: string, createdAt: number, publicKeyValid = true): SourceKey => ({
+  kid,
+  status,
+  createdAt,
+  publicKeyValid,
+});
+const use = (kid: string, submissions: number, formIds: string[], inKeyStore = true) => ({
+  kid,
+  submissions,
+  inKeyStore,
+  formIds,
+  formIdsComplete: true,
+});
+const one = [{ id: A, name: 'Kunde A' }];
+const two = [...one, { id: B, name: 'Kunde B' }];
+
+describe('Plan aus der Quellprüfung', () => {
+  const keys = [
+    key('aaaaaaaaaaaaaaaa', 'aktiv', 300),
+    key('bbbbbbbbbbbbbbbb', 'auslaufend', 100),
+    key('cccccccccccccccc', 'auslaufend', 100),
+  ];
+  const plan = (extra = '{}', customers = one) =>
+    buildPlan({
+      namespace: 'legacy-alt',
+      snapshot: 'a'.repeat(64),
+      customers,
+      formCustomers: assignForms([F1, F2], customers, {}),
+      connectionCustomers: assignConnections(
+        [{ id: C1, kind: 'smtp', name: null }],
+        [],
+        {},
+        customers,
+        {},
+      ),
+      keys,
+      keyCustomers: assignKeys(keys, [], {}, customers, {}),
+      extra,
+    });
+  const issues = (
+    p: ReturnType<typeof plan>,
+    extra: Partial<Parameters<typeof mappingIssues>[0]> = {},
+  ) =>
+    mappingIssues({
+      ...p,
+      formIds: [F1, F2],
+      connectionIds: [C1],
+      keys,
+      expectedSchema: 'b'.repeat(64),
+      sourceChanged: false,
+      ...extra,
+    });
+
+  it('ein Kunde: Formulare, Verbindungen und Schlüssel automatisch, Nummern lückenlos', () => {
+    const { plan: p, extraValid } = plan();
+    expect(extraValid).toBe(true);
+    expect(p.formCustomers).toEqual({ [F1]: A, [F2]: A });
+    expect(p.connectionCustomers).toEqual({ [C1]: [A] });
+    expect(p.keyCustomers).toEqual({
+      aaaaaaaaaaaaaaaa: A,
+      bbbbbbbbbbbbbbbb: A,
+      cccccccccccccccc: A,
+    });
+    // Auslaufend zuerst, älteste zuerst, Gleichstand nach kid; aktiv erhält die höchste Nummer.
+    expect(p.keyGenerationNumbers).toEqual({
+      bbbbbbbbbbbbbbbb: 1,
+      cccccccccccccccc: 2,
+      aaaaaaaaaaaaaaaa: 3,
+    });
+    expect(issues({ plan: p, extraValid })).toEqual([]);
   });
-  it('benennt jede fehlende oder fehlerhafte Angabe', () => {
+
+  it('aktiv bleibt höchste Nummer, auch wenn es älter ist', () => {
+    const numbers = generationNumbers(
+      [key('aaaaaaaaaaaaaaaa', 'aktiv', 50), key('bbbbbbbbbbbbbbbb', 'auslaufend', 900)],
+      { aaaaaaaaaaaaaaaa: A, bbbbbbbbbbbbbbbb: A },
+    );
+    expect(numbers).toEqual({ bbbbbbbbbbbbbbbb: 1, aaaaaaaaaaaaaaaa: 2 });
+  });
+
+  it('nicht übernehmbare Schlüssel werden nicht zugeordnet und nicht nummeriert', () => {
+    const list = [
+      key('aaaaaaaaaaaaaaaa', 'aktiv', 1),
+      key('dddddddddddddddd', 'andere', 2),
+      key('eeeeeeeeeeeeeeee', 'auslaufend', 3, false),
+    ];
+    const assigned = assignKeys(list, [], {}, one, {});
+    expect(assigned).toEqual({ aaaaaaaaaaaaaaaa: A });
+    expect(generationNumbers(list, { ...assigned, dddddddddddddddd: A })).toEqual({
+      aaaaaaaaaaaaaaaa: 1,
+    });
+    expect(
+      keyWarnings(list, [], { keyCustomers: assigned, formCustomers: {} }).skipped,
+    ).toHaveLength(2);
+  });
+
+  it('mehrere Kunden: Vorbelegung aus den Formularen der Einsendungen, sonst offen', () => {
+    const forms = { [F1]: A, [F2]: B };
+    const usage = [use('aaaaaaaaaaaaaaaa', 3, [F1]), use('bbbbbbbbbbbbbbbb', 1, [F1, F2])];
+    const assigned = assignKeys(keys, usage, forms, two, {});
+    expect(assigned).toEqual({ aaaaaaaaaaaaaaaa: A });
+    // Unvollständige Formularliste: keine Ableitung.
+    expect(assignKeys(keys, [{ ...usage[0]!, formIdsComplete: false }], forms, two, {})).toEqual(
+      {},
+    );
+    // Nutzerwahl gewinnt, unbekannte Kunden werden ignoriert.
+    expect(
+      assignKeys(keys, usage, forms, two, {
+        bbbbbbbbbbbbbbbb: B,
+        cccccccccccccccc: 'unbekannt',
+      }),
+    ).toEqual({ aaaaaaaaaaaaaaaa: A, bbbbbbbbbbbbbbbb: B });
+    const p = plan('{}', two);
+    expect(issues(p)).toContain('keys');
+  });
+
+  it('Formulare und Verbindungen bei mehreren Kunden', () => {
+    expect(assignForms([F1, F2], two, { [F2]: B })).toEqual({ [F1]: A, [F2]: B });
+    const conns = [
+      { id: C1, kind: 'smtp', name: 'Versand' },
+      { id: F2, kind: 'mail-proxy', name: null },
+    ];
+    const forms = [{ id: F1, name: 'Kontakt', connectionIds: [C1] }];
+    // C1 vom Formular des Kunden A referenziert, die zweite Verbindung von keinem: offen.
+    expect(assignConnections(conns, forms, { [F1]: A }, two, {})).toEqual({ [C1]: [A] });
+    expect(assignConnections(conns, forms, { [F1]: A }, two, { [F2]: B })).toEqual({
+      [C1]: [A],
+      [F2]: [B],
+    });
+  });
+
+  it('höchstens eine aktive Generation je Kunde', () => {
+    const list = [key('aaaaaaaaaaaaaaaa', 'aktiv', 1), key('ffffffffffffffff', 'aktiv', 2)];
+    const p = buildPlan({
+      namespace: 'n',
+      snapshot: 'a'.repeat(64),
+      customers: one,
+      formCustomers: { [F1]: A },
+      connectionCustomers: {},
+      keys: list,
+      keyCustomers: assignKeys(list, [], {}, one, {}),
+      extra: '',
+    });
     expect(
       mappingIssues({
-        customer: 'x',
-        name: ' ',
-        forms: 'nope',
-        namespace: '',
-        snapshot: 'abc',
-        expectedSchema: '',
+        ...p,
+        formIds: [F1],
+        connectionIds: [],
+        keys: list,
+        expectedSchema: 'b'.repeat(64),
+        sourceChanged: false,
       }),
-    ).toEqual(['customer', 'name', 'forms', 'namespace', 'snapshot', 'schema']);
-    expect(mappingIssues({ ...ok, forms: '' })).toEqual(['forms']);
+    ).toEqual(['activeKeys']);
+  });
+
+  it('manuelles JSON wird je Eintrag zusammengeführt, Nutzerwerte gewinnen', () => {
+    const { plan: p } = plan(
+      JSON.stringify({
+        keyCustomers: { cccccccccccccccc: B },
+        keyGenerationNumbers: { aaaaaaaaaaaaaaaa: 7 },
+        customers: { [B]: 'Kunde B' },
+        statisticsReview: 'bericht-1',
+      }),
+    );
+    expect(p.keyCustomers.cccccccccccccccc).toBe(B);
+    expect(p.keyCustomers.bbbbbbbbbbbbbbbb).toBe(A);
+    // Nummern folgen der zusammengeführten Zuordnung, explizite Nummern gewinnen.
+    expect(p.keyGenerationNumbers).toEqual({
+      bbbbbbbbbbbbbbbb: 1,
+      aaaaaaaaaaaaaaaa: 7,
+      cccccccccccccccc: 1,
+    });
+    expect(p.customers).toEqual({ [A]: 'Kunde A', [B]: 'Kunde B' });
+    expect(p.statisticsReview).toBe('bericht-1');
+    expect(p.formCustomers).toEqual({ [F1]: A, [F2]: A });
+  });
+
+  it('benennt fehlende Angaben und ungültiges JSON', () => {
+    const broken = plan('{kein json');
+    expect(broken.extraValid).toBe(false);
+    expect(issues(broken)).toEqual(['extra']);
+    const empty = buildPlan({
+      namespace: '',
+      snapshot: 'abc',
+      customers: [{ id: 'x', name: ' ' }],
+      formCustomers: {},
+      connectionCustomers: {},
+      keys: [],
+      keyCustomers: {},
+      extra: '[]',
+    });
+    expect(
+      mappingIssues({
+        ...empty,
+        formIds: [F1],
+        connectionIds: [C1],
+        keys,
+        expectedSchema: '',
+        sourceChanged: true,
+      }),
+    ).toEqual([
+      'source',
+      'customer',
+      'name',
+      'forms',
+      'namespace',
+      'snapshot',
+      'schema',
+      'connections',
+      'keys',
+      'extra',
+    ]);
+  });
+});
+
+describe('Warnungen zu Schlüsseln der Einsendungen', () => {
+  const keys = [key('aaaaaaaaaaaaaaaa', 'aktiv', 1), key('dddddddddddddddd', 'andere', 2)];
+  it('fehlende, nicht übernehmbare und fremde kids mit Zählern', () => {
+    const usage = [
+      use('aaaaaaaaaaaaaaaa', 4, [F1, F2]),
+      use('9999999999999999', 2, [F1], false),
+      use('dddddddddddddddd', 1, [F1]),
+    ];
+    const w = keyWarnings(keys, usage, {
+      keyCustomers: { aaaaaaaaaaaaaaaa: A },
+      formCustomers: { [F1]: A, [F2]: B },
+    });
+    expect(w.missing.map((u) => u.kid)).toEqual(['9999999999999999']);
+    expect(w.unusable.map((u) => u.kid)).toEqual(['dddddddddddddddd']);
+    expect(w.foreign.map((u) => u.kid)).toEqual(['aaaaaaaaaaaaaaaa']);
+    expect(w.affectedSubmissions).toBe(7);
+  });
+  it('ohne Probleme keine Warnung', () => {
+    const w = keyWarnings(keys, [use('aaaaaaaaaaaaaaaa', 4, [F1])], {
+      keyCustomers: { aaaaaaaaaaaaaaaa: A },
+      formCustomers: { [F1]: A },
+    });
+    expect(w.affectedSubmissions).toBe(0);
+  });
+});
+
+describe('Quellnamespace', () => {
+  it('stabil aus dem Datenbanknamen, nur erlaubte Zeichen, höchstens 64', () => {
+    expect(suggestNamespace('db.example', 'kubus_alt')).toBe('legacy-kubus_alt');
+    expect(suggestNamespace('db.example', 'kubus_alt')).toBe(suggestNamespace('x', 'kubus_alt'));
+    expect(suggestNamespace('db.example', 'mit Leer zeichen/ä')).toBe('legacy-mit-Leer-zeichen');
+    expect(suggestNamespace('10.0.0.5', '  ')).toBe('legacy-10.0.0.5');
+    expect(suggestNamespace('', '')).toBe('');
+    expect(suggestNamespace('h', 'x'.repeat(100))).toHaveLength(64);
+  });
+  it('Formulare und Verbindungen der Quelle mit Namen, ältere Antworten ohne Namen', () => {
+    const inventory = {
+      schemaHMAC: '',
+      formIds: [F1, F2],
+      counts: {},
+      forms: [{ id: F1, name: 'Kontakt' }],
+      connectionIds: [C1],
+    };
+    expect(sourceForms(inventory)).toEqual([
+      { id: F1, name: 'Kontakt' },
+      { id: F2, name: null },
+    ]);
+    expect(sourceConnections(inventory)).toEqual([{ id: C1, kind: '', name: null }]);
   });
 });
 describe('Berichtszeilen', () => {

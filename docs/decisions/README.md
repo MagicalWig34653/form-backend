@@ -21,3 +21,4 @@ Eine Agent-Empfehlung wird nicht allein durch Ablage zum Nutzerbeschluss.
 - [ADR 0037: Passkey-Step-up auf der Seite](0037-passkey-step-up.md) — `auth/reauth/{options,verify}`, Frische ohne Neuanmeldung, Lesen von Umstiegsstatus/Einstellungen ohne Frische.
 - [ADR 0038: Übernahme des Alt-Kundenschlüssels im Browser](0038-altschluessel-uebernahme.md) — privater X25519-Altschlüssel oder importierte Alt-Recovery-Hülle, Selbstzugang ohne neuen Endpunkt.
 - [ADR 0039: HTML-E-Mail-Builder im Mail-Reiter](0039-html-mail-builder.md) — MJML-Bausteine, Rich-Text, Quelltext; Speicherformat des Altsystems.
+- [ADR 0040: Umstiegsplan automatisch aus der Quellprüfung](0040-umstieg-plan-automatisch.md) — Schlüssel-/kid-Metadaten, Formular- und Verbindungsnamen; Formulare, Kunden, Namespace, Verbindungen, Schlüssel und Generationen ohne Handeingabe.

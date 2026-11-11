@@ -19,6 +19,23 @@ public enum SetupMigrationRoutes {
         do { _ = try JCS.parse(Data(buffer: buffer)) } catch { throw Abort(.badRequest) }
         return try FormAdmin.decodeStrict(req, allowed: allowed)
     }
+    /// Display labels by lowercased UUID, read only when the column exists. Values are trimmed, limited to 200 characters
+    /// and must be valid UTF-8 without control characters; anything else is left out (never guessed).
+    static func labels(_ source: SQLDatabase, table: String, idColumn: String, labelColumn: String, limit: Int) async throws -> [String: String] {
+        struct C: Decodable { let n: Int }
+        let present = try await source.raw("SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=\(bind: table) AND COLUMN_NAME IN (\(bind: idColumn), \(bind: labelColumn))").first(decoding: C.self)?.n ?? 0
+        guard present == 2 else { return [:] }
+        struct L: Decodable { let id: String; let label: String? }
+        let rows = try await source.raw("SELECT CAST(\(ident: idColumn) AS CHAR) AS id, CAST(\(ident: labelColumn) AS CHAR) AS label FROM \(ident: table) ORDER BY ID LIMIT \(unsafeRaw: String(limit))").all(decoding: L.self)
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let id = UUID(uuidString: row.id)?.uuidString.lowercased(), let raw = row.label else { continue }
+            let label = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, !label.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { continue }
+            result[id] = String(label.prefix(200))
+        }
+        return result
+    }
     public static func register(_ app: Application, guardian: AuthGuard, secrets: SecretStore, allowInsecure: Bool = false, startWorker: Bool = true) {
         guard guardian.config.listener == "internal" else { return }
         let service = MigrationService(app: app, secrets: secrets, allowInsecure: allowInsecure)
@@ -65,12 +82,31 @@ public enum SetupMigrationRoutes {
                 }
                 // Mail connections the plan must assign to customers (connectionCustomers); ids only, never credentials.
                 var connectionIds: [String] = []
+                var connections: [[String: Any]] = []
                 for table in ["outgoingMailServer", "outgoingMailProxy"] {
                     let rows = try await source.raw("SELECT CAST(UUID AS CHAR) AS id FROM \(ident: table) ORDER BY ID LIMIT 101").all(decoding: F.self)
                     guard rows.count <= 100, rows.allSatisfy({ UUID(uuidString: $0.id) != nil }) else { throw Abort(.unprocessableEntity) }
                     connectionIds += rows.map { $0.id.lowercased() }
+                    // Display name only (ADR 0040); host, user, password, proxy URL and auth stay in the source.
+                    let names = try await Self.labels(source, table: table, idColumn: "UUID", labelColumn: "name", limit: 100)
+                    connections += rows.map { ["id": $0.id.lowercased(), "kind": table == "outgoingMailServer" ? "smtp" : "mail-proxy", "name": names[$0.id.lowercased()].map { $0 as Any } ?? NSNull()] }
                 }
-                return ["schemaHMAC": hmac, "readOnly": true, "formIds": forms.map { $0.id.lowercased() }, "connectionIds": connectionIds, "counts": counts]
+                // Form display names and the referenced mail connections (only values that are UUIDs of a listed connection).
+                let formNames = try await Self.labels(source, table: "formulare", idColumn: "UUID", labelColumn: "name", limit: 1000)
+                let known = Set(connectionIds)
+                var formConnections: [String: [String]] = [:]
+                for column in ["outgoingProductionServer", "outgoingTestingServer"] {
+                    for (id, value) in try await Self.labels(source, table: "formulare", idColumn: "UUID", labelColumn: column, limit: 1000) {
+                        if let ref = UUID(uuidString: value)?.uuidString.lowercased(), known.contains(ref), !(formConnections[id] ?? []).contains(ref) { formConnections[id, default: []].append(ref) }
+                    }
+                }
+                let formItems: [[String: Any]] = forms.map { form in
+                    let id = form.id.lowercased()
+                    return ["id": id, "name": formNames[id].map { $0 as Any } ?? NSNull(), "connectionIds": (formConnections[id] ?? []).sorted()]
+                }
+                let keys = try await LegacyKeyInventory.scan(source)
+                return (["schemaHMAC": hmac, "readOnly": true, "formIds": forms.map { $0.id.lowercased() }, "connectionIds": connectionIds, "counts": counts,
+                         "forms": formItems, "connections": connections] as [String: Any]).merging(keys.json) { current, _ in current }
             }
             try await service.audit(sql, actor: actor, action: "migration.source.test")
             return try response(inventory)

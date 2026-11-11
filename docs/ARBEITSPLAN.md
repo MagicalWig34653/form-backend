@@ -1,5 +1,9 @@
 # Arbeitsplan
 
+## Umstieg: Plan automatisch (11.11.2026, Todolino 1EA2CCBB)
+
+Umgesetzt im Worktree-Branch `worktree-agent-a0c0903c0d8bc9dce` (ADR 0040, `docs/handoffs/Umstieg-Plan-automatisch.md`). Nächste Schritte: unabhängiges Review, Merge, Image-Update und danach den Prüflauf mit der echten Quelle wiederholen. Zeigt die Schlüsselliste eine Warnung „nicht im Altbestand“, muss das vor dem Import im Altsystem geklärt werden. Offen als eigene Entscheidung: wie Einsendungen ohne vorhandene Schlüsselgeneration behandelt werden (heute bricht der Lauf ab) und die Zielnummern bei vorhandenen Zielkunden.
+
 ## HTML-E-Mail-Builder (11.11.2026)
 
 Umgesetzt im Worktree-Branch `worktree-agent-aafdd4bb248d0ad0a` (siehe `docs/handoffs/Mail-Builder.md`). Nächste Schritte: unabhängiges Review (Sanitizer, URL-Regeln, Moduswechsel), Merge, Testversand einer Design-Mail an Outlook und Gmail. Später optional: Bild-Upload, Vorlagenbibliothek, Vorschau externer Bilder (`img-src https:` in der CSP).

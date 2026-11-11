@@ -42,19 +42,30 @@ it('führt je Schritt ein Panel, übernimmt Prüfwerte und startet den Prüflauf
 
   await fireEvent.click(next());
   await screen.findByRole('heading', { name: 'Zuordnung' });
-  expect((screen.getByLabelText('Formular-UUIDs dieses Kunden') as HTMLTextAreaElement).value).toBe(
-    formId,
-  );
+  // Formulare, Namespace und Schema-HMAC kommen ohne Eingabe aus der Quellprüfung.
+  expect(screen.getByTestId('migration-forms').textContent).toContain(formId);
+  expect(
+    (screen.getByLabelText('Quellnamespace', { exact: false }) as HTMLInputElement).value,
+  ).toBe('legacy-alt');
   expect((screen.getByLabelText('Erwarteter Schema-HMAC') as HTMLInputElement).value).toBe(
     'c'.repeat(64),
   );
-  // Ohne Namen und Namespace ist der Start gesperrt und der Grund genannt.
+  // Nur der Kundenname fehlt; der Start ist gesperrt und der Grund genannt.
   const start = screen.getByRole('button', { name: 'Prüflauf starten' }) as HTMLButtonElement;
   expect(start.disabled).toBe(true);
-  expect(screen.getByText(/Noch offen: Kundenname, Quellnamespace/)).toBeTruthy();
+  expect(screen.getByText(/Noch offen: Kundenname\./)).toBeTruthy();
   await type('Kundenname', 'Kunde');
-  await type('Quellnamespace', 'alt');
   expect(start.disabled).toBe(false);
+  // Geänderte Verbindungsangaben verlangen eine neue Prüfung.
+  await fireEvent.click(back());
+  await screen.findByRole('heading', { name: 'Quelle prüfen' });
+  await type('Datenbank', 'andere');
+  await fireEvent.click(next());
+  await screen.findByRole('heading', { name: 'Zuordnung' });
+  expect(screen.getByText(/Noch offen: erneute Quellprüfung/)).toBeTruthy();
+  expect(
+    (screen.getByRole('button', { name: 'Prüflauf starten' }) as HTMLButtonElement).disabled,
+  ).toBe(true);
   await fireEvent.click(back());
   await screen.findByRole('heading', { name: 'Quelle prüfen' });
 });
@@ -80,4 +91,41 @@ it('springt bei einem laufenden Import selbst in den Import-Schritt', async () =
   expect(screen.getByText('Schritt 3 von 5')).toBeTruthy();
   expect((screen.getByRole('button', { name: 'Weiter' }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('button', { name: 'Sicher pausieren' })).toBeTruthy();
+});
+
+it('verlangt bei mehreren Kunden eine Kundenwahl je nicht ableitbarem Schlüssel', async () => {
+  const kid = 'aaaaaaaaaaaaaaaa';
+  request.mockImplementation(async (method, path) => {
+    if (method === 'GET') return { ok: true, data: { items: [] } };
+    if (path === '/migration/test')
+      return {
+        ok: true,
+        data: {
+          schemaHMAC: 'c'.repeat(64),
+          formIds: [formId],
+          counts: {},
+          keys: [{ kid, status: 'aktiv', createdAt: 1700000000, publicKeyValid: true }],
+          keyUsage: { complete: true, scannedSubmissions: 0, items: [] },
+        },
+      };
+    return { ok: true, data: {} };
+  });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Quelle prüfen' });
+  await type('Host', 'db.example');
+  await type('Datenbank', 'alt');
+  await type('Benutzer', 'lesen');
+  await fireEvent.click(screen.getByRole('button', { name: 'Verbindung prüfen' }));
+  await screen.findByText('Prüfbericht der Quelle');
+  await fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  await screen.findByRole('heading', { name: 'Zuordnung' });
+  await fireEvent.click(screen.getByRole('button', { name: 'Weiteren Kunden hinzufügen' }));
+  await type('Kundenname (Kunde 1)', 'A');
+  await type('Kundenname (Kunde 2)', 'B');
+  const start = screen.getByRole('button', { name: 'Prüflauf starten' }) as HTMLButtonElement;
+  expect(start.disabled).toBe(true);
+  expect(screen.getByText(/Noch offen: Kunde je Schlüssel/)).toBeTruthy();
+  const select = screen.getByLabelText(`Kunde für kid ${kid}`) as HTMLSelectElement;
+  await fireEvent.change(select, { target: { value: select.options[2]!.value } });
+  await waitFor(() => expect(start.disabled).toBe(false));
 });

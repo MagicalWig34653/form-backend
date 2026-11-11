@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatClock } from '$lib/format';
+  import { formatClock, formatDay } from '$lib/format';
   import { confirmAction } from '$lib/confirm.svelte';
   import { verifyMigrationProbe } from '$lib/crypto/migrationProbe';
   import { parseLegacyPrivateKey } from '$lib/crypto/legacyAdoption';
@@ -7,19 +7,30 @@
   import { onMount } from 'svelte';
   import { http, adminApi } from '$lib/api';
   import type { Tenant } from '$lib/api/admin';
-  import { createImportPlan, migrationStates } from '$lib/setup';
+  import { migrationStates } from '$lib/setup';
   import { reauthenticate, stepUp } from '$lib/admin/guard.svelte';
   import { needsFreshLogin } from '$lib/admin/describe';
   import {
     MIGRATION_STEPS,
+    assignConnections,
+    assignForms,
+    assignKeys,
+    buildPlan,
     canAdvance,
     countRows,
     describeJobError,
     isSha256,
+    keyImportable,
+    keyWarnings,
     mappingIssues,
     landingStep,
     reachedStep,
     reportRows,
+    sourceConnections,
+    sourceForms,
+    suggestNamespace,
+    type PlanCustomer,
+    type SourceInventory,
   } from '$lib/admin/migrationFlow';
   import { t } from '$lib/i18n';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
@@ -53,13 +64,16 @@
     password = $state(''),
     tls = $state('verify');
   let tenants = $state<Tenant[]>([]);
-  let inventory = $state<{ formIds: string[]; counts: Record<string, number> }>();
-  let assignments = $state<{ customer: string; name: string; forms: string }[]>([]);
-  let customer = $state(''),
-    name = $state(''),
-    forms = $state(''),
-    namespace = $state(''),
-    snapshot = $state('');
+  let inventory = $state<SourceInventory>();
+  // Plan state: customers are the only manual input; everything else is derived from the source check.
+  let customers = $state<PlanCustomer[]>([]);
+  let formChoice = $state<Record<string, string>>({}),
+    connectionChoice = $state<Record<string, string>>({}),
+    keyChoice = $state<Record<string, string>>({});
+  let namespace = $state(''),
+    suggestedNamespace = '',
+    snapshot = $state(''),
+    checkedSource = $state('');
   let expectedSchema = $state(''),
     checkedSchema = $state(''),
     extra = $state('{}');
@@ -111,11 +125,59 @@
     if (prevReached === -1 || (now > prevReached && now >= 2)) step = now;
     prevReached = now;
   });
-  const issues = $derived(
-    mappingIssues({ customer, name, forms, namespace, snapshot, expectedSchema }),
-  );
-  const importJob = $derived(jobs.find((job) => job.state === 'review' && !job.dryRun));
   const source = () => ({ host, port, database, username, password, tls });
+  /** Connection identity without the password: a change after the check invalidates the plan. */
+  const sourceKey = () => JSON.stringify([host, port, database, username, tls]);
+  const sourceChanged = $derived(!!checkedSource && sourceKey() !== checkedSource);
+  const forms = $derived(sourceForms(inventory));
+  const connections = $derived(sourceConnections(inventory));
+  const keys = $derived(inventory?.keys ?? []);
+  const usage = $derived(inventory?.keyUsage?.items ?? []);
+  const formCustomers = $derived(
+    assignForms(
+      forms.map((form) => form.id),
+      customers,
+      formChoice,
+    ),
+  );
+  const built = $derived(
+    buildPlan({
+      namespace,
+      snapshot,
+      customers,
+      formCustomers,
+      connectionCustomers: assignConnections(
+        connections,
+        forms,
+        formCustomers,
+        customers,
+        connectionChoice,
+      ),
+      keys,
+      keyCustomers: assignKeys(keys, usage, formCustomers, customers, keyChoice),
+      extra,
+    }),
+  );
+  const issues = $derived(
+    mappingIssues({
+      ...built,
+      formIds: forms.map((form) => form.id),
+      connectionIds: connections.map((c) => c.id),
+      keys,
+      expectedSchema,
+      sourceChanged,
+    }),
+  );
+  const warnings = $derived(keyWarnings(keys, usage, built.plan));
+  const usageOf = (kid: string) => usage.find((u) => u.kid === kid)?.submissions ?? 0;
+  const customerName = (id: string | undefined) => {
+    const index = customers.findIndex((c) => c.id === id);
+    return index < 0
+      ? ''
+      : customers[index]!.name.trim() || f.mapping.customerN.replace('{n}', String(index + 1));
+  };
+  const label = (name: string | null) => name ?? f.mapping.unnamed;
+  const importJob = $derived(jobs.find((job) => job.state === 'review' && !job.dryRun));
   const goBack = () => (step = Math.max(0, step - 1));
   const goNext = () => {
     if (canAdvance(step, reached)) step += 1;
@@ -124,6 +186,7 @@
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
+    unprocessable?: string,
   ): Promise<T | undefined> {
     const r = await http.request<T>(method, path, { body });
     if (r.ok) return r.data;
@@ -136,7 +199,9 @@
         ? f.noRight
         : r.error.status === 422 && r.error.detail
           ? r.error.detail
-          : f.connection;
+          : r.error.status === 422 && unprocessable
+            ? unprocessable
+            : f.connection;
   }
   async function load() {
     if (!tenants.length) {
@@ -164,79 +229,55 @@
       probe = undefined;
     };
   });
-  /** Fills the plan from the source inventory so a single-customer migration needs no hand-typed ids. */
-  async function prefill(r: {
-    schemaHMAC: string;
-    formIds: string[];
-    connectionIds?: string[];
-    counts: Record<string, number>;
-  }) {
-    if (!customer) customer = crypto.randomUUID();
-    if (!forms) forms = r.formIds.join('\n');
-    if (!expectedSchema) expectedSchema = r.schemaHMAC;
-    if (!snapshot) {
-      const bytes = new TextEncoder().encode(
-        JSON.stringify({ s: r.schemaHMAC, c: r.counts, f: r.formIds }),
-      );
-      const digest = await crypto.subtle.digest('SHA-256', bytes);
-      snapshot = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    }
-    if ((!extra || extra.trim() === '{}') && r.connectionIds?.length)
-      extra = JSON.stringify({
-        connectionCustomers: Object.fromEntries(r.connectionIds.map((id) => [id, [customer]])),
-      });
+  /**
+   * Takes everything derivable from the source check, on every check: schema HMAC, snapshot id
+   * and namespace proposal (the namespace only while the user kept the previous proposal). The
+   * first customer gets a fresh id; names stay manual because the old system has none.
+   */
+  async function prefill(r: SourceInventory) {
+    if (!customers.length) customers = [{ id: crypto.randomUUID(), name: '' }];
+    expectedSchema = r.schemaHMAC;
+    const bytes = new TextEncoder().encode(
+      JSON.stringify({ s: r.schemaHMAC, c: r.counts, f: r.formIds }),
+    );
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    snapshot = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const proposal = suggestNamespace(host, database);
+    if (!namespace.trim() || namespace === suggestedNamespace) namespace = proposal;
+    suggestedNamespace = proposal;
   }
   async function test() {
     busy = true;
     error = '';
     checkedSchema = '';
-    const r = await request<{
-      schemaHMAC: string;
-      formIds: string[];
-      connectionIds?: string[];
-      counts: Record<string, number>;
-    }>('POST', '/migration/test', source());
+    const r = await request<SourceInventory>('POST', '/migration/test', source());
     if (r) {
       checkedSchema = r.schemaHMAC;
+      checkedSource = sourceKey();
       inventory = r;
       await prefill(r);
     }
     busy = false;
   }
   async function start() {
+    if (issues.length) return;
     busy = true;
     error = '';
-    try {
-      const base = createImportPlan(customer, name, forms, namespace, snapshot);
-      for (const mapping of assignments) {
-        const next = createImportPlan(
-          mapping.customer,
-          mapping.name,
-          mapping.forms,
-          namespace,
-          snapshot,
-        );
-        if (Object.keys(next.formCustomers).some((id) => id in base.formCustomers))
-          throw new Error('duplicate');
-        Object.assign(base.customers, next.customers);
-        Object.assign(base.formCustomers, next.formCustomers);
-      }
-      const plan = {
-        ...base,
-        ...JSON.parse(extra),
-      };
-      await request('POST', '/migration/jobs', {
-        source: source(),
-        plan,
-        expectedSchema,
-        dryRun: true,
-      });
-      password = '';
-      await load();
-    } catch {
-      error = f.planInvalid;
-    }
+    const created = await request(
+      'POST',
+      '/migration/jobs',
+      { source: source(), plan: built.plan, expectedSchema, dryRun: true },
+      f.mapping.startRejected,
+    );
+    if (created) password = '';
+    await load();
     busy = false;
+  }
+  function setCustomer(index: number, tenantId: string) {
+    const selected = tenants.find((tenant) => tenant.id === tenantId);
+    customers[index] = selected
+      ? { id: selected.id, name: selected.name }
+      : { id: crypto.randomUUID(), name: '' };
   }
   async function action(id: string, action: string) {
     error = '';
@@ -469,67 +510,299 @@
   {:else if step === 1}
     <Panel title={f.mapping.title} description={f.mapping.description}>
       <form
+        class="flex min-w-0 flex-col gap-6"
         onsubmit={(e) => {
           e.preventDefault();
-          if (!issues.length) void start();
+          void start();
         }}
       >
         {#if inventory}
-          <p class="text-muted-foreground m-0 mb-4 text-sm">
+          <p class="text-muted-foreground m-0 text-sm">
             <StatusChip tone="ok" label={f.mapping.adopted} />
-            {f.source.forms}: {inventory.formIds.length}
+            {f.source.forms}: {forms.length}
           </p>
         {:else}
-          <p class="text-muted-foreground m-0 mb-4 text-sm">{f.mapping.adoptedNone}</p>
+          <Banner tone="info">{f.mapping.adoptedNone}</Banner>
         {/if}
-        <fieldset disabled={busy} class="m-0 grid min-w-0 gap-4 border-0 p-0 sm:grid-cols-2">
-          <div class="sm:col-span-2">
-            <Row id="mig-existing" label={f.mapping.existing}>
-              <Select
-                id="mig-existing"
-                onchange={(e) => {
-                  const selected = tenants.find((t) => t.id === e.currentTarget.value);
-                  if (selected) {
-                    customer = selected.id;
-                    name = selected.name;
-                  }
-                }}
+        {#if sourceChanged}<Banner tone="warn">{f.mapping.sourceChanged}</Banner>{/if}
+        <fieldset disabled={busy} class="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
+          <section class="flex min-w-0 flex-col gap-3" aria-labelledby="mig-customers-title">
+            <h3 id="mig-customers-title" class="m-0 text-base font-semibold">
+              {f.mapping.customersTitle}
+            </h3>
+            {#each customers as entry, index (index)}
+              {@const suffix =
+                customers.length > 1
+                  ? ` (${f.mapping.customerN.replace('{n}', String(index + 1))})`
+                  : ''}
+              <div class="grid min-w-0 gap-4 rounded-lg border p-3 sm:grid-cols-2">
+                <Row id={`mig-existing-${index}`} label={f.mapping.existing + suffix}>
+                  <Select
+                    id={`mig-existing-${index}`}
+                    value={tenants.some((tenant) => tenant.id === entry.id) ? entry.id : ''}
+                    onchange={(e) => setCustomer(index, e.currentTarget.value)}
+                  >
+                    <option value="">{f.mapping.newCustomer}</option>
+                    {#each tenants as tenant (tenant.id)}<option value={tenant.id}
+                        >{tenant.name}</option
+                      >{/each}
+                  </Select>
+                </Row>
+                <Row
+                  id={`mig-name-${index}`}
+                  label={f.mapping.name + suffix}
+                  hint={index === 0 ? f.mapping.nameHint : undefined}
+                >
+                  <Input id={`mig-name-${index}`} bind:value={entry.name} required />
+                </Row>
+                {#if index > 0}
+                  <div class="sm:col-span-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onclick={() => (customers = customers.filter((_, i) => i !== index))}
+                      >{f.mapping.removeCustomer.replace('{n}', String(index + 1))}</Button
+                    >
+                  </div>
+                {/if}
+              </div>
+            {/each}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                onclick={() => (customers = [...customers, { id: crypto.randomUUID(), name: '' }])}
+                >{f.mapping.addCustomer}</Button
               >
-                <option value="">{f.mapping.newCustomer}</option>
-                {#each tenants as tenant (tenant.id)}<option value={tenant.id}>{tenant.name}</option
-                  >{/each}
-              </Select>
-            </Row>
-          </div>
-          <Row id="mig-name" label={f.mapping.name}>
-            <Input id="mig-name" bind:value={name} required />
-          </Row>
+            </div>
+          </section>
+
           <Row id="mig-namespace" label={f.mapping.namespace} hint={f.mapping.namespaceHint}>
             <Input id="mig-namespace" bind:value={namespace} required />
           </Row>
-          <div class="sm:col-span-2">
-            <Row id="mig-forms" label={f.mapping.forms}>
-              <Textarea id="mig-forms" bind:value={forms} required class="font-mono" />
-            </Row>
-          </div>
-          <details class="rounded-lg border px-4 py-3 sm:col-span-2">
+
+          <section class="flex min-w-0 flex-col gap-2" aria-labelledby="mig-forms-title">
+            <h3 id="mig-forms-title" class="m-0 text-base font-semibold">{f.mapping.formsTitle}</h3>
+            {#if !forms.length}
+              <p class="text-muted-foreground m-0 text-sm">{f.mapping.formsNone}</p>
+            {:else}
+              {#if customers.length === 1}
+                <p class="text-muted-foreground m-0 text-sm">
+                  {f.mapping.formsAll.replace('{n}', String(forms.length))}
+                </p>
+              {/if}
+              <ul class="divide-border m-0 list-none divide-y p-0" data-testid="migration-forms">
+                {#each forms as form (form.id)}
+                  <li
+                    class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                  >
+                    <span class="min-w-0">
+                      <span class="block font-medium break-words">{label(form.name)}</span>
+                      <code class="text-muted-foreground block font-mono text-xs break-all"
+                        >{form.id}</code
+                      >
+                    </span>
+                    {#if customers.length > 1}
+                      <Select
+                        id={`mig-form-${form.id}`}
+                        aria-label={f.mapping.customerFor.replace('{name}', label(form.name))}
+                        value={formCustomers[form.id] ?? ''}
+                        onchange={(e) =>
+                          (formChoice = { ...formChoice, [form.id]: e.currentTarget.value })}
+                      >
+                        {#each customers as entry, index (entry.id)}<option value={entry.id}
+                            >{customerName(entry.id) ||
+                              f.mapping.customerN.replace('{n}', String(index + 1))}</option
+                          >{/each}
+                      </Select>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+
+          <section class="flex min-w-0 flex-col gap-2" aria-labelledby="mig-conn-title">
+            <h3 id="mig-conn-title" class="m-0 text-base font-semibold">
+              {f.mapping.connectionsTitle}
+            </h3>
+            {#if !connections.length}
+              <p class="text-muted-foreground m-0 text-sm">{f.mapping.connectionsNone}</p>
+            {:else}
+              <p class="text-muted-foreground m-0 text-sm">
+                {customers.length === 1 ? f.mapping.connectionsAll : f.mapping.connectionsDerived}
+              </p>
+              <ul class="divide-border m-0 list-none divide-y p-0">
+                {#each connections as connection (connection.id)}
+                  {@const owners = built.plan.connectionCustomers[connection.id] ?? []}
+                  <li
+                    class="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                  >
+                    <span class="min-w-0">
+                      <span class="block font-medium break-words"
+                        >{label(connection.name)}
+                        {#if f.mapping.kinds[connection.kind]}<span class="text-muted-foreground"
+                            >({f.mapping.kinds[connection.kind]})</span
+                          >{/if}</span
+                      >
+                      <code class="text-muted-foreground block font-mono text-xs break-all"
+                        >{connection.id}</code
+                      >
+                    </span>
+                    {#if customers.length > 1}
+                      <Select
+                        id={`mig-conn-${connection.id}`}
+                        aria-label={f.mapping.customerFor.replace('{name}', label(connection.name))}
+                        value={owners.length === 1 ? owners[0] : ''}
+                        onchange={(e) =>
+                          (connectionChoice = {
+                            ...connectionChoice,
+                            [connection.id]: e.currentTarget.value,
+                          })}
+                      >
+                        <option value=""
+                          >{owners.length > 1
+                            ? owners.map(customerName).join(', ')
+                            : f.mapping.choose}</option
+                        >
+                        {#each customers as entry, index (entry.id)}<option value={entry.id}
+                            >{customerName(entry.id) ||
+                              f.mapping.customerN.replace('{n}', String(index + 1))}</option
+                          >{/each}
+                      </Select>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+
+          <section
+            class="flex min-w-0 flex-col gap-2"
+            aria-labelledby="mig-keys-title"
+            data-testid="migration-keys"
+          >
+            <h3 id="mig-keys-title" class="m-0 text-base font-semibold">{f.mapping.keysTitle}</h3>
+            <p class="text-muted-foreground m-0 text-sm">{f.mapping.keysHint}</p>
+            {#if warnings.affectedSubmissions > 0}
+              <Banner tone="danger" title={f.mapping.warnTitle}>
+                <ul class="m-0 list-disc pl-5" data-testid="migration-key-warning">
+                  {#if warnings.missing.length}<li>
+                      {f.mapping.warnMissing
+                        .replace(
+                          '{n}',
+                          String(warnings.missing.reduce((s, u) => s + u.submissions, 0)),
+                        )
+                        .replace('{list}', warnings.missing.map((u) => u.kid).join(', '))}
+                    </li>{/if}
+                  {#if warnings.unusable.length}<li>
+                      {f.mapping.warnUnusable
+                        .replace(
+                          '{n}',
+                          String(warnings.unusable.reduce((s, u) => s + u.submissions, 0)),
+                        )
+                        .replace('{list}', warnings.unusable.map((u) => u.kid).join(', '))}
+                    </li>{/if}
+                  {#if warnings.foreign.length}<li>
+                      {f.mapping.warnForeign.replace(
+                        '{list}',
+                        warnings.foreign.map((u) => u.kid).join(', '),
+                      )}
+                    </li>{/if}
+                </ul>
+              </Banner>
+            {/if}
+            {#if inventory?.keyUsage && !inventory.keyUsage.complete}
+              <Banner tone="warn"
+                >{f.mapping.usageIncomplete.replace(
+                  '{n}',
+                  String(inventory.keyUsage.scannedSubmissions),
+                )}</Banner
+              >
+            {/if}
+            {#if inventory && inventory.keysComplete === false}
+              <Banner tone="warn">{f.mapping.keysIncomplete}</Banner>
+            {/if}
+            {#if !keys.length}
+              <p class="text-muted-foreground m-0 text-sm">{f.mapping.keysNone}</p>
+            {:else}
+              <p class="text-muted-foreground m-0 text-sm">{f.mapping.keysAuto}</p>
+              <ul class="divide-border m-0 list-none divide-y p-0">
+                {#each keys as key (key.kid)}
+                  {@const owner = built.plan.keyCustomers[key.kid]}
+                  {@const generation = built.plan.keyGenerationNumbers[key.kid]}
+                  <li class="flex min-w-0 flex-col gap-1 py-2 text-sm">
+                    <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                      <code class="font-mono text-xs break-all">{key.kid}</code>
+                      <StatusChip
+                        tone={key.status === 'aktiv'
+                          ? 'ok'
+                          : key.status === 'auslaufend'
+                            ? 'info'
+                            : 'warn'}
+                        label={f.mapping.keyStatus[key.status] ?? key.status}
+                      />
+                      {#if key.createdAt !== null}<span class="text-muted-foreground"
+                          >{f.mapping.keyCreated.replace(
+                            '{date}',
+                            formatDay(key.createdAt * 1000),
+                          )}</span
+                        >{/if}
+                      <span class="text-muted-foreground tabular-nums"
+                        >{f.mapping.keySubmissions.replace('{n}', String(usageOf(key.kid)))}</span
+                      >
+                      {#if keyImportable(key) && generation}<span class="tabular-nums"
+                          >{f.mapping.keyGeneration.replace('{n}', String(generation))}</span
+                        >{/if}
+                    </div>
+                    {#if !keyImportable(key)}
+                      <p class="text-red-700 dark:text-destructive m-0">
+                        {f.mapping.keySkipped.replace(
+                          '{reason}',
+                          key.publicKeyValid ? f.mapping.keySkipStatus : f.mapping.keySkipPublicKey,
+                        )}
+                      </p>
+                    {:else if customers.length > 1}
+                      <Select
+                        id={`mig-key-${key.kid}`}
+                        aria-label={f.mapping.customerFor.replace('{name}', `kid ${key.kid}`)}
+                        value={owner ?? ''}
+                        onchange={(e) =>
+                          (keyChoice = { ...keyChoice, [key.kid]: e.currentTarget.value })}
+                      >
+                        <option value="">{f.mapping.choose}</option>
+                        {#each customers as entry, index (entry.id)}<option value={entry.id}
+                            >{customerName(entry.id) ||
+                              f.mapping.customerN.replace('{n}', String(index + 1))}</option
+                          >{/each}
+                      </Select>
+                      {#if !owner}<p class="text-muted-foreground m-0">{f.mapping.keyOpen}</p>{/if}
+                    {:else if owner}
+                      <p class="text-muted-foreground m-0">{customerName(owner)}</p>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
+
+          <details class="rounded-lg border px-4 py-3">
             <summary class="min-h-6 cursor-pointer text-sm font-medium"
               >{f.mapping.advanced}</summary
             >
             <div class="mt-3 grid gap-4">
-              <div class="flex flex-col gap-2">
-                <Row id="mig-customer" label={f.mapping.customerId}>
-                  <Input id="mig-customer" bind:value={customer} required class="font-mono" />
-                </Row>
-                <div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onclick={() => (customer = crypto.randomUUID())}>{f.mapping.newId}</Button
-                  >
-                </div>
+              <div class="flex flex-col gap-1">
+                <h4 class="m-0 text-sm font-medium">{f.mapping.customerId}</h4>
+                <ul class="m-0 list-none p-0">
+                  {#each customers as entry, index (index)}
+                    <li class="text-sm">
+                      {customerName(entry.id)}:
+                      <code class="font-mono text-xs break-all">{entry.id}</code>
+                    </li>
+                  {/each}
+                </ul>
               </div>
-              <Row id="mig-snapshot" label={f.mapping.snapshot}>
+              <Row id="mig-snapshot" label={f.mapping.snapshot} hint={f.mapping.snapshotHint}>
                 <Input
                   id="mig-snapshot"
                   bind:value={snapshot}
@@ -552,37 +825,72 @@
               </Row>
             </div>
           </details>
-          {#if assignments.length}
-            <div class="sm:col-span-2">
-              <h3 class="m-0 mb-1 text-sm font-medium">{f.mapping.assignments}</h3>
-              <ul class="m-0 list-none p-0 text-sm">
-                {#each assignments as mapping, index (index)}
-                  <li>{mapping.name}: {mapping.forms}</li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-          <div class="sm:col-span-2">
-            <Button
-              type="button"
-              variant="outline"
-              onclick={() => {
-                assignments = [...assignments, { customer, name, forms }];
-                customer = '';
-                name = '';
-                forms = '';
-              }}>{f.mapping.addAssignment}</Button
-            >
-          </div>
         </fieldset>
-        {#if issues.length}
-          <p class="text-muted-foreground m-0 mt-4 text-sm" id="mig-missing">
-            {f.mapping.missing.replace(
-              '{list}',
-              issues.map((issue) => f.mapping.issue[issue]).join(', '),
-            )}
-          </p>
-        {/if}
+
+        <section
+          class="flex min-w-0 flex-col gap-2 rounded-lg border p-4"
+          aria-labelledby="mig-summary-title"
+          data-testid="migration-summary"
+        >
+          <h3 id="mig-summary-title" class="m-0 text-base font-semibold">
+            {f.mapping.summaryTitle}
+          </h3>
+          <dl class="divide-border m-0 divide-y">
+            <div class={rowClass}>
+              <dt class="text-muted-foreground">{f.mapping.summaryCustomers}</dt>
+              <dd class="m-0 font-medium">{customers.map((c) => customerName(c.id)).join(', ')}</dd>
+            </div>
+            <div class={rowClass}>
+              <dt class="text-muted-foreground">{f.mapping.summaryForms}</dt>
+              <dd class="m-0 font-medium">
+                {forms.length}{forms.length
+                  ? `: ${forms.map((form) => label(form.name)).join(', ')}`
+                  : ''}
+              </dd>
+            </div>
+            <div class={rowClass}>
+              <dt class="text-muted-foreground">{f.mapping.summaryConnections}</dt>
+              <dd class="m-0 font-medium tabular-nums">
+                {f.mapping.summaryAssigned
+                  .replace(
+                    '{n}',
+                    String(
+                      connections.filter((c) => built.plan.connectionCustomers[c.id]?.length)
+                        .length,
+                    ),
+                  )
+                  .replace('{m}', String(connections.length))}
+              </dd>
+            </div>
+            <div class={rowClass}>
+              <dt class="text-muted-foreground">{f.mapping.summaryKeys}</dt>
+              <dd class="m-0 font-medium tabular-nums">
+                {f.mapping.summaryAssigned
+                  .replace(
+                    '{n}',
+                    String(
+                      keys.filter((k) => keyImportable(k) && built.plan.keyCustomers[k.kid]).length,
+                    ),
+                  )
+                  .replace('{m}', String(keys.length))}
+              </dd>
+            </div>
+            <div class={rowClass}>
+              <dt class="text-muted-foreground">{f.mapping.namespace}</dt>
+              <dd class="m-0 font-mono text-xs break-all">{built.plan.namespace}</dd>
+            </div>
+          </dl>
+          {#if issues.length}
+            <p class="text-muted-foreground m-0 text-sm" id="mig-missing">
+              {f.mapping.missing.replace(
+                '{list}',
+                issues.map((issue) => f.mapping.issue[issue]).join(', '),
+              )}
+            </p>
+          {:else}
+            <p class="m-0 text-sm">{f.mapping.ready}</p>
+          {/if}
+        </section>
         <StepNav
           {step}
           total={MIGRATION_STEPS}
