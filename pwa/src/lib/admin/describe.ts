@@ -9,7 +9,7 @@ export function describeError(e: ApiError): string {
     case 401:
       return a.unauthenticated;
     case 403:
-      return a.forbidden;
+      return e.code === 'reauthentication_required' ? a.reauth : a.forbidden;
     case 404:
       return a.notFound;
     case 409:
@@ -25,5 +25,8 @@ export function describeError(e: ApiError): string {
   }
 }
 
+/** The server answers an expired fresh login with 403 `reauthentication_required` (older drafts used 401). */
 export const needsFreshLogin = (e: ApiError): boolean =>
-  e.kind === 'http' && e.status === 401 && e.code === 'reauthentication_required';
+  e.kind === 'http' &&
+  (e.status === 403 || e.status === 401) &&
+  e.code === 'reauthentication_required';

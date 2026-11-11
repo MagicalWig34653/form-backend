@@ -39,6 +39,17 @@ function fail(
   return { ok: false, error };
 }
 
+type ReauthHandler = () => Promise<boolean>;
+let reauthHandler: ReauthHandler | undefined;
+/** Called when the server demands a fresh confirmation (403 reauthentication_required); true = confirmed, retry the call once. */
+export function setReauthHandler(handler: ReauthHandler | undefined): void {
+  reauthHandler = handler;
+}
+const needsConfirmation = (e: ApiError): boolean =>
+  e.kind === 'http' &&
+  (e.status === 403 || e.status === 401) &&
+  e.code === 'reauthentication_required';
+
 /** One transport for every admin call: same-origin cookie, CSRF on mutations, no caching, bounded time, uniform errors. */
 export function createHttp(options: HttpOptions = {}): Http {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE;
@@ -50,6 +61,19 @@ export function createHttp(options: HttpOptions = {}): Http {
     method: Method,
     path: string,
     opts: RequestOptions = {},
+  ): Promise<ApiResult<T>> {
+    const first = await send<T>(method, path, opts);
+    if (!first.ok && needsConfirmation(first.error) && reauthHandler) {
+      const confirmed = await reauthHandler().catch(() => false);
+      if (confirmed) return send<T>(method, path, opts);
+    }
+    return first;
+  }
+
+  async function send<T>(
+    method: Method,
+    path: string,
+    opts: RequestOptions,
   ): Promise<ApiResult<T>> {
     const timeout = AbortSignal.timeout(timeoutMs);
     const combined = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;

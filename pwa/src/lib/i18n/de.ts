@@ -856,6 +856,8 @@ try {
     errors: {
       unauthenticated: 'Die Sitzung ist abgelaufen. Bitte erneut anmelden.',
       forbidden: 'Dafür fehlt Ihnen die Berechtigung.',
+      reauth:
+        'Bitte bestätigen Sie die Aktion mit Ihrem Passkey (die letzte Anmeldung ist länger als 5 Minuten her).',
       notFound: 'Nicht gefunden.',
       conflict: 'Der Stand hat sich geändert. Bitte neu laden und erneut versuchen.',
       stale: 'Der Entwurf wurde zwischenzeitlich geändert. Bitte neu laden.',

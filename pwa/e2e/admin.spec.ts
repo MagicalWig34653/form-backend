@@ -1530,3 +1530,42 @@ test('Verbindungen: vorhandene Verbindung wird gelistet, Rendern wirft keinen Fe
   await expect(page.getByRole('button', { name: /^Testen/ }).first()).toBeVisible();
   expect(errors.filter((m) => /props_invalid_value/.test(m))).toEqual([]);
 });
+
+test('403 reauthentication_required: Umstiegsseite führt zur Passkey-Bestätigung statt zur Pauschalmeldung', async ({
+  page,
+}) => {
+  await mock(page);
+  let calls = 0;
+  let loggedOut = false;
+  await page.route('**/admin/api/v1/auth/logout', (r) => {
+    loggedOut = true;
+    return r.fulfill({ status: 204 });
+  });
+  await page.route('**/admin/api/v1/auth/session', (r) =>
+    loggedOut
+      ? r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ state: 'anonymous', totpAllowed: false }),
+        })
+      : r.fallback(),
+  );
+  await page.route('**/admin/api/v1/migration/jobs', (r) => {
+    calls += 1;
+    return r.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        message: 'Bitte erneut anmelden, um diese Aktion zu bestätigen.',
+        requestId: 'x',
+        code: 'reauthentication_required',
+      }),
+    });
+  });
+  await page.goto('/migration');
+  await expect(page).toHaveURL(/\/login\?next=%2Fmigration&reauth=1/);
+  await expect(page.getByText(/Keine Berechtigung oder der Umstieg ist deaktiviert/)).toHaveCount(
+    0,
+  );
+  expect(calls).toBeGreaterThan(0);
+});

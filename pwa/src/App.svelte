@@ -9,6 +9,7 @@
   import Shell from './routes/admin/Shell.svelte';
   import ConfirmHost from '$lib/components/shell/ConfirmHost.svelte';
   import { matchRoute } from '$lib/routes';
+  import '$lib/admin/guard.svelte';
 
   // Public documentation site (GitHub Pages); override per deployment with VITE_DOCS_URL.
   const docsUrl: string =
