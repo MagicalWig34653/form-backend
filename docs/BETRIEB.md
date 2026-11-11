@@ -7,6 +7,13 @@ und gemeinsamen Diensten (ADR 0020). Externe MariaDB und TLS-Proxys bleiben Betr
 Die aktuellen Sources und Deploy-Vorlagen sind maßgeblich. Keine automatische Migration beim
 App-Start, kein Deployment durch dieses Paket. Lizenz: AGPL-3.0-only.
 
+DB-Pool: je Event-Loop (= CPUs des Containers) `max(4, 32 / Loops)` Verbindungen, Wartezeit
+auf eine freie Verbindung 10 s. Pro Replik werden höchstens 32 Verbindungen geöffnet, ab 8 CPUs 4 je CPU;
+`max_connections` der MariaDB muss Repliken × diese Zahl plus Reserve erlauben. Meldet das Log
+`Connection request timed out`, prüfen: `SHOW VARIABLES LIKE 'max_connections'`,
+`SHOW STATUS LIKE 'Max_used_connections'`, `SHOW STATUS LIKE 'Aborted_connects'`, `SHOW PROCESSLIST`
+(siehe `docs/handoffs/DB-Pool-Deadlock.md`).
+
 ## Listener und sichere Proxy-Zuordnung
 
 | Listener | ENV / Standard | Registrierte Oberfläche |
