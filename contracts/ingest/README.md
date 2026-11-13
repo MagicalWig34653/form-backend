@@ -261,7 +261,7 @@ Kein neues Fehlerfeld oder Fehlertext als verpflichtende SDK-Abhängigkeit.
 | 406 | Botprüfung negativ |
 | 409 | Nutzlastkonflikt, laufende Idempotenzbearbeitung oder Key-Race |
 | 412 | fehlende/ungültige Pflichtfelder oder fehlendes Bot-Token |
-| 413 | Upload-, Transport- oder verschlüsselte Paketgrenze überschritten |
+| 413 | Upload-, Transport- oder verschlüsselte Paketgrenze überschritten; auch wenn ein versiegeltes Paket das `max_allowed_packet` der Datenbank überschreitet (vor dem Schreiben abgelehnt, nichts gespeichert; Betreiberhinweis nur im Log; gleicher Code `payload_too_large`, kein neuer Fehlercode) |
 | 415 | Upload fehlerhaft oder Dateityp/Transporttyp unzulässig |
 | 429 | Rate-Limit/Sperre |
 | 451 | Malwaretreffer (Legacycode, kein rechtlicher Befund) |

@@ -16,7 +16,12 @@ vi.mock('$lib/api', () => ({
   },
 }));
 vi.mock('$lib/session.svelte', () => ({
-  session: { me: { id: 'a', systemAdministrator: true }, status: 'ready', tenants: [] },
+  session: {
+    me: { id: 'a', systemAdministrator: true },
+    status: 'ready',
+    tenants: [],
+    refreshTenants: vi.fn(),
+  },
 }));
 vi.mock('$lib/admin/guard.svelte', () => ({
   reauthenticate: vi.fn(),

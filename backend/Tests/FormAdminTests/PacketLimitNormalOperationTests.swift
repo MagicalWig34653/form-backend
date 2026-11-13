@@ -9,7 +9,7 @@ import XCTest
 /// This measures what the MariaDB default of 16 MiB does to such a write with the driver in use: each size is written on its own connection
 /// with a time limit, and the outcome (ok / error text / timeout) plus the stored size is printed as MEASURE line. Only the size below the limit is asserted.
 /// FINDING (measured once on macOS, not kept as a test because MySQLNIO asserts in debug builds on Linux: "Statement not closed"): a bound value of 17
-/// and 27 MB at 16 MiB is reported as ok by the driver, yet NO row is stored. Normal operation needs the same max_allowed_packet as the import.
+/// and 27 MB at 16 MiB is reported as ok by the driver, yet NO row is stored. Normal operation needs the same max_allowed_packet as the import. The ingest itself now refuses such packages before writing (PacketGuard, IngestPacketLimitTests).
 final class PacketLimitNormalOperationTests: XCTestCase {
     private struct V: Decodable { let v: String }
     private actor Box { var value: String?; func set(_ v: String) { value = v } }

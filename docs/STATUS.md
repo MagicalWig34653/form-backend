@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## QA-Befund Upload-Verlust bei Anhang über DB-Paketgrenze (13.11.2026, Todolino 60B799DA, Worktree-Branch `worktree-agent-a5d49d428d8dd123a`, lokal committet, ungemergt, nicht gepusht)
+
+- Befund im Ingest (Test `IngestPacketLimitTests`, echte MariaDB mit 4 MiB und 16 MiB): vorher HTTP 500 `internal_error`, Transaktion zurückgerollt, 0 Zeilen in submissions/stored_objects (im Ingest-Pfad KEIN stilles „angenommen“, das stille Erfolgsverhalten trat nur bei einer einzelnen Schreibanweisung ohne Transaktion auf). Antwort 500 hieß für Praxis/SDK „später erneut“, obwohl es nie gelingen kann.
+- Fix: `PacketGuard` (FormIngest): Vorabprüfung des größten versiegelten Pakets gegen `@@session.max_allowed_packet` der Transaktionsverbindung (+64 KiB Reserve, nur ab 1 MiB) -> 413 `payload_too_large` VOR dem Schreiben mit Betreiberhinweis im Log; Nachprüfung der gespeicherten Objekte (Anzahl, Länge = byte_count) in der Transaktion -> sonst 503/Rollback; Startwarnung. Kein neuer Fehlercode (Vertrag/SDK unverändert, nur Klarstellung in contracts/ingest/README.md). Übergabe: `docs/handoffs/Upload-Verlust.md`.
+
+
 ## QA-Befund Import 1301 bei Altanhängen über ~12 MB (13.11.2026, Todolino 15C5D5E9, Branch `worktree-agent-afa358ab4744d9b7f`, lokal committet, ungemergt, nicht gepusht)
 
 - Ursache: MariaDB prüft das Ergebnis des stückweisen `CONCAT(ciphertext, Teilstück)` gegen `max_allowed_packet` des Ziels (Standard 16 MiB). Fix: Vorabprüfung (größte Zelle der Quelle gegen Zielgrenze) im Prüflauf/Import mit benanntem Code `target_packet_too_small@<Ziel>:<Zelle>:<nötig>` VOR dem ersten Schreiben, Warnung in der Quellprüfung, Empfehlung 64 MiB (Doku Checkliste Punkt 7, BETRIEB). Normalbetrieb ebenfalls betroffen und still (gemessen: gebundener Wert über dem Limit wird vom Treiber als ok gemeldet, Zeile fehlt); Folgepaket nötig, siehe Übergabe.

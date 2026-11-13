@@ -3,6 +3,7 @@
 # P4-A: swift test (native build system, see run-tests.sh) incl. DB integration test against a
 # throw-away Docker MariaDB on 127.0.0.1:${P3B_PORT:-33417}. Random root password per run, kept in
 # memory only (never written to disk or printed). Container is removed afterwards.
+# P3B_DB_ARGS adds server options (e.g. --max-allowed-packet=4194304 for the packet-limit tests).
 # Exit: swift test's exit code; 2 = environment problem.
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
@@ -21,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 "$DOCKER" info >/dev/null 2>&1 || { echo "ENV: docker daemon not reachable"; exit 2; }
 "$DOCKER" rm -f "$NAME" >/dev/null 2>&1
-"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=p4atest "$IMAGE" >/dev/null \
+"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=p4atest "$IMAGE" ${P3B_DB_ARGS:-} >/dev/null \
   || { echo "ENV: container start failed"; exit 2; }
 up=0
 for _ in $(seq 90); do

@@ -51,6 +51,7 @@ public enum IngestSetup {
     public static func register(_ app: Application, config: IngestConfig) {
         app.http.client.configuration.redirectConfiguration = .disallow
         let handler = SubmitHandler(config: config)
+        app.lifecycle.use(PacketStartupCheck(ingestLimitBytes: config.maxBodyBytes))
         let gated = app.grouped(IngestGate(maxConcurrent: config.maxConcurrent))   // runs before `body: .collect`
         for path in [["api", "v2", "submit"], ["api", "v2", "submit", "index.php"]] {
             gated.on(.POST, path.map { PathComponent(stringLiteral: $0) }, body: .collect(maxSize: ByteCount(value: config.maxBodyBytes))) { req in
@@ -205,6 +206,8 @@ struct SubmitHandler: Sendable {
         do {
             try await req.db(.mysql).transaction { tx in
                 let t = tx as! SQLDatabase
+                // Refuse BEFORE the first write when one sealed package cannot travel in one database packet (never "accepted" without data).
+                try await PacketGuard.require(fit: max(wire.count, uploadsForTx.map(\.wire.count).max() ?? 0), on: t, logger: req.logger)
                 // Serialize with key rotation. A request sealed before rotation must retry against the new public key.
                 struct LockedCustomer: Decodable { let id: Blob }
                 _ = try await t.raw("SELECT id FROM customers WHERE id = \(bind: form.customer_id) FOR UPDATE").first(decoding: LockedCustomer.self)
@@ -254,6 +257,9 @@ struct SubmitHandler: Sendable {
                           \(bind: Blob(a.wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: a.kid), 'raw', \(bind: Blob(Data(SHA256.hash(data: a.wire)))), \(bind: Blob(a.payloadHash)), \(bind: a.wire.count), 'ready')
                         """).run()
                 }
+                }
+                if max(wire.count, uploadsForTx.map(\.wire.count).max() ?? 0) >= PacketGuard.checkThreshold {
+                    try await PacketGuard.verifyStored(submission: Self.bin(submissionID), expected: 1 + uploadsForTx.count, on: t, logger: req.logger)
                 }
                 try await IngestStatistics.record(protection.test ? nil : statisticsContext, tx: t, customer: form.customer_id, form: formUUID, release: releaseID, submission: submissionID, now: now, origins: req.headers["Origin"])
                 // A custom flow owns all delivery decisions (ADR 0017), including intentionally omitted hooks.
