@@ -7,7 +7,7 @@ import {
   registerPasskey,
 } from './helpers';
 import { resetBudget, source, target } from './migration-helpers';
-import { openAdvanced, reloadLocked } from './unlock-helpers';
+import { reloadLocked } from './unlock-helpers';
 
 // Setup assistant (/installation) with the Umstieg in one go against the REAL binary, real target and legacy MariaDB (synthetic dump),
 // no mocks; orchestrated by backend/e2e-setup-umstieg.sh. Conflict/resume/count/key-adoption details are covered by real-migration.spec.ts.
@@ -130,19 +130,18 @@ test('setup assistant: Umstieg in one go, step is recognised as done afterwards'
     .click();
   await expect(page).toHaveURL(/\/installation/);
   await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done');
+  // The facts of the steps load independently (tenants, jobs, ...): wait for the customer step instead of reading it in the same instant.
+  await expect(page.getByTestId('step-customer')).toHaveAttribute('data-state', 'done');
   const after = await states(page);
   console.log('STATES after', JSON.stringify(after));
-  // The importer writes customers as 'disabled' until the human cutover (LegacyImporter.swift:302); /tenants lists only 'active' ones.
-  // The assistant must not pretend there is no customer: the step stays open but says the imported customer is activated at go-live.
-  expect(target("SELECT state FROM customers WHERE name='Umstieg Setup GmbH'")).toBe('disabled');
-  expect(after.customer).toBe('open');
-  await expect(page.getByTestId('customer-imported-hint')).toContainText(
-    'Kunde aus dem Umstieg importiert, wird beim Live-Gang aktiviert',
-  );
+  // The importer creates customers ACTIVE (finding A of the operator path, 13.11.2026): the imported customer is listed under /tenants
+  // and the customer step is done; its forms stay inactive and unpublished until the cutover.
+  expect(target("SELECT state FROM customers WHERE name='Umstieg Setup GmbH'")).toBe('active');
+  expect(after.customer).toBe('done');
   expect(after.form).toBe('open'); // imported forms are inactive/unpublished: not "published"
   expect(after.passkeys).toBe('open');
   const doneAfter = await expectProgressMatches(page);
-  expect(doneAfter).toBe(doneBefore + 1);
+  expect(doneAfter).toBe(doneBefore + 2); // migration and customer (the imported customer is active)
   await expect(page.getByTestId('step-migration')).toContainText('Der Import ist durchgeführt');
   await expect(page.getByTestId('migration-run-hint')).toHaveCount(0);
   await expect(
@@ -159,37 +158,16 @@ test('setup assistant: Umstieg in one go, step is recognised as done afterwards'
   // not "set up and save the recovery code". The customer row itself is created and counted; its key follows once unlocked.
   await reloadLocked(page);
   await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done');
-  await page.getByLabel('Name des Kunden').fill('Assistent Kunde');
-  await page.getByRole('button', { name: 'Kunden anlegen', exact: true }).click();
+  // the imported (active) customer already completes the customer step; the locked key shows up when the form is created below
   await expect(page.getByTestId('step-customer')).toHaveAttribute('data-state', 'done');
-  expect(target("SELECT state FROM customers WHERE name='Assistent Kunde'")).toBe('active');
-  await expect(page.getByTestId('step-customer').getByRole('alert')).toContainText(
-    'Der Schlüssel ist gesperrt',
-  );
-  await expect(page.getByTestId('customer-imported-hint')).toHaveCount(0); // a real customer exists now
+  await expect(page.getByTestId('customer-imported-hint')).toHaveCount(0);
   await expect(page.getByTestId('step-form')).toHaveAttribute('data-state', 'open');
   await page.getByLabel('Name des Formulars').fill('Assistent Formular');
   await page.getByRole('button', { name: 'Formular anlegen', exact: true }).click();
-  const locked = page.getByTestId('step-form').getByRole('alert');
-  await expect(locked).toContainText('Der Schlüssel ist gesperrt');
-  await expect(locked).toContainText('Konto');
-  await expect(locked).not.toContainText('einrichten');
-  await expect(page).toHaveURL(/\/installation/);
-  expect(target("SELECT COUNT(*) FROM forms WHERE name='Assistent Formular'")).toBe('0');
-  // the named way works: Konto -> Zugriff freigeben (passkey with PRF), back via the setup bar, the same action now succeeds
-  await page.getByTestId('step-account').getByRole('link', { name: 'Passkeys verwalten' }).click();
-  await expect(page).toHaveURL(/\/account/);
-  await openAdvanced(page);
-  await page.getByRole('button', { name: 'Mit Passkey entsperren' }).first().click();
-  await expect(page.getByText('Schlüssel entsperrt')).toBeVisible();
-  await page
-    .getByTestId('setup-bar')
-    .getByRole('button', { name: 'Zurück zur Einrichtung' })
-    .first()
-    .click();
-  await page.getByLabel('Name des Formulars').fill('Assistent Formular');
-  await page.getByRole('button', { name: 'Formular anlegen', exact: true }).click();
-  await expect(page).toHaveURL(/\/f\/[0-9a-f-]{36}/); // the form page, the setup bar leads back
+  // The imported customer already has its key on the server (imported generation), so creating the form needs no new customer key and
+  // works with the locked keyring (probed 13.11.): the form page opens; the setup bar leads back.
+  await expect(page).toHaveURL(/\/f\/[0-9a-f-]{36}/);
+  expect(target("SELECT COUNT(*) FROM forms WHERE name='Assistent Formular'")).toBe('1');
   await configureAndPublish(page, [['email', 'E-Mail', 'email']]);
   await page
     .getByTestId('setup-bar')
@@ -197,12 +175,12 @@ test('setup assistant: Umstieg in one go, step is recognised as done afterwards'
     .first()
     .click();
   await expect(page.getByTestId('step-form')).toHaveAttribute('data-state', 'done');
-  expect(await expectProgressMatches(page)).toBe(doneAfter + 2);
+  expect(await expectProgressMatches(page)).toBe(doneAfter + 1); // form (the customer was already done)
   await expect(page.getByTestId('step-testEntry')).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done'); // the Umstieg step is unaffected
 
   // 7. a reload recomputes the same state from the server (nothing is held in the browser; the keyring is locked again, which changes no step)
   await page.reload();
   await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done');
-  expect(await expectProgressMatches(page)).toBe(doneAfter + 2);
+  expect(await expectProgressMatches(page)).toBe(doneAfter + 1);
 });

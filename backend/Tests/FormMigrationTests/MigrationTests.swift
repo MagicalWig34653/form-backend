@@ -134,6 +134,39 @@ final class MigrationTests: XCTestCase {
             do { _ = try await importer.run(plan:plan); XCTFail("Expected target conflict") } catch ImportFailure.conflict {}
         }
     }
+    /// Operator path (finding A, 13.11.2026): a customer created by the import is ACTIVE (visible under Kunden, its forms, drafts and entries are
+    /// reachable); forms, connections and releases stay inactive, so nothing is received or sent before the cutover. A repeated run and a second
+    /// importer instance on the same plan pass without conflict; an existing target customer keeps its state.
+    func testImportedCustomerIsActiveWhileFormsAndConnectionsStayInactive() async throws {
+        try await withDatabases { src,dst,secrets in
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"synthetic",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            _ = try await importer.run(plan:plan,batchSize:1)
+            let state = try await importer.scalar(dst,"SELECT state AS v FROM customers")
+            XCTAssertEqual(state,"active","an imported customer must be usable after the import")
+            let live = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM forms WHERE active=1 OR current_release_id IS NOT NULL")
+            XCTAssertEqual(live,"0","imported forms stay inactive and unreleased")
+            let sending = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM connections WHERE enabled=1")
+            XCTAssertEqual(sending,"0","imported connections stay disabled")
+            let grants = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM permission_assignments")
+            XCTAssertEqual(grants,"0","no account gets access to the imported customer by the import")
+            let before = try await self.fingerprint(importer,dst,ignoring:["migration_runs"])
+            _ = try await importer.run(plan:plan,batchSize:2)
+            let again = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            _ = try await again.run(plan:plan,batchSize:3)
+            let after = try await self.fingerprint(importer,dst,ignoring:["migration_runs"])
+            XCTAssertEqual(before,after,"repetition changes nothing and raises no conflict")
+        }
+        try await withDatabases { src,dst,secrets in
+            // An existing (here deliberately disabled) target customer of the same name is taken over as it is.
+            try await dst.raw("INSERT INTO customers (id,name,state,created_at) VALUES (UNHEX(REPLACE('\(unsafeRaw: self.customer)','-','')),'Testkunde','disabled',UTC_TIMESTAMP(6))").run()
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"synthetic",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            _ = try await importer.run(plan:plan,batchSize:1)
+            let state = try await importer.scalar(dst,"SELECT state AS v FROM customers")
+            XCTAssertEqual(state,"disabled","an existing target customer keeps its state")
+        }
+    }
     /// A period that already exists for the target form is kept; the imported submissions get exactly that one.
     func testMigrationKeepsAnExistingRetentionPeriodForTheImportedSubmissions() async throws {
         try await withDatabases { src,dst,secrets in

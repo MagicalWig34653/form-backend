@@ -51,6 +51,8 @@
     formIds?: string[];
     probeConfirmed?: boolean;
     testConfirmed?: boolean;
+    /** Server: false when the import holds no :2 package, so no decryption probe is possible or required (finding B). */
+    probeRequired?: boolean;
     id: string;
     state: string;
     phase: string;
@@ -187,11 +189,21 @@
   /** Key id of the probe sample (`KUBUS-AEAD:2|<kid>|hpke|...`); a public identifier, not a secret. */
   const probeKid = $derived(probe?.wire.split('|')[1] ?? '');
   const importJob = $derived(jobs.find((job) => job.state === 'review' && !job.dryRun));
+  const noProbe = $derived(importJob?.probeRequired === false);
+  /** Submissions kept in review because their package is not :2 (count from the report issues). */
+  const legacyKept = $derived(
+    (importJob?.report?.issues as { code: string; count: number }[] | undefined)?.find(
+      (issue) => issue.code === 'unsupported-content',
+    )?.count ?? 0,
+  );
+  let withoutProbeOk = $state(false);
   const removeMissing = $derived(
-    [
-      importJob?.probeConfirmed ? '' : f.done.missingProbe,
-      importJob?.testConfirmed ? '' : f.done.missingTest,
-    ].filter(Boolean),
+    noProbe
+      ? []
+      : [
+          importJob?.probeConfirmed ? '' : f.done.missingProbe,
+          importJob?.testConfirmed ? '' : f.done.missingTest,
+        ].filter(Boolean),
   );
   const goBack = () => (step = Math.max(0, step - 1));
   const goNext = () => {
@@ -322,6 +334,7 @@
       `/migration/jobs/${job.id}/probe`,
     );
     if (r) probe = { ...r, jobId: job.id };
+    else if (job.probeRequired === false) error = f.review.probeNone;
   }
   async function verifyProbe() {
     if (!probe) return;
@@ -1098,7 +1111,14 @@
           </section>
           <section class="flex flex-col gap-3 rounded-lg border p-4">
             <h3 class="m-0 text-base font-semibold">{f.review.probeTitle}</h3>
-            {#if probe}
+            {#if noProbe}
+              <div data-testid="migration-probe-none" class="flex flex-col gap-2">
+                <Banner tone="info">{f.review.probeNone}</Banner>
+                {#if legacyKept}<p class="m-0 text-sm">
+                    {f.review.probeNoneCount.replace('{n}', String(legacyKept))}
+                  </p>{/if}
+              </div>
+            {:else if probe}
               <form
                 class="flex flex-col gap-3"
                 onsubmit={(e) => {
@@ -1155,7 +1175,9 @@
                 onclick={() => releaseSubmissions(importJob)}>{f.review.releaseButton}</Button
               >
             </div>
-            {#if !importJob.probeConfirmed}<p
+            {#if noProbe}<p class="text-muted-foreground m-0 text-sm" role="status">
+                {f.review.releaseNone}
+              </p>{:else if !importJob.probeConfirmed}<p
                 class="text-muted-foreground m-0 text-sm"
                 role="status"
               >
@@ -1248,10 +1270,19 @@
               <section class="flex flex-col gap-2 rounded-lg border p-4">
                 <h3 class="m-0 text-base font-semibold">{f.done.removeTitle}</h3>
                 <p class="text-muted-foreground m-0 text-sm">{f.done.removeHint}</p>
+                {#if noProbe}
+                  <p class="m-0 text-sm" data-testid="migration-without-probe">
+                    {f.done.withoutProbe}
+                  </p>
+                  <label class="flex items-start gap-2 text-sm">
+                    <input type="checkbox" class="mt-1" bind:checked={withoutProbeOk} />
+                    <span>{f.done.withoutProbeConfirm}</span>
+                  </label>
+                {/if}
                 <div>
                   <Button
                     variant="outline"
-                    disabled={removeMissing.length > 0}
+                    disabled={removeMissing.length > 0 || (noProbe && !withoutProbeOk)}
                     onclick={() => action(importJob.id, 'remove-source')}>{f.done.remove}</Button
                   >
                 </div>

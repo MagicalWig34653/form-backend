@@ -84,6 +84,6 @@ test('echter Import: Umstieg erledigt, Kunden-Schritt nennt den importierten Kun
   await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done');
   await expect(page.getByTestId('step-customer')).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('customer-imported-hint')).toContainText(
-    'wird beim Live-Gang aktiviert',
+    'Kunde aus dem Umstieg importiert',
   );
 });

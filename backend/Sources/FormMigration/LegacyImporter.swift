@@ -416,7 +416,9 @@ public struct LegacyImporter {
                     guard existing == p.customers[id] else { throw ImportFailure.conflict }
                     return [Destination(table: "customers", predicate: "id=\(customerID)")]
                 }
-                return [try await insert(db,"customers",["id":try uid(id),"name":val(p.customers[id]),"state":"'disabled'","created_at":"'1970-01-01 00:00:00'"],key:["id":try uid(id)])]
+                // Active: the customer must be reachable after the import (Kunden list, forms, drafts, entries, key adoption). Nothing
+                // is received or sent before the cutover anyway: forms stay inactive and unreleased, connections disabled (ADR 0014).
+                return [try await insert(db,"customers",["id":try uid(id),"name":val(p.customers[id]),"state":"'active'","created_at":"'1970-01-01 00:00:00'"],key:["id":try uid(id)])]
             }
         }
         let tables = ["datenschluessel","datenschluesselRecovery","outgoingMailServer","outgoingMailProxy","formulare","formularFelder","anfragen","anfrageIdempotenz","formularWebhooks","statistics"]

@@ -92,3 +92,46 @@ it('zeigt nach dem Abschluss den Zustand Umstieg abgeschlossen ohne Aktionen', a
   expect(screen.queryByRole('button', { name: 'Altzugriff entfernen' })).toBeNull();
   expect(screen.queryByText('Vor der Umschaltung prüfen')).toBeNull();
 });
+
+// Operator path, finding B (13.11.2026): an import without any :2 package (real data: only :1/CBC) needs no probe; the server says so.
+const noV2 = () =>
+  reviewJob({
+    probeRequired: false,
+    report: { issues: [{ code: 'unsupported-content', count: 10 }] },
+  });
+
+it('ohne :2-Pakete: Probe entfällt mit eigener Meldung und Zahl der Altformat-Einsendungen', async () => {
+  request.mockResolvedValue({ ok: true, data: { items: [noV2()] } });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Prüfung' });
+  const none = await screen.findByTestId('migration-probe-none');
+  expect(none.textContent).toContain('Keine :2-Einsendungen importiert');
+  expect(none.textContent).toContain(
+    '10 Einsendungen im Altformat (:1/CBC) sind nicht übernehmbar',
+  );
+  expect(screen.queryByRole('button', { name: 'Entschlüsselungsprobe laden' })).toBeNull();
+  expect(screen.queryByText(/unterbrochen/)).toBeNull();
+});
+
+it('ohne :2-Pakete: Altzugriff entfernen erst nach ausdrücklicher Bestätigung', async () => {
+  request.mockResolvedValue({ ok: true, data: { items: [noV2()] } });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Prüfung' });
+  await fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  await screen.findByRole('heading', { name: 'Umschaltung' });
+  const remove = screen.getByRole('button', { name: 'Altzugriff entfernen' }) as HTMLButtonElement;
+  expect(screen.queryByText(/Noch offen: Probe/)).toBeNull();
+  expect(remove.disabled).toBe(true);
+  await fireEvent.click(
+    screen.getByRole('checkbox', { name: /Ohne Probe wird der Altzugriff entfernt/ }),
+  );
+  expect(remove.disabled).toBe(false);
+});
+
+it('mit :2-Paketen bleibt die Probe Pflicht (probeRequired true)', async () => {
+  request.mockResolvedValue({ ok: true, data: { items: [reviewJob({ probeRequired: true })] } });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Prüfung' });
+  expect(screen.getByRole('button', { name: 'Entschlüsselungsprobe laden' })).toBeTruthy();
+  expect(screen.queryByTestId('migration-probe-none')).toBeNull();
+});

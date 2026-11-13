@@ -164,11 +164,13 @@ public enum SetupMigrationRoutes {
         root.get("jobs") { req async throws -> Response in
             _ = try await authorize(req, mutation: false, fresh: false)
             let jobs = try await sql.raw("SELECT * FROM migration_jobs ORDER BY created_at DESC LIMIT 50").all(decoding: MigrationJob.self)
+            // Without any imported :2 package (only :1/CBC, ADR 0001) no decryption probe is possible: the server says so, the client does not decide.
+            let probeRequired = try await MigrationVerificationRoutes.probePackages(sql) > 0
             // Explicit allowlist: no source refs, plan names, source keys or raw issues.
             let items: [[String: Any]] = try jobs.map { job in
                 ["id": DB.uuid(job.id.data)!.uuidString.lowercased(), "state": job.state, "phase": job.phase,
                  "formIds": (try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))).formCustomers.keys.sorted(),
-                 "probeConfirmed": job.probe_hash != nil, "testConfirmed": job.test_hash != nil,
+                 "probeConfirmed": job.probe_hash != nil, "testConfirmed": job.test_hash != nil, "probeRequired": probeRequired,
                  "dryRun": job.dry_run == 1, "report": try JSONSerialization.jsonObject(with: Data(job.report_json.utf8)), "error": job.error_code ?? ""]
             }
             return try response(["items": items])
@@ -179,6 +181,7 @@ public enum SetupMigrationRoutes {
             guard ["pause", "resume", "import", "rehearse", "remove-source", "release-submissions"].contains(action) else { throw Abort(.notFound) }
             let hmac = action == "release-submissions" ? try await service.key() : Data()
             var release: SubmissionRelease?
+            var withoutProbe = false
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 guard let job = try await tx.raw("SELECT * FROM migration_jobs WHERE id=\(bind: DB.bin(id)) FOR UPDATE").first(decoding: MigrationJob.self) else { throw Abort(.notFound) }
@@ -213,7 +216,11 @@ public enum SetupMigrationRoutes {
                     guard ["review", "paused", "failed"].contains(job.state) else { throw Abort(.conflict) }
                     // Removing the source after a real import requires both browser confirmations (probe decryption and test message);
                     // aborting a dry run, a paused or a failed job stays possible.
-                    if job.state == "review", job.dry_run == 0, job.probe_hash == nil || job.test_hash == nil { throw Abort(.conflict) }
+                    // Exception: the import holds no :2 package at all (probePackages == 0), so there is nothing a probe could open.
+                    if job.state == "review", job.dry_run == 0, job.probe_hash == nil || job.test_hash == nil {
+                        guard try await MigrationVerificationRoutes.probePackages(tx) == 0 else { throw Abort(.conflict) }
+                        withoutProbe = true
+                    }
                     let refs = try JSONDecoder().decode(MigrationSourceRefs.self, from: Data(job.source_json.utf8))
                     for ref in [refs.host, refs.database, refs.username, refs.password] {
                         try await tx.raw("DELETE FROM managed_secrets WHERE ref=\(bind: ref)").run()
@@ -221,7 +228,7 @@ public enum SetupMigrationRoutes {
                     try await tx.raw("UPDATE migration_jobs SET state='closed',source_json='{}' WHERE id=\(bind: DB.bin(id))").run()
                 }
                 try await service.audit(tx, actor: actor, action: "migration.job." + action,
-                                        details: release.map { "{\"released\":\($0.released),\"newlyReleased\":\($0.newlyReleased),\"kept\":\($0.kept)}" } ?? "{}")
+                                        details: release.map { "{\"released\":\($0.released),\"newlyReleased\":\($0.newlyReleased),\"kept\":\($0.kept)}" } ?? (withoutProbe ? "{\"withoutProbe\":\"no-v2-packages\"}" : "{}"))
             }
             if let release { return try response(["status": "accepted", "released": release.released, "newlyReleased": release.newlyReleased, "kept": release.kept]) }
             return try response(["status": "accepted"])

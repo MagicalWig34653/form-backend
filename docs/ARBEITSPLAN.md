@@ -7,7 +7,7 @@ Auf main gemergt (Rollback-Ref je Merge in Todolino): Ops-Liste trotz vorlaufend
 Nächste Schritte:
 - Pushen und CI abwarten. Neue CI-Schritte im Job `e2e-real`: `e2e-ops.sh`, `e2e-admin-limit.sh`, `e2e-migration-convert.sh` (dazu die Schritte der Parallel-Session). Keiner davon ist in der CI gelaufen.
 - Offene Nutzerfragen: Malware (5DAD0F85), Rotation nach Umstieg (FF958178), Sichtbarkeit importierter Einsendungen (2DC195BE). Aufbewahrung (72 h, Pflicht, änderbar) ist umgesetzt (EEDF6CCE, ADR 0012 Nr. 2, ungemergt, Review offen); Cutover (Snapshot und Quiesce) ist beantwortet, aber noch nicht umgesetzt.
-- Konverter-Funde: Der Import konvertiert selbst, 409 kommt ohne Grundtext (`docs/handoffs/E2E-Migration-Konverter.md`). Importierte Kunden sind `disabled` und in `/tenants` unsichtbar.
+- Konverter-Funde: Der Import konvertiert selbst, 409 kommt ohne Grundtext (`docs/handoffs/E2E-Migration-Konverter.md`). Importierte Kunden waren `disabled` und in `/tenants` unsichtbar: behoben 13.11.2026 (Betreiberweg-Fund A, Kunden werden aktiv angelegt).
 - Lücke 14 (Vorwarnung im Plan-Schritt, EDBC4A14) ist offen. Lücke 10: Delta nach Rotation endet mit `missing_target` (Entscheidung FF958178); das Delta selbst entfällt seit ADR 0043 (Einmal-Snapshot, 48E3D133), die Rotations-Spec muss auf Wiederholung mit gleichem Snapshot umgestellt werden (`docs/handoffs/Einmal-Snapshot-Quiesce.md`).
 
 ## Setup-Assistent: weitere Schritte (11.11.2026, Todolino 9C74289D)

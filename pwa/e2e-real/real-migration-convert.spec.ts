@@ -62,8 +62,8 @@ test('migration convert: drafts from the import, repetition, edit, publish, 409 
   await loginAndSecure(page);
   await toOverview(page);
 
-  // Imported customers are `disabled` and not listed in the UI; to open the drafts in the editor the import goes into an existing
-  // (active) customer. Its own key generation (number 1) would collide with the imported one, so it is removed first (as in real-migration.spec.ts).
+  // The import goes into an existing (active) customer here (a new imported customer is active as well since 13.11.2026, see
+  // real-operator.spec.ts). Its own key generation (number 1) would collide with the imported one, so it is removed first (as in real-migration.spec.ts).
   const tenant = await createCustomer(page, CUSTOMER);
   // The browser sets up the customer's key generation, its access and (later) its recovery asynchronously after the customer is created:
   // wait until the access exists, then dismantle all three in ONE transaction (a delete in between would hit data_key_access' foreign key).

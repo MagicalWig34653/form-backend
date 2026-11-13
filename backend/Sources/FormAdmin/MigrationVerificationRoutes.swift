@@ -30,7 +30,14 @@ enum MigrationVerificationRoutes {
             if let object = try await tx.raw("SELECT ciphertext FROM stored_objects WHERE id=\(bind: DB.bin(id)) AND object_role='data' AND state='ready' AND backend='db'").first(decoding: Sample.self),
                let wire = String(data: object.ciphertext.data, encoding: .utf8), wire.contains("|hpke|") { return wire }
         }
-        throw Abort(.notFound, reason: "Keine geeignete migrierte :2-Probe vorhanden")
+        throw Abort(.notFound, reason: "Keine :2-Einsendungen importiert: Entschlüsselungsprobe entfällt; :1-Einsendungen bleiben Prüffall")
+    }
+    /// Number of imported :2 data packages a probe could use (ready, in the database, HPKE-wrapped). Zero means the import holds no
+    /// readable submission at all (e.g. only `KUBUS-AEAD:1`/CBC, which stay review cases after ADR 0001): then no probe is possible and
+    /// none is required. Decided here from the stored import, never from a client flag.
+    static func probePackages(_ tx: SQLDatabase) async throws -> Int {
+        struct C: Decodable { let c: Int }
+        return try await tx.raw("SELECT COUNT(*) AS c FROM stored_objects o JOIN submissions s ON s.id=o.submission_id WHERE s.release_evidence='legacy-unknown' AND o.object_role='data' AND o.state='ready' AND o.backend='db' AND o.packet_format='KUBUS-AEAD:2' AND o.wrap_kind='hpke'").first(decoding: C.self)?.c ?? 0
     }
     static func hash(_ wire: String) -> String { SHA256.hash(data: Data(wire.utf8)).map { String(format: "%02x", $0) }.joined() }
     static func register(_ root: RoutesBuilder, service: MigrationService,

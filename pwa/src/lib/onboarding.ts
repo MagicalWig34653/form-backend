@@ -137,7 +137,8 @@ export function deriveSteps(facts: Facts, skipped: readonly StepId[] = []): Step
       if ((facts.customers ?? 0) === 0) step.detail = 'needsCustomer';
       else if (facts.forms.total > 0) step.detail = 'draftOnly';
     }
-    // Imported customers stay 'disabled' until the cutover and are not listed as customers: say so instead of offering "first customer".
+    // Imported customers are active (finding A, 13.11.2026) and normally make this step done. Still open after an import means the
+    // account sees none of them (rights): say that a customer was imported instead of offering "first customer".
     if (id === 'customer' && state === 'open' && facts.migration.status === 'imported')
       step.detail = 'imported';
     if (id === 'migration' && state === 'open') {

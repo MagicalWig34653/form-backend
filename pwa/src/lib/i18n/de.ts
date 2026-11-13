@@ -1779,7 +1779,7 @@ try {
         created: 'Kunde „{name}“ ist angelegt.',
         manage: 'Kunden ansehen',
         imported:
-          'Kunde aus dem Umstieg importiert, wird beim Live-Gang aktiviert. Bis dahin erscheint er hier nicht in der Kundenliste; einen weiteren Kunden können Sie trotzdem anlegen.',
+          'Kunde aus dem Umstieg importiert. Er steht in der Kundenliste, sobald Ihr Konto Zugriff auf ihn hat; seine Formulare bleiben bis zur Veröffentlichung inaktiv. Einen weiteren Kunden können Sie trotzdem anlegen.',
       },
       form: {
         title: 'Erstes Formular anlegen und veröffentlichen',
@@ -2579,6 +2579,11 @@ try {
           reportTitle: 'Prüfbericht',
           probeTitle: 'Entschlüsselungsprobe',
           probeLoad: 'Entschlüsselungsprobe laden',
+          probeNone:
+            'Keine :2-Einsendungen importiert: Die Entschlüsselungsprobe entfällt. :1-Einsendungen bleiben Prüffall (ADR 0001).',
+          probeNoneCount:
+            '{n} Einsendungen im Altformat (:1/CBC) sind nicht übernehmbar und bleiben in der Prüfung (ADR 0001). Sie stehen weiter in der gesicherten Quelle.',
+          releaseNone: 'Es gibt keine :2-Einsendungen, die freigegeben werden könnten.',
           probeSubmit: 'Probe lokal entschlüsseln',
           probeCancel: 'Abbrechen',
           probeHint:
@@ -2631,6 +2636,10 @@ try {
           missing: 'Noch offen: {items}.',
           missingProbe: 'Probe',
           missingTest: 'Testnachricht',
+          withoutProbe:
+            'Dieser Import enthält keine :2-Einsendungen, eine Entschlüsselungsprobe ist deshalb nicht möglich und nicht nötig.',
+          withoutProbeConfirm:
+            'Ich habe verstanden: Ohne Probe wird der Altzugriff entfernt; die Einsendungen im Altformat bleiben in der Prüfung.',
           disable: 'Danach migration.enabled in den Einstellungen deaktivieren',
           emptyTitle: 'Umschaltung noch nicht erreicht',
           emptyBody: 'Schließen Sie zuerst Import und Prüfung ab.',
