@@ -486,7 +486,9 @@ render_swarm | "$REAL_DOCKER" stack config -c - | "$REAL_DOCKER" compose -f - co
     backup = base / 'backup'
     password = base / 'password'
     password.write_text('synthetic-db-password')
-    db_env = dict(env, FORM_DB_HOST='external-db.example.org', FORM_DB_PASSWORD_FILE=str(password))
+    db_env = dict(env, FORM_DB_HOST='external-db.example.org', FORM_DB_PASSWORD_FILE=str(password),
+                  FORM_BACKUP_ALLOW_PLAINTEXT='1')
+    run([backup_script, str(base / 'backup-noenc')], {k: v for k, v in db_env.items() if k != 'FORM_BACKUP_ALLOW_PLAINTEXT'}, ok=False)  # fail-closed without recipient
     for script, args in [(backup_script, [str(backup)]), (restore_script, [str(backup), 'restore_probe'])]:
         run([script, '--help'], db_env)
         run([script, *args, '--dry-run'], db_env)
