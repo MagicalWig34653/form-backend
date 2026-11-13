@@ -75,7 +75,7 @@ enum EntryRoutes {
             try await perms.authorize(account: account, "content.decrypt", on: scope)
             try await guardian.requireFreshAuthentication(s, now: now())
             guard let row = try await sql.raw("""
-                SELECT o.id, o.ciphertext_sha256, o.ciphertext AS ciphertext, o.kid AS kid, g.generation_id AS generation_id
+                SELECT o.id, o.ciphertext_sha256, CASE WHEN o.byte_count <= 1048576 THEN o.ciphertext END AS ciphertext, o.kid AS kid, g.generation_id AS generation_id
                 FROM stored_objects o
                 JOIN submissions s ON s.customer_id = o.customer_id AND s.form_id = o.form_id AND s.id = o.submission_id
                 LEFT JOIN customer_key_generations g ON g.customer_id = o.customer_id AND g.kid = o.kid
@@ -101,7 +101,7 @@ enum EntryRoutes {
             try await perms.authorize(account: account, "content.decrypt", on: scope)
             try await guardian.requireFreshAuthentication(s, now: now())
             guard let row = try await sql.raw("""
-                SELECT o.id, o.ciphertext_sha256, o.ciphertext AS ciphertext, o.kid AS kid, g.generation_id AS generation_id
+                SELECT o.id, o.ciphertext_sha256, CASE WHEN o.byte_count <= 1048576 THEN o.ciphertext END AS ciphertext, o.kid AS kid, g.generation_id AS generation_id
                 FROM stored_objects o
                 JOIN submissions s ON s.customer_id = o.customer_id AND s.form_id = o.form_id AND s.id = o.submission_id
                 LEFT JOIN customer_key_generations g ON g.customer_id = o.customer_id AND g.kid = o.kid

@@ -236,7 +236,7 @@ enum PrivacyRoutes {
             } ?? ""
             struct Row: Decodable { let id: Blob; let received_at: Date?; let object_id: Blob; let ciphertext: Blob?; let ciphertext_sha256: Blob; let kid: String; let generation_id: Blob?; let attachments: Int }
             let rows = try await sql.raw("""
-                SELECT s.id AS id, s.received_at AS received_at, o.id AS object_id, o.ciphertext_sha256, o.ciphertext AS ciphertext, o.kid AS kid, g.generation_id AS generation_id,
+                SELECT s.id AS id, s.received_at AS received_at, o.id AS object_id, o.ciphertext_sha256, CASE WHEN o.byte_count <= 1048576 THEN o.ciphertext END AS ciphertext, o.kid AS kid, g.generation_id AS generation_id,
                   (SELECT COUNT(*) FROM stored_objects a WHERE a.customer_id = s.customer_id AND a.form_id = s.form_id AND a.submission_id = s.id AND a.object_role = 'attachment' AND a.state = 'ready') AS attachments
                 FROM submissions s
                 JOIN stored_objects o ON o.customer_id = s.customer_id AND o.form_id = s.form_id AND o.submission_id = s.id

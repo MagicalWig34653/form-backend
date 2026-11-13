@@ -243,19 +243,23 @@ struct SubmitHandler: Sendable {
                         try await storage.insert(sql: t, customer: customer, form: formUUID, submission: submissionID, role: "attachment", ordinal: i, wire: a.wire, kid: a.kid, payloadHash: a.payloadHash, originalBytes: a.content.count)
                     }
                 } else {
+                let dataObject = Self.bin(UUID())
                 try await t.raw("""
                     INSERT INTO stored_objects (id, customer_id, form_id, submission_id, object_role, ordinal_no, revision, backend, ciphertext,
                       packet_format, wrap_kind, kid, content_encoding, ciphertext_sha256, payload_sha256, byte_count, state)
-                    VALUES (\(bind: Self.bin(UUID())), \(bind: form.customer_id), \(bind: Self.bin(formUUID)), \(bind: Self.bin(submissionID)), 'data', 0, 0, 'db',
-                      \(bind: Blob(wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: kid), 'raw', \(bind: Blob(Data(SHA256.hash(data: wire)))), \(bind: payloadHash), \(bind: wire.count), 'ready')
+                    VALUES (\(bind: dataObject), \(bind: form.customer_id), \(bind: Self.bin(formUUID)), \(bind: Self.bin(submissionID)), 'data', 0, 0, 'db',
+                      \(bind: ChunkedBlob.head(wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: kid), 'raw', \(bind: Blob(Data(SHA256.hash(data: wire)))), \(bind: payloadHash), \(bind: wire.count), 'ready')
                     """).run()
+                try await ChunkedBlob.append(wire, to: .objectCiphertext, key: dataObject, on: t)
                 for (i, a) in uploadsForTx.enumerated() {
+                    let attachmentObject = Self.bin(UUID())
                     try await t.raw("""
                         INSERT INTO stored_objects (id, customer_id, form_id, submission_id, object_role, ordinal_no, revision, backend, ciphertext,
                           packet_format, wrap_kind, kid, content_encoding, ciphertext_sha256, payload_sha256, byte_count, state)
-                        VALUES (\(bind: Self.bin(UUID())), \(bind: form.customer_id), \(bind: Self.bin(formUUID)), \(bind: Self.bin(submissionID)), 'attachment', \(bind: i), 0, 'db',
-                          \(bind: Blob(a.wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: a.kid), 'raw', \(bind: Blob(Data(SHA256.hash(data: a.wire)))), \(bind: Blob(a.payloadHash)), \(bind: a.wire.count), 'ready')
+                        VALUES (\(bind: attachmentObject), \(bind: form.customer_id), \(bind: Self.bin(formUUID)), \(bind: Self.bin(submissionID)), 'attachment', \(bind: i), 0, 'db',
+                          \(bind: ChunkedBlob.head(a.wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: a.kid), 'raw', \(bind: Blob(Data(SHA256.hash(data: a.wire)))), \(bind: Blob(a.payloadHash)), \(bind: a.wire.count), 'ready')
                         """).run()
+                    try await ChunkedBlob.append(a.wire, to: .objectCiphertext, key: attachmentObject, on: t)
                 }
                 }
                 if max(wire.count, uploadsForTx.map(\.wire.count).max() ?? 0) >= PacketGuard.checkThreshold {

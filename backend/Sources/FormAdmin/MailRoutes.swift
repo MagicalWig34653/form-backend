@@ -266,7 +266,7 @@ enum MailRoutes {
             guard d.state == "waiting-manual" || (d.state == "uncertain" && allowUncertain) else { throw Abort(.conflict) }
             struct P: Decodable { let id: Blob; let ciphertext_sha256: Blob; let ciphertext: Blob?; let release_id: Blob? }
             guard let p = try await sql.raw("""
-                SELECT o.id, o.ciphertext_sha256, o.ciphertext AS ciphertext, s.release_id AS release_id FROM stored_objects o
+                SELECT o.id, o.ciphertext_sha256, CASE WHEN o.byte_count <= 1048576 THEN o.ciphertext END AS ciphertext, s.release_id AS release_id FROM stored_objects o
                 JOIN submissions s ON s.customer_id = o.customer_id AND s.form_id = o.form_id AND s.id = o.submission_id
                 WHERE o.customer_id = \(bind: DB.bin(tenant)) AND o.form_id = \(bind: DB.bin(form)) AND o.submission_id = \(bind: DB.bin(entry))
                   AND o.object_role = 'data' AND o.ordinal_no = 0 AND o.state = 'ready' AND s.state = 'accepted'

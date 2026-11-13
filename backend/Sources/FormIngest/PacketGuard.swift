@@ -4,8 +4,8 @@ import Foundation
 import SQLKit
 import Vapor
 
-/// Upload-Verlust: the ingest writes every sealed package (data and attachments, base64 of up to ~27 MB) as ONE bound value, and MariaDB
-/// refuses a packet larger than `max_allowed_packet` (default 16 MiB). The driver reports that only as an unspecific error (HTTP 500 and
+/// Upload-Verlust: the ingest stores every sealed package (data and attachments, base64 of up to ~27 MB) as one cell (written in 4 MiB pieces, see
+/// `ChunkedBlob`: the driver cannot send a packet of 16 MiB - 1 or more), and MariaDB refuses a cell/CONCAT result larger than `max_allowed_packet` (default 16 MiB). The driver reports that only as an unspecific error (HTTP 500 and
 /// a retry that can never succeed) or, in a standalone write, not at all. An oversize value is therefore refused BEFORE the first write
 /// (413 `payload_too_large`, operator hint in the log) and a completed write is verified, never trusted.
 public enum PacketGuard {

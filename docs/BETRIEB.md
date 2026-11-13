@@ -97,7 +97,11 @@ Extern vorab bereitstellen:
   werden können: Ist ein versiegeltes Paket größer als das `max_allowed_packet` der Verbindung (plus 64 KiB Reserve), antwortet
   der Ingest VOR dem Schreiben mit 413 `payload_too_large`, speichert nichts und loggt den Betreiberhinweis; beim Start warnt
   der Dienst („max_allowed_packet X MiB < ingest limit Y MiB“). Ein zu kleiner Wert bedeutet also abgelehnte große Uploads,
-  keine verlorenen (siehe Übergaben QA-15C5D5E9 und Upload-Verlust). Der Umstieg-Import schreibt große Zellen stückweise (`CONCAT`), MariaDB prüft das Ergebnis
+  keine verlorenen (siehe Übergaben QA-15C5D5E9 und Upload-Verlust). Unabhängig vom Serverwert kann der Treiber (MySQLNIO 1.9.x) kein
+  einzelnes Statement und keine einzelne Ergebniszeile ab 16 MiB − 1 übertragen (Paketlänge ohne Aufteilung); versiegelte Objekte werden
+  deshalb in 4-MiB-Stücken geschrieben und gelesen (`ChunkedBlob`, Übergabe `docs/handoffs/Grosse-Uploads-500.md`). Mit 64 MiB sind Uploads
+  bis 20 MB belegt (Test `LargeUploadIngestTests`: 12 bis 19,999999 MB angenommen, Hash und Entschlüsselung über den Anhang-Endpunkt byte-genau,
+  Aufbewahrung löscht sie). Der Umstieg-Import schreibt große Zellen stückweise (`CONCAT`), MariaDB prüft das Ergebnis
   gegen die Grenze (Fehler 1301). Der Prüflauf meldet eine zu kleine Grenze vorab als `target_packet_too_small`, die
   Quellprüfung warnt. Nach einer Änderung Datenbank und App neu starten.
 - DB-Netzwerkzugriff von allen App-/Migrations-Nodes und vom Client für Backup/Restore.

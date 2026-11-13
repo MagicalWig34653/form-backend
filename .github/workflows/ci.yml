@@ -65,6 +65,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Swift tests incl. database tests (Docker, private network)
         run: bash backend/ci-linux.sh
+      - name: Large uploads with the documented 64 MiB max_allowed_packet
+        run: DB_ARGS=--max-allowed-packet=67108864 bash backend/ci-linux.sh --filter "LargeUploadIngestTests|LargeObjectRoundTripTests"
 
   secret-scan:
     name: Secret scan (gitleaks, full history)

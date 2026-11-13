@@ -31,6 +31,19 @@ public enum DB {
         f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSSSS"
         return f.string(from: d)
     }
+    /// Log-safe description of a database error: MySQL error number and SQLSTATE only, never the server message
+    /// (it can quote values) and never bound data. Other errors: type name only.
+    public static func logDescription(_ error: Error) -> String {
+        guard let e = error as? MySQLError else { return "\(type(of: error))" }
+        switch e {
+        case .server(let p): return "MySQLError.server errno=\(p.errorCode.rawValue) sqlstate=\(p.sqlState ?? "?")"
+        case .duplicateEntry: return "MySQLError.duplicateEntry errno=1062"
+        case .invalidSyntax: return "MySQLError.invalidSyntax"
+        case .closed: return "MySQLError.closed"
+        case .protocolError: return "MySQLError.protocolError"
+        default: return "MySQLError"
+        }
+    }
     public static func isDuplicateKey(_ error: Error) -> Bool {
         guard let e = error as? MySQLError else { return false }
         switch e {

@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## Große Uploads 500 (13.11.2026, Worktree-Branch `worktree-agent-a99e8714e8d8b2ed7`, lokal committet, ungemergt; Todolino 985BC399)
+
+- Ursache belegt: MySQLNIO 1.9.2 teilt Pakete ab 16 MiB − 1 weder beim Schreiben noch beim Lesen (3-Byte-Länge), unabhängig von `max_allowed_packet` (gemessen: gebundener Wert 17 MB = "ok", gespeichert 0 Byte). Folge: Uploads 14 bis 19,5 MB = 500 (`MySQLError`), Inventar-`SELECT *` auf Zellen über 16 MiB = "storage maintenance failed" / "Statement not closed" jede Minute, Aufbewahrung/Wartungslöschung scheiterte dauerhaft an solchen Zeilen.
+- Fix: `ChunkedBlob` (4-MiB-Stücke, CONCAT/SUBSTRING) für Ingest, `StorageService`, `DBObjectStore`, Spool; Inventarabfragen ohne `ciphertext`; `unhandled error` und Wartungswarnung loggen MySQL-errno/SQLSTATE (`DB.logDescription`). CI: eigener Schritt mit 64-MiB-DB (`DB_ARGS` in `ci-linux.sh`). Übergabe `docs/handoffs/Grosse-Uploads-500.md`.
+- Geprüft: neue Tests `LargeUploadIngestTests` (12 bis 19,999999 MB: 200, Länge+SHA-256 in der DB, Anhang-Endpunkt byte-genau/entschlüsselt, Aufbewahrung löscht, Wartung beendet Löschung einer 21-MB-Zelle) und `LargeObjectRoundTripTests`; rot gegen HEAD, grün danach. Filter-Lauf FormStorage/Admin/Ingest/Flow/Migration auf 16-MiB-DB: 355 Tests, 0 Fehler. `ci-linux.sh` mit 64 MiB: 3 Tests grün.
+- Offen: Rotation/Hold-Rewrap/Flow-Checkpoints lesen weiter ganze Zellen (Objekte über 16 MiB dort nicht nutzbar); PWA nicht berührt.
+
 ## QA-Befund Aufbewahrungsjob löschte importierte Einsendungen (13.11.2026, Todolino 32884165, Branch `worktree-agent-aaf4ecf27611b6ce9`, lokal committet, ungemergt, nicht gepusht)
 
 - Ursache: Import setzte `retention_due_at = received_at + 3 Tage`; Alt-Einsendungen waren sofort fällig, der Job löschte sie. Fix: importierte Einsendungen ohne Frist (NULL), `PUT retention` nur mit `applyToImported` (+`dryRun`/`dueNowImported`), Upgrade 0035, Ledger-Nachweis ohne `retention_due_at` (Altnachweise weiter gültig, Freigabe prüft beide), Bericht `retention` (Schritt Prüfung), PWA-Dialog mit Häkchen/Bestätigung. Doku: ADR 0012 Nr. 2, UMSTIEG-CHECKLISTE 5a, BETRIEB.md.

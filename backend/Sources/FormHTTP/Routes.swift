@@ -27,8 +27,8 @@ struct ProblemMiddleware: AsyncMiddleware {
                 (code, message) = Self.clientError(status)
             } else {
                 status = .internalServerError; code = "internal_error"; message = "Interner Fehler."
-                // Only the error type: descriptions may contain request data or SQL values.
-                req.logger.error("unhandled error", metadata: ["type": "\(type(of: error))", "requestId": "\(rid)"])
+                // Error type plus MySQL errno/SQLSTATE (DB.logDescription): descriptions may contain request data or SQL values.
+                req.logger.error("unhandled error", metadata: ["type": "\(type(of: error))", "detail": "\(DB.logDescription(error))", "requestId": "\(rid)"])
             }
             return try Self.problem(status, Problem(code: code, message: message, requestId: rid))
         }

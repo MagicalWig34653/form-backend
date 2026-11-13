@@ -46,14 +46,14 @@ public enum SubmissionEraser {
             if requireDue, row.due.map({ $0 > now }) ?? true { out.missing.append(id); continue }
             let s = DB.bin(id)
             // Lock and inventory all direct objects and recursively owned metadata before any destructive SQL.
-            var objects = try await db.raw("SELECT * FROM stored_objects WHERE customer_id = \(bind: t) AND form_id = \(bind: f) AND (submission_id = \(bind: s) OR (object_role = 'debug' AND submission_id IS NULL AND id IN (SELECT d.object_id FROM debug_objects d JOIN debug_requests r ON r.customer_id = d.customer_id AND r.form_id = d.form_id AND r.id = d.debug_request_id WHERE r.customer_id = \(bind: t) AND r.form_id = \(bind: f) AND r.submission_id = \(bind: s)))) FOR UPDATE").all(decoding: StorageService.ObjectRow.self)
+            var objects = try await db.raw("SELECT \(StorageService.ObjectRow.columns) FROM stored_objects WHERE customer_id = \(bind: t) AND form_id = \(bind: f) AND (submission_id = \(bind: s) OR (object_role = 'debug' AND submission_id IS NULL AND id IN (SELECT d.object_id FROM debug_objects d JOIN debug_requests r ON r.customer_id = d.customer_id AND r.form_id = d.form_id AND r.id = d.debug_request_id WHERE r.customer_id = \(bind: t) AND r.form_id = \(bind: f) AND r.submission_id = \(bind: s)))) FOR UPDATE").all(decoding: StorageService.ObjectRow.self)
             struct M: Decodable { let metadata_object_id: Blob? }
             var index = 0
             var known = Set(objects.map { $0.id.data })
             while index < objects.count {
                 let parent = objects[index]; index += 1
                 if let m = try await db.raw("SELECT metadata_object_id FROM stored_objects WHERE id = \(bind: parent.id)").first(decoding: M.self)?.metadata_object_id, known.insert(m.data).inserted {
-                    guard let child = try await db.raw("SELECT * FROM stored_objects WHERE id = \(bind: m) AND customer_id = \(bind: t) AND form_id = \(bind: f) AND object_role = 'object-metadata' AND (submission_id IS NULL OR submission_id = \(bind: s)) FOR UPDATE").first(decoding: StorageService.ObjectRow.self) else { throw Abort(.conflict, reason: "metadata_invalid") }
+                    guard let child = try await db.raw("SELECT \(StorageService.ObjectRow.columns) FROM stored_objects WHERE id = \(bind: m) AND customer_id = \(bind: t) AND form_id = \(bind: f) AND object_role = 'object-metadata' AND (submission_id IS NULL OR submission_id = \(bind: s)) FOR UPDATE").first(decoding: StorageService.ObjectRow.self) else { throw Abort(.conflict, reason: "metadata_invalid") }
                     objects.append(child)
                 }
             }

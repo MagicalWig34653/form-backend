@@ -41,7 +41,7 @@ public struct StorageScheduler: LifecycleHandler {
         app.storage[StorageTaskKey.self] = Task {
             while !Task.isCancelled {
                 do { try await StorageMaintenance.run(service: service) }
-                catch { logger.warning("storage maintenance failed", metadata: ["type": "\(type(of: error))"]) }
+                catch { logger.warning("storage maintenance failed", metadata: ["type": "\(type(of: error))", "detail": "\(DB.logDescription(error))"]) }
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
             }
         }

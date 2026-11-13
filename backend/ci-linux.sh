@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-only
 # Linux test run: MariaDB container + swift container on a private Docker network (no published ports), all tests incl. DB ones.
+# DB_ARGS adds server options (e.g. --max-allowed-packet=67108864 for the large-upload tests).
 # Used by CI and runnable locally (Docker Desktop: native arch). Random password per run, never printed.
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
@@ -10,7 +11,7 @@ NET=formbackend-ci-$$; DB=formbackend-ci-db-$$; MP=formbackend-ci-mail-$$; MP_IM
 cleanup() { "$DOCKER" rm -f "$DB" "$MP" >/dev/null 2>&1; "$DOCKER" network rm "$NET" >/dev/null 2>&1; echo "cleanup done"; }
 trap cleanup EXIT
 "$DOCKER" network create "$NET" >/dev/null || exit 2
-"$DOCKER" run -d --name "$DB" --network "$NET" --tmpfs /var/lib/mysql -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=p4atest "$DB_IMAGE" >/dev/null || exit 2
+"$DOCKER" run -d --name "$DB" --network "$NET" --tmpfs /var/lib/mysql -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=p4atest "$DB_IMAGE" ${DB_ARGS:-} >/dev/null || exit 2
 "$DOCKER" run -d --name "$MP" --network "$NET" -v "$PWD/backend/Tests/TestSupport/Fixtures:/certs:ro" -e MP_SMTP_TLS_CERT=/certs/test-cert.pem -e MP_SMTP_TLS_KEY=/certs/test-key.pem -e MP_SMTP_AUTH_ACCEPT_ANY=1 "$MP_IMAGE" >/dev/null || echo "note: mailpit not started, the SMTP interop tests will be skipped"
 up=0
 for _ in $(seq 90); do

@@ -61,22 +61,27 @@ public struct StorageService: Sendable {
             INSERT INTO stored_objects (id, customer_id, form_id, submission_id, object_role, ordinal_no, revision, backend, connection_id, object_key, ciphertext,
               packet_format, wrap_kind, kid, content_encoding, ciphertext_sha256, payload_sha256, byte_count, state)
             VALUES (\(bind: DB.bin(id)), \(bind: DB.bin(customer)), \(bind: DB.bin(form)), \(bind: DB.bin(submission)), \(bind: role), \(bind: ordinal), 0,
-              \(bind: backend), \(bind: external ? policy.connectionId.map(DB.bin) : nil), \(bind: key), \(bind: external ? nil : Blob(wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: kid), 'raw',
+              \(bind: backend), \(bind: external ? policy.connectionId.map(DB.bin) : nil), \(bind: key), \(bind: external ? nil : ChunkedBlob.head(wire)), 'KUBUS-AEAD:2', 'hpke', \(bind: kid), 'raw',
               \(bind: Blob(Data(SHA256.hash(data: wire)))), \(bind: Blob(payloadHash)), \(bind: wire.count), \(bind: external ? "prepared" : "ready"))
             """).run()
         if external {
-            try await sql.raw("INSERT INTO storage_uploads (object_id, ciphertext, created_at) VALUES (\(bind: DB.bin(id)), \(bind: Blob(wire)), \(bind: DB.time(Date())))").run()
+            try await sql.raw("INSERT INTO storage_uploads (object_id, ciphertext, created_at) VALUES (\(bind: DB.bin(id)), \(bind: ChunkedBlob.head(wire)), \(bind: DB.time(Date())))").run()
+            try await ChunkedBlob.append(wire, to: .uploadSpool, key: DB.bin(id), on: sql)
+        } else {
+            try await ChunkedBlob.append(wire, to: .objectCiphertext, key: DB.bin(id), on: sql)
         }
     }
     public struct ObjectRow: Decodable {
         public let id: Blob, customer_id: Blob, form_id: Blob
         public let backend: String, state: String
-        public let connection_id: Blob?, object_key: Blob?, ciphertext: Blob?
+        public let connection_id: Blob?, object_key: Blob?
         public let ciphertext_sha256: Blob
         public let byte_count: Int
+        /// Inventory columns only. NEVER `SELECT *` here: the ciphertext cell can be 20+ MB (driver limit, see ChunkedBlob) and is not needed to inspect, lock or delete an object.
+        public static let columns: SQLQueryString = "id, customer_id, form_id, backend, state, connection_id, object_key, ciphertext_sha256, byte_count"
     }
     public func read(sql: SQLDatabase, customer: UUID, form: UUID, object: Blob) async throws -> Data {
-        guard let row = try await sql.raw("SELECT * FROM stored_objects WHERE id = \(bind: object) AND customer_id = \(bind: DB.bin(customer)) AND form_id = \(bind: DB.bin(form)) AND state = 'ready' AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP(6))").first(decoding: ObjectRow.self) else { throw StorageError("object_unavailable") }
+        guard let row = try await sql.raw("SELECT \(ObjectRow.columns) FROM stored_objects WHERE id = \(bind: object) AND customer_id = \(bind: DB.bin(customer)) AND form_id = \(bind: DB.bin(form)) AND state = 'ready' AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP(6))").first(decoding: ObjectRow.self) else { throw StorageError("object_unavailable") }
         let bytes: Data
         if row.backend == "db", let id = DB.uuid(row.id.data) { bytes = try await DBObjectStore(sql: sql, customer: customer, form: form).get(id.uuidString.lowercased()) }
         else {
@@ -96,13 +101,12 @@ public struct StorageService: Sendable {
             let failed = try await db.transaction { conn -> Bool in
                 let tx = conn as! SQLDatabase
                 if let s = row.submission_id { _ = try await tx.raw("SELECT id FROM submissions WHERE id = \(bind: s) FOR UPDATE").all() }
-                guard let o = try await tx.raw("SELECT * FROM stored_objects WHERE id = \(bind: row.id) AND state IN ('prepared','failed') FOR UPDATE").first(decoding: ObjectRow.self),
+                guard let o = try await tx.raw("SELECT \(ObjectRow.columns) FROM stored_objects WHERE id = \(bind: row.id) AND state IN ('prepared','failed') FOR UPDATE").first(decoding: ObjectRow.self),
                       let customer = DB.uuid(o.customer_id.data), let connection = o.connection_id.flatMap({ DB.uuid($0.data) }), let key = o.object_key.flatMap({ String(data: $0.data, encoding: .utf8) }) else { return false }
-                struct U: Decodable { let ciphertext: Blob }
-                guard let u = try await tx.raw("SELECT ciphertext FROM storage_uploads WHERE object_id = \(bind: row.id)").first(decoding: U.self) else { return false }
+                guard let spooled = try await ChunkedBlob.read(.uploadSpool, key: row.id, on: tx) else { return false }
                 do {
-                    guard Data(SHA256.hash(data: u.ciphertext.data)) == o.ciphertext_sha256.data else { throw StorageError("ciphertext_hash_mismatch") }
-                    try await store(customer: customer, connection: connection, sql: tx).1.put(key, data: u.ciphertext.data)
+                    guard Data(SHA256.hash(data: spooled)) == o.ciphertext_sha256.data else { throw StorageError("ciphertext_hash_mismatch") }
+                    try await store(customer: customer, connection: connection, sql: tx).1.put(key, data: spooled)
                     try await tx.raw("UPDATE stored_objects SET state = 'ready' WHERE id = \(bind: row.id)").run()
                     try await tx.raw("DELETE FROM storage_uploads WHERE object_id = \(bind: row.id)").run()
                 } catch {
@@ -135,7 +139,7 @@ extension StorageService {
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 if let s = r.submission_id { _ = try await tx.raw("SELECT id FROM submissions WHERE id = \(bind: s) FOR UPDATE").all() }
-                guard let row = try await tx.raw("SELECT * FROM stored_objects WHERE id = \(bind: r.id) AND state = 'prepared' FOR UPDATE").first(decoding: ObjectRow.self) else { return }
+                guard let row = try await tx.raw("SELECT \(ObjectRow.columns) FROM stored_objects WHERE id = \(bind: r.id) AND state = 'prepared' FOR UPDATE").first(decoding: ObjectRow.self) else { return }
                 try await deleteRemote(row, sql: tx)
                 try await tx.raw("UPDATE stored_objects SET state = 'failed' WHERE id = \(bind: r.id)").run()
             }
