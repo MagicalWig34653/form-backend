@@ -1,9 +1,0 @@
-{
-  "contractVersion": "0.1.0",
-  "proposalStatus": "VORGESCHLAGEN",
-  "id": "synthetic-identity",
-  "version": "1.0.0",
-  "language": "VORGESCHLAGEN-javascript",
-  "source": "return input;",
-  "sourceSha256": "4d3a5625145171d40ee827df41e201e99e24e3cf7a30adea9e36d84038dd310b"
-}

@@ -1,9 +1,0 @@
-{
-  "description": "Synthetische Ableitung, kein PHP-geprüfter Vektor; files ist leeres PHP-Array.",
-  "fields": {
-    "nachricht": "Grüße / Test"
-  },
-  "canonicalUtf8": "{\"fields\":{\"nachricht\":\"Grüße / Test\"},\"files\":[]}",
-  "sha256": "83b991e1de42c4013b8770c5f63f47d77da838c11d104f5928b10a20939f1b3a",
-  "signatureText": "KUBUS-V2\nPOST\n/api/v2/submit/?f=00000000-0000-4000-8000-000000000001\n1793012400\n83b991e1de42c4013b8770c5f63f47d77da838c11d104f5928b10a20939f1b3a"
-}

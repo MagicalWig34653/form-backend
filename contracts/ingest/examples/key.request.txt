@@ -1,8 +1,0 @@
-# Synthetisch, nicht sendefertig. Erstregistrierung; keine Schlüsselwerte.
-POST /api/v2/key/?f=00000000-0000-4000-8000-000000000001 HTTP/1.1
-Host: ingest.example.invalid
-Content-Type: application/x-www-form-urlencoded
-CLIENTUA-ENCRYPT: <formularspezifisches-SDK-Signal>
-CLIENTIP-ENCRYPT: <formularspezifisches-SDK-Signal>
-
-publicKey=<URL-encoded-Base64-von-32-synthetischen-Public-Key-Bytes>&provisioningTimestamp=1793012400&provisioningMac=<URL-encoded-Base64-HMAC>
