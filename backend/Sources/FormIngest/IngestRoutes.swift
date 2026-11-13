@@ -52,7 +52,10 @@ public enum IngestSetup {
         app.http.client.configuration.redirectConfiguration = .disallow
         let handler = SubmitHandler(config: config)
         app.lifecycle.use(PacketStartupCheck(ingestLimitBytes: config.maxBodyBytes))
-        let gated = app.grouped(IngestGate(maxConcurrent: config.maxConcurrent))   // runs before `body: .collect`
+        // Both run before `body: .collect`: the concurrency gate, then the cheap pre-check (form binding, budget, headers) and the
+        // reservation in the shared body budget (Content-Length x factor; 413/503 without buffering the body).
+        let gated = app.grouped(IngestGate(maxConcurrent: config.maxConcurrent))
+            .grouped(BodyBudgetGate(maxBytes: config.maxBodyBytes) { req in try await handler.preflight(req) })
         for path in [["api", "v2", "submit"], ["api", "v2", "submit", "index.php"]] {
             gated.on(.POST, path.map { PathComponent(stringLiteral: $0) }, body: .collect(maxSize: ByteCount(value: config.maxBodyBytes))) { req in
                 try await handler.submit(req)
@@ -67,7 +70,7 @@ public enum IngestSetup {
 struct SubmitHandler: Sendable {
     let config: IngestConfig
 
-    private struct FormRow: Decodable { let customer_id: Blob; let active: Int; let current_release_id: Blob?; let cstate: String }
+    fileprivate struct FormRow: Decodable { let customer_id: Blob; let active: Int; let current_release_id: Blob?; let cstate: String }
     private struct KeyRow: Decodable { let public_key: Blob? }
     private struct CustomerKeyRow: Decodable { let kid: String; let public_key: Blob }
     private struct DigestKeyRow: Decodable { let generation_no: Int64; let secret_ref: String? }
@@ -87,12 +90,17 @@ struct SubmitHandler: Sendable {
         catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
     }
 
-    func submit(_ req: Request) async throws -> Response {
+    fileprivate struct Prepared { let f: String; let formUUID: UUID; let form: FormRow; let contentType: HTTPMediaType }
+    private struct PreparedKey: StorageKey { typealias Value = Prepared }
+
+    /// Everything that needs no body, in the contract's order: form parameter (401/404), form state, per-client budget (429),
+    /// media type (415), well-formed signature headers (403). Runs as gate BEFORE the body is collected and is evaluated once per request.
+    fileprivate func prepare(_ req: Request) async throws -> Prepared {
+        if let done = req.storage[PreparedKey.self] { return done }
         // 1. Form parameter (contract: missing/empty -> 401, unknown -> 404). Only lowercase canonical UUIDs can name a form.
         guard let f = try? req.query.get(String?.self, at: "f"), !f.isEmpty else { throw Abort(.unauthorized) }
         guard let formUUID = Self.canonicalUUID(f) else { throw Abort(.notFound) }
         let sql = req.db(.mysql) as! SQLDatabase
-        let now = config.now()
 
         guard let form = try await sql.raw("""
             SELECT f.customer_id, f.active, f.current_release_id, c.state AS cstate
@@ -102,21 +110,34 @@ struct SubmitHandler: Sendable {
         // 1b. Budget per (form, client IP) before any parsing/hashing/sealing; replays with the same key count too (FA-015).
         try await enforceBudget(req, sql: sql, form: formUUID)
 
-        // 2. Body: only urlencoded in P5-A (multipart/uploads are not part of this package).
+        // 2. Only urlencoded and multipart are read (decided after the body).
         guard let ct = req.headers.contentType else { throw Abort(.unsupportedMediaType) }
         // Cheap pre-check before any parsing (review M6): without well-formed signature headers nothing is parsed or hashed.
         guard let tsHeader = req.headers.first(name: "X-Kubus-Timestamp"), !tsHeader.isEmpty, tsHeader.utf8.count <= 20,
               let sigHeader = req.headers.first(name: "X-Kubus-Signature"), sigHeader.utf8.count == 88,
               let sigRaw = Data(base64Encoded: sigHeader), sigRaw.count == 64,
-              RequestSignature.validTimestamp(tsHeader, now: Int64(now.timeIntervalSince1970)) else { throw Abort(.forbidden) }   // stale requests are not parsed (M5)
-        let body = req.body.data.map { Array($0.readableBytesView) } ?? []
+              RequestSignature.validTimestamp(tsHeader, now: Int64(config.now().timeIntervalSince1970)) else { throw Abort(.forbidden) }   // stale requests are not parsed (M5)
+        let done = Prepared(f: f, formUUID: formUUID, form: form, contentType: ct)
+        req.storage[PreparedKey.self] = done
+        return done
+    }
+
+    func preflight(_ req: Request) async throws { _ = try await prepare(req) }
+
+    func submit(_ req: Request) async throws -> Response {
+        let pre = try await prepare(req)
+        let f = pre.f, formUUID = pre.formUUID, form = pre.form, ct = pre.contentType
+        let sql = req.db(.mysql) as! SQLDatabase
+        let now = config.now()
+
         var uploads: [Upload] = []
         let fields: PHPValue
         var fileFields: [(String, FileField)] = []
         if ct.type == "application", ct.subType == "x-www-form-urlencoded" {
-            fields = try FormEncodedParser.parse(body)
+            fields = try FormEncodedParser.parse(req.body.data.map { Array($0.readableBytesView) } ?? [])
         } else if let boundary = MultipartParser.boundary(of: ct) {
-            let m = try MultipartParser.parse(body, boundary: boundary)
+            // One copy only (Data); the former Array(readableBytesView) was a second full copy of an up to 32 MiB body.
+            let m = try MultipartParser.parse(req.body.data.map { Data(buffer: $0) } ?? Data(), boundary: boundary)
             fields = try FormEncodedParser.parse(m.urlencoded)
             (uploads, fileFields) = try Uploads.prepare(m.files)
         } else { throw Abort(.unsupportedMediaType) }

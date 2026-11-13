@@ -27,7 +27,7 @@ events {}
 http {
   include /etc/nginx/template.conf;
   # Backend-Attrappe wie die App: eigene nosniff/Referrer-Policy; HTML mit CSP, API ohne.
-  server { listen 127.0.0.1:8080; listen 127.0.0.1:8081;
+  server { listen 127.0.0.1:8080; listen 127.0.0.1:8081; client_max_body_size 100m;
     location = /index.html { default_type text/html; add_header X-Content-Type-Options nosniff; add_header Referrer-Policy no-referrer;
       add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'"; return 200 "<html></html>"; }
     location / { default_type application/json; add_header X-Content-Type-Options nosniff; return 200 "{}"; } }
@@ -76,5 +76,14 @@ sleep 1
 log=$(cat "$WORK/logs/form-access.log" 2>/dev/null); echo "access-log: $log"
 printf '%s' "$log" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.0 '; chk $? "Access-Log: IPv4 auf .0 gekürzt (oder IPv6 gekürzt)"
 printf '%s' "$log" | grep -q SECRET123; [ $? -ne 0 ]; chk $? "Access-Log ohne Query-String"
+# Body-Grenzen (fb-sec 1/2): Eingang 32 MiB (Vorlage 33m), interner Host 64 MiB (65m); nginx-Standard 1 MiB wäre zu klein.
+code() { curl -sk --max-time 30 -o /dev/null -w '%{http_code}' -X POST --data-binary "@$WORK/body-$1" --connect-to "$2:443:127.0.0.1:$PORT" "https://$2/api/x"; }
+for mb in 2 34 40 66; do head -c $((mb * 1024 * 1024)) /dev/zero > "$WORK/body-$mb"; done
+[ "$(code 2 forms.example.org)" = 200 ]; chk $? "Eingang: 2 MiB werden durchgelassen (Standard-nginx: 413)"
+[ "$(code 34 forms.example.org)" = 413 ]; chk $? "Eingang: 34 MiB -> 413 am Proxy"
+[ "$(code 40 admin.example.org)" = 200 ]; chk $? "Intern: 40 MiB werden durchgelassen"
+[ "$(code 66 admin.example.org)" = 413 ]; chk $? "Intern: 66 MiB -> 413 am Proxy"
+for h in X-Real-IP X-Forwarded-For; do [ "$(grep -c "proxy_set_header $h " deploy/proxy/nginx.conf.example)" -ge 2 ]; chk $? "Vorlage setzt $h"; done
+grep -q 'limit_conn form_conn' deploy/proxy/nginx.conf.example; chk $? "Vorlage enthält limit_conn"
 if [ $fail = 0 ]; then echo "RESULT: ok"; else echo "RESULT: FEHLER"; fi
 exit $fail

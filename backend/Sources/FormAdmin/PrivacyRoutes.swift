@@ -116,7 +116,7 @@ enum PrivacyRoutes {
         // --- hold ------------------------------------------------------------------------------------------------------
         // held = true: neither the retention job nor a deletion request may remove the submission.
         // 32 MiB ingress packages plus Base64/JSON and the complete Hold proof list.
-        tenants.on(.PUT, "forms", ":formId", "entries", ":entryId", "hold", body: .collect(maxSize: "64mb")) { req async throws -> Response in
+        tenants.grouped(AdminBodyGate.make(guardian: guardian, maxBytes: AdminBodyGate.maxReplacementBytes)).on(.PUT, "forms", ":formId", "entries", ":entryId", "hold", body: .collect(maxSize: ByteCount(value: AdminBodyGate.maxReplacementBytes))) { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
             try await guardian.budget(req)
             let tenant = try FormAdmin.uuidParam(req, "tenantId"), form = try FormAdmin.uuidParam(req, "formId"), entry = try FormAdmin.uuidParam(req, "entryId")

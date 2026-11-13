@@ -366,7 +366,15 @@ aufnehmen und dies separat auf `main` vorbereiten. Keine Änderung an `main` erf
 Zugangsdaten gesendet werden (`secureConnectionRequired`); der Start/Pool schlägt dann fehl. Das gilt für
 `verify` und für die Quellverbindung des Umstiegs mit TLS. Grundlage ist der gepatchte, lokal eingebundene
 Treiber `backend/Vendor/mysql-nio` (Patches und Update-Hinweis: `backend/Vendor/README.md`). Zusätzlich
-serverseitig `REQUIRE SSL` für das DB-Konto setzen.
+serverseitig `REQUIRE SSL` für das DB-Konto setzen (Betreiber-Pflicht, Gürtel und Hosenträger):
+
+```sql
+-- Konto des Backends (Name/Host anpassen); gilt ab der nächsten Verbindung
+ALTER USER 'formbackend'@'%' REQUIRE SSL;
+-- Prüfen: ssl_type muss ANY sein
+SELECT user, host, ssl_type FROM mysql.user WHERE user = 'formbackend';
+-- Neu anlegen: CREATE USER 'formbackend'@'%' IDENTIFIED BY '<Passwort>' REQUIRE SSL;
+```
 
 Treiber-Logging: SQL-Bind-Werte (Passwort-Hashes) werden nie protokolliert (`sqlLogLevel: nil`) und der
 Paket-Trace des Treibers gibt keine Payload-Bytes mehr aus, auch nicht bei `FORM_LOG_LEVEL=debug` oder `trace`.
@@ -457,6 +465,25 @@ doppeltem oder falschem Header, auch HSTS-`preload`). Gegen den Produktivhost na
 Proxy-Change ausführen. `deploy/proxy/test-template.sh` prüft die Vorlage lokal in einem
 nginx-Container (`nginx -t`, Header je Host/Pfad, IP-Kürzung, Access-Log); Docker und openssl
 nötig, bisher nicht Teil von CI.
+
+**Bodygrößen, X-Real-IP und Speicherbudget (fb-sec 1/2, C6FCE0A3).** nginx lehnt ohne `client_max_body_size`
+alles über 1 MiB mit 413 ab; die Vorlage setzt für den öffentlichen Host `33m` (Eingang: 32 MiB), für den
+internen Host `65m` (Ersatzpakete der Schlüsselrotation und Hold-Rewrap bis 64 MiB). Bei öffentlichem Dashboard
+gibt es einen auskommentierten `location`-Block für genau diese beiden Pfade. Die Vorlage setzt zusätzlich
+`X-Real-IP` und `X-Forwarded-For` (beide = `$remote_addr`) sowie `limit_conn` je Client (20); `X-Forwarded-For` ist
+für die Drosselung maßgeblich (`FORM_*_TRUSTED_PROXIES` auf den Proxy begrenzen). nginx puffert Bodies vollständig
+(`proxy_request_buffering on`), das Backend sieht daher Content-Length und keinen langsamen Upload.
+Im Backend gilt ein gemeinsames Byte-Budget für alle Bodies der Routen mit großen Anfragen (Einsende-API,
+`PUT .../key-rotation/objects/{id}`, `PUT .../entries/{id}/hold`, beide Listener): Eine Anfrage reserviert das
+Dreifache ihrer Content-Length (Body, Kopie, Verarbeitung), **bevor** ein Byte gesammelt wird. Passt sie nicht mehr,
+antwortet das Backend `503 body_budget_exhausted` mit `Retry-After: 1` (der SDK-Client wiederholt), liegt die
+Content-Length über dem Routenlimit `413 payload_too_large`. Ohne Content-Length (chunked) wird das Routenlimit voll
+reserviert. Eine einzelne größere Anfrage als das Budget läuft allein. Die Admin-Routen prüfen Sitzung, Origin/CSRF und
+Request-Budget **vor** dem Body: anonyme Anfragen enden mit `401`, ohne dass der Body gepuffert wird. Einstellung:
+`FORM_BODY_BUDGET_MB` (Ganzzahl 64 bis 8192, Standard 128 = gleichzeitig höchstens rund 42 MiB Body-Daten, also ein 32-MiB-Body oder mehrere kleinere; Betrieb auf einem Replikat mit
+512 MiB Speicherlimit wie `deploy/swarm/stack.yaml` ist damit getestet, siehe `backend/e2e-body-budget.sh`). Bei größerem
+Containerlimit proportional erhöhen (Faustregel: Budget höchstens halbes Limit). Gemessen wird nicht pro Replikat
+koordiniert: bei mehreren Replikaten gilt das Budget je Prozess.
 
 **Proxy-Logs.** Das Access-Log der Vorlage kürzt IPs (IPv4 letztes Oktett auf `.0`, IPv6 auf
 /48) und enthält `$uri` ohne Query-String und ohne Referer. Das Backend erhält weiterhin die

@@ -157,7 +157,7 @@ enum RotationRoutes {
             let res = try MailRoutes.anyJSON(["items": items, "next": rows.count > limit ? DB.uuid(rows[limit - 1].id.data)!.uuidString.lowercased() as Any : NSNull()]); res.headers.replaceOrAdd(name: .cacheControl, value: "no-store"); return res
         }
         // 32 MiB ingress packages plus Base64/JSON and the complete Hold proof list.
-        tenants.on(.PUT, "key-rotation", "objects", ":objectId", body: .collect(maxSize: "64mb")) { req async throws -> Response in
+        tenants.grouped(AdminBodyGate.make(guardian: guardian, maxBytes: AdminBodyGate.maxReplacementBytes)).on(.PUT, "key-rotation", "objects", ":objectId", body: .collect(maxSize: ByteCount(value: AdminBodyGate.maxReplacementBytes))) { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
             try await guardian.budget(req)
             let tenant = try FormAdmin.uuidParam(req, "tenantId"), id = try FormAdmin.uuidParam(req, "objectId"), account = s.accountID!

@@ -72,6 +72,7 @@ public struct AuthGuard: Sendable {
     public func setCookie(_ res: Response, token: String) { res.headers.replaceOrAdd(name: .setCookie, value: Self.cookieHeader(token: token)) }
 
     private struct ResolvedSessionKey: StorageKey { typealias Value = SessionRecord? }
+    private struct BudgetConsumedKey: StorageKey { typealias Value = Bool }
 
     /// Counts the request once per applicable budget: the IP budget for every request (anonymous ones included, order and cost
     /// unchanged), then, for a signed-in session, the account budget `acct|<accountID>`; login endpoints additionally their own.
@@ -81,6 +82,9 @@ public struct AuthGuard: Sendable {
     /// per account costs no second lookup. Only fully authenticated sessions use the account budget; password/second-factor
     /// failure limits and the login budget are separate and untouched.
     public func budget(_ req: Request, login: Bool = false) async throws {
+        // A body gate may already have charged this request before the body was collected: never twice per request.
+        if !login, req.storage[BudgetConsumedKey.self] == true { return }
+        req.storage[BudgetConsumedKey.self] = true
         let ip = config.clientIP(req)
         try await throttles.consume(.adminRoute, "ip|\(ip)", limit: config.requestBudget.limit, window: config.requestBudget.window)
         if let s = try await currentSession(req), s.state == .authenticated, let account = s.accountID {

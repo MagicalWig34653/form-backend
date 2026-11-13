@@ -228,6 +228,9 @@ jobs:
       - name: E2E Umstieg with a 27 MB attachment cell (target max_allowed_packet 16 MiB refused before the first write, 64 MiB imports byte for byte)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33737 P3B_PORT2=33738 LEGACY_PORT=33978 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-packet.sh
+      - name: E2E 16 parallel 30 MiB bodies without login (ingest, rotation, hold) with 512m memory limit, container must not be OOM killed (fb-sec 1/2)
+        if: ${{ !cancelled() }}
+        run: E2E_LOG_DIR=e2e-logs BB_SCRATCH=$RUNNER_TEMP/fb-bb-build bash backend/e2e-body-budget.sh
       - name: Upload logs on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7

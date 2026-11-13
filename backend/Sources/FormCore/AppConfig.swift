@@ -17,6 +17,7 @@ public struct ConfigError: Error, CustomStringConvertible, Equatable {
 /// Variables: FORM_HTTP_HOST, FORM_PUBLIC_PORT, FORM_INTERNAL_PORT, FORM_LOG_LEVEL, FORM_DB_HOST, FORM_DB_PORT, FORM_DB_USER,
 /// FORM_DB_PASSWORD (required), FORM_DB_NAME, FORM_DB_TLS (verify|disable, default verify),
 /// FORM_ADMIN_REQUEST_LIMIT_IP (default 600) / FORM_ADMIN_REQUEST_LIMIT_ACCOUNT (default 300): admin API requests per minute, 1...100000.
+/// FORM_BODY_BUDGET_MB (default 128): memory reserved for request bodies in flight (ingest and large admin bodies), 64...8192.
 /// FORM_TRUSTED_PROXIES (CIDR list), FORM_MAIL_ALLOWED_NETS (CIDR list of private networks mail targets may use).
 /// FORM_ALLOW_INSECURE_DEV (must be exactly "1" to permit FORM_DB_TLS=disable; development only),
 /// FORM_SCHEMA_FILE (default db/schema-p3.sql relative to the working directory), FORM_PUBLIC_DIR (built PWA to serve, optional).
@@ -37,6 +38,8 @@ public struct AppConfig: Sendable, CustomStringConvertible {
     public var internalSecondFactor: Bool
     public var adminRequestLimitIP = 600
     public var adminRequestLimitAccount = 300
+    /// FORM_BODY_BUDGET_MB (64...8192, default 128): reserved request-body memory in flight (see `BodyBudget`).
+    public var bodyBudgetBytes = BodyBudget.defaultCapacity
     public var publicDashboard: Bool
     public var publicDashboardHosts: [String]
     public var publicTrustedProxies: [CIDR]
@@ -89,6 +92,10 @@ public struct AppConfig: Sendable, CustomStringConvertible {
         }
         adminRequestLimitIP = try perMinute("FORM_ADMIN_REQUEST_LIMIT_IP", 600)
         adminRequestLimitAccount = try perMinute("FORM_ADMIN_REQUEST_LIMIT_ACCOUNT", 300)
+        if let raw = env["FORM_BODY_BUDGET_MB"] {
+            guard !raw.isEmpty, raw.utf8.allSatisfy({ (48...57).contains($0) }), let mb = Int(raw), (64...8192).contains(mb) else { throw ConfigError(variable: "FORM_BODY_BUDGET_MB", reason: "expected integer 64...8192 (MiB)") }
+            bodyBudgetBytes = mb << 20
+        }
         publicDashboard = env["FORM_PUBLIC_DASHBOARD"] == "1"
         publicDashboardHosts = (env["FORM_PUBLIC_DASHBOARD_HOSTS"] ?? "").split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         if !publicDashboard && publicDashboardHosts == [""] { publicDashboardHosts = [] }

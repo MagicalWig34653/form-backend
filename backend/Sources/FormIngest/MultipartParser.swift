@@ -42,8 +42,9 @@ enum MultipartParser {
         return lineEnd(data, i).map { .next($0) }
     }
 
-    static func parse(_ body: [UInt8], boundary: String) throws -> Result {
-        let data = Data(body)
+    static func parse(_ body: [UInt8], boundary: String) throws -> Result { try parse(Data(body), boundary: boundary) }
+
+    static func parse(_ data: Data, boundary: String) throws -> Result {
         let delim = Data("--\(boundary)".utf8)
         let sep = Data("\r\n--\(boundary)".utf8)
         let bareLFSep = Data("\n--\(boundary)".utf8)

@@ -32,6 +32,10 @@ map $upstream_http_content_security_policy $form_csp_fallback {
     ""      "frame-ancestors 'none'";
 }
 
+# Gleichzeitige Verbindungen je Client begrenzen (zusätzlich zum Byte-Budget des Backends, FORM_BODY_BUDGET_MB):
+# nginx puffert große Bodies, das Backend hält höchstens das Budget gleichzeitig im Speicher.
+limit_conn_zone $binary_remote_addr zone=form_conn:10m;
+
 server {
     listen 443 ssl;
     server_name forms.example.org;
@@ -48,6 +52,10 @@ server {
     add_header Content-Security-Policy $form_csp_fallback always;
     proxy_hide_header X-Content-Type-Options;
     proxy_hide_header Referrer-Policy;
+    # Eingang: Backend-Limit 32 MiB (Anhänge unter 20 MB, Base64 und Felder inklusive). nginx-Standard wäre 1 MiB
+    # und lehnt größere Einsendungen mit 413 ab. Muss >= Ingest-Limit sein, sonst scheitern Uploads am Proxy.
+    client_max_body_size 33m;
+    limit_conn form_conn 20;
     location / {
         # Der Eingang sammelt Bodies selbst. nginx puffert den Body vollständig, bevor er weitergegeben wird;
         # langsame Clients (Slowloris) binden dann nur nginx, nicht das Backend. client_body_timeout begrenzt
@@ -58,9 +66,24 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
     }
+    # Nur bei FORM_PUBLIC_DASHBOARD=1: Ersatzpakete der Schlüsselrotation und Hold-Rewrap bis 64 MiB (angemeldet, Backend
+    # prüft Sitzung und Berechtigung vor dem Body). Ohne öffentliches Dashboard nicht einbinden.
+    # location ~ ^/admin/api/v1/tenants/[^/]+/(key-rotation/objects/[^/]+|forms/[^/]+/entries/[^/]+/hold)$ {
+    #     client_max_body_size 65m;
+    #     proxy_request_buffering on;
+    #     client_body_timeout 15s;
+    #     proxy_pass http://form-public:8080;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Forwarded-Host $host;
+    #     proxy_set_header X-Forwarded-Proto https;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $remote_addr;
+    #     proxy_set_header Forwarded "";
+    # }
 }
 server {
     # Interne Adresse einsetzen; Zugang zusätzlich über VPN/Firewall begrenzen.
@@ -75,11 +98,17 @@ server {
     add_header Content-Security-Policy $form_csp_fallback always;
     proxy_hide_header X-Content-Type-Options;
     proxy_hide_header Referrer-Policy;
+    # Admin-API: Ersatzpakete/Hold-Rewrap bis 64 MiB (Backend-Grenze), Rest klein.
+    client_max_body_size 65m;
+    limit_conn form_conn 20;
     location / {
+        proxy_request_buffering on;
+        client_body_timeout 15s;
         proxy_pass http://form-internal:8081;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
     }
