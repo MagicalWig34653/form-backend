@@ -546,6 +546,14 @@ Schreiben: `source_changed`, nichts geschrieben, „Prüflauf wiederholen“. Ab
 Namespace: `snapshot_changed`. Das Quell-Konto braucht nur `SELECT`. Die Messung liest jede Tabelle einmal
 vollständig (je Messpunkt etwa so lange wie das Zählen der Zeilen). Details: `docs/UMSTIEG-CHECKLISTE.md`.
 
+## Aufbewahrung nach dem Umstieg (QA 13.11.2026)
+
+Importierte Einsendungen tragen keine Löschfrist (`retention_due_at = NULL`) und werden vom Aufbewahrungsjob nicht angefasst.
+Der Prüf-/Importbericht nennt, wie viele bei der Standardfrist (3 Tage) sofort fällig wären. Frist bewusst setzen: Formular,
+Datenschutz, Aufbewahrung; nur mit dem Häkchen „auch auf importierte Einsendungen anwenden“ (Bestätigung mit Zahl der sofort
+fälligen) wirkt sie auf importierte Einsendungen und löscht endgültig. Vor dem Import immer eine Sicherung der Ziel-Datenbank
+(UMSTIEG-CHECKLISTE, Rollback). `migrate` führt das Upgrade `0035-imported-no-retention` aus (idempotent).
+
 ## Mailserver mit selbstsigniertem Zertifikat (ADR 0044)
 
 Je SMTP-Verbindung kann die Zertifikatsprüfung abgeschaltet werden („Eigene/selbstsignierte Zertifikate erlauben“, `verifyCertificate:false`),

@@ -39,7 +39,7 @@ status=("${PIPESTATUS[@]}")
 set -e
 [[ "${status[0]}" == 0 || "${status[0]}" == 141 ]] || { cat "$probe" >&2; db_fail 'Entschlüsselung fehlgeschlagen (falscher Schlüssel?)'; }
 db_tool mariadb -e "CREATE DATABASE \`$target\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-crypto_decrypt "$backup/$BACKUP_DATA_FILE" | db_tool mariadb "$target"
+crypto_decrypt "$backup/$BACKUP_DATA_FILE" | strip_definer | db_tool mariadb "$target"
 db_counts "$target" > "$actual"
 diff -u "$backup/counts.tsv" "$actual"
 echo "Restore geprüft: Zeilenzahlen in $target stimmen überein. DB bleibt zur fachlichen Prüfung bestehen."
