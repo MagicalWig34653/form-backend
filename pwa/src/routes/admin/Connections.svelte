@@ -166,6 +166,13 @@
     );
     if (done !== null || !message) await load();
   }
+  async function setEnabled(c: Connection, enabled: boolean): Promise<void> {
+    const done = await run(
+      () => adminApi.setConnectionEnabled(c.id, enabled),
+      enabled ? t.admin.connections.enableDone : t.admin.connections.disableDone,
+    );
+    if (done !== null || !message) await load();
+  }
   const unverified = (c: Connection): boolean =>
     c.kind === 'smtp' && (c.config as { verifyCertificate?: unknown }).verifyCertificate === false;
 
@@ -296,6 +303,11 @@
                     id: 'assign',
                     label: t.admin.connections.assign,
                     onselect: () => openAssign(c),
+                  },
+                  {
+                    id: c.enabled ? 'disable' : 'enable',
+                    label: c.enabled ? t.admin.connections.disable : t.admin.connections.enable,
+                    onselect: () => void setEnabled(c, !c.enabled),
                   },
                   ...(unverified(c)
                     ? [

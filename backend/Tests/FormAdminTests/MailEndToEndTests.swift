@@ -588,4 +588,61 @@ final class MailEndToEndTests: XCTestCase {
             XCTAssertEqual(revNow, rev, "rejected configurations change nothing")
         }
     }
+
+    /// Operator path, finding C (13.11.2026): a mail connection taken over by the Umstieg is disabled and was not usable at all (no way to
+    /// enable it, legacy config format). `PUT /connections/{id}/enabled` activates it after a check: system.manage + fresh login, audited,
+    /// a legacy-format row (written by an earlier importer) is converted once to the native schema; afterwards it is assigned and delivers.
+    func testImportedLegacyConnectionIsActivatedConvertedAndDelivers() async throws {
+        var options = FakeSMTPServer.Options(); options.authMechanisms = ["PLAIN", "LOGIN"]; options.user = "legacy-user"; options.password = "Alt Passwort ä!7"
+        let smtp = FakeSMTPServer(options); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: mailWithout(content: nil))
+            let store = SecretStore(db: f.app.db(.mysql), keys: try StaticServerKey(Data(repeating: 7, count: 32)))
+            // exactly what the importer before 13.11.2026 wrote: legacy keys in the safe config, a JSON credential, enabled=0
+            let legacyRef = try await store.put(Data(#"{"password":"Alt Passwort ä!7","username":"legacy-user"}"#.utf8))
+            let id = UUID(), cid = id.uuidString.lowercased()
+            let legacy = #"{"SMTPHost":"127.0.0.1","SMTPPort":"\#(smtp.port)","SMTPSecurity":"none","SMTPallowSelfSigned":"0","fromMail":"alt@example.org","verifyCertificate":true}"#
+            try await f.sql.raw("INSERT INTO connections (id, kind, name, safe_config_json, credential_ref, enabled) VALUES (\(bind: DB.bin(id)), 'smtp', 'Alt-SMTP', \(bind: legacy), \(bind: legacyRef), 0)").run()
+            // disabled: cannot be given to the customer
+            try await w.sys.send(.PUT, "tenants/\(w.tenant)/connections/\(cid)") { XCTAssertEqual($0.status, .notFound) }
+            // only a system administrator may activate; the value must be a boolean
+            try await w.user.send(.PUT, "connections/\(cid)/enabled", body: #"{"enabled":true}"#) { XCTAssertEqual($0.status, .notFound) }
+            try await w.sys.send(.PUT, "connections/\(cid)/enabled", body: #"{"enabled":"yes"}"#) { XCTAssertEqual($0.status.code, 422) }
+            try await w.sys.send(.PUT, "connections/\(cid)/enabled", body: #"{"enabled":true}"#) { XCTAssertEqual($0.status, .noContent, text($0)) }
+            struct Conn: Decodable { let safe_config_json: String; let credential_ref: String?; let enabled: Int }
+            let fetched = try await f.sql.raw("SELECT safe_config_json, credential_ref, enabled FROM connections WHERE id=\(bind: DB.bin(id))").first(decoding: Conn.self)
+            let row = try XCTUnwrap(fetched)
+            XCTAssertEqual(row.enabled, 1)
+            let cfg = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(row.safe_config_json.utf8)) as? [String: Any])
+            XCTAssertEqual(cfg["host"] as? String, "127.0.0.1"); XCTAssertEqual(cfg["port"] as? Int, smtp.port)
+            XCTAssertEqual(cfg["security"] as? String, "plain"); XCTAssertEqual(cfg["username"] as? String, "legacy-user")
+            XCTAssertNil(cfg["SMTPHost"], "converted once to the native schema")
+            let secret = try await store.get(try XCTUnwrap(row.credential_ref)).map { String(decoding: $0, as: UTF8.self) }
+            XCTAssertEqual(secret, "Alt Passwort ä!7", "the native credential is the password")
+            let oldGone = try await store.get(legacyRef)
+            XCTAssertNil(oldGone, "the legacy JSON credential is removed")
+            let audits = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code='connection.enable' AND subject_id=\(bind: DB.bin(id)) AND safe_details_json NOT LIKE '%Passwort%' AND safe_details_json NOT LIKE '%127.0.0.1%'").first(decoding: C.self)?.c
+            XCTAssertEqual(audits, 1)
+            // now usable like any connection: customer, form, a signed submission, the full mail arrives (authenticated)
+            try await w.sys.send(.PUT, "tenants/\(w.tenant)/connections/\(cid)") { XCTAssertEqual($0.status, .noContent) }
+            try await w.user.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/mail-connection", body: "{\"connectionId\":\"\(cid)\"}") { XCTAssertEqual($0.status, .noContent, text($0)) }
+            try await submit(w, pairs) { XCTAssertEqual($0.status, .ok, text($0)) }
+            try await until { smtp.mails.count == 1 }
+            XCTAssertTrue(decoded(try XCTUnwrap(smtp.mails.first).data).body.contains("MAIL-MARKER-4711"))
+            // a legacy proxy whose URL carries credentials cannot be activated (it would show them in clear): named reason, stays disabled
+            let proxyRef = try await store.put(Data(#"{"auth":"A","url":"https://u:p@proxy.example.org/send"}"#.utf8))
+            let pid = UUID()
+            try await f.sql.raw("INSERT INTO connections (id, kind, name, safe_config_json, credential_ref, enabled) VALUES (\(bind: DB.bin(pid)), 'mail-proxy', 'Alt-Proxy', '{\"fromMail\":\"a@b.c\",\"legacyURLProtected\":\"true\"}', \(bind: proxyRef), 0)").run()
+            try await w.sys.send(.PUT, "connections/\(pid.uuidString.lowercased())/enabled", body: #"{"enabled":true}"#) { res async throws in
+                XCTAssertEqual(res.status.code, 422); XCTAssertFalse(text(res).contains("u:p"), text(res))
+            }
+            let still = try await f.sql.raw("SELECT enabled AS c FROM connections WHERE id=\(bind: DB.bin(pid))").first(decoding: C.self)?.c
+            XCTAssertEqual(still, 0)
+            // switching off again is audited as well
+            try await w.sys.send(.PUT, "connections/\(cid)/enabled", body: #"{"enabled":false}"#) { XCTAssertEqual($0.status, .noContent) }
+            let off = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code='connection.disable'").first(decoding: C.self)?.c
+            XCTAssertEqual(off, 1)
+        }
+    }
 }

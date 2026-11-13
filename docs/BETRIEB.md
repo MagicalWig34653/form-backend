@@ -542,7 +542,7 @@ Je SMTP-Verbindung kann die Zertifikatsprüfung abgeschaltet werden („Eigene/s
 auch im Produktivbetrieb und ohne `FORM_ALLOW_INSECURE_DEV`. Standard ist „prüfen“. Die Verbindung bleibt TLS/STARTTLS-verschlüsselt (kein Klartext-Rückfall;
 `security: plain` bleibt nur mit Entwicklungsschalter). Anlegen und Zurückschalten brauchen `system.manage` plus frische Anmeldung und werden im Audit
 protokolliert (`connection.tls-verification-off` / `connection.tls-verification-on`, nur mit Verbindungs-ID). Zurückschalten per PWA (Verbindungen, Menü der Zeile) oder
-`PUT /connections/{id}/tls-verification`. Beim Umstieg wird der Altwert `SMTPallowSelfSigned = 1` übernommen. Betrieb: ausgeschaltete Prüfungen in der
+`PUT /connections/{id}/tls-verification`. Beim Umstieg wird der Altwert `SMTPallowSelfSigned = 1` übernommen. Übernommene Verbindungen sind deaktiviert; „Verbindung aktivieren“ (`PUT /connections/{id}/enabled`, `system.manage`, frische Anmeldung, Audit `connection.enable`, bei abgeschalteter Prüfung zusätzlich `connection.tls-verification-off`) prüft die Konfiguration und wandelt Altformat-Zeilen einmalig um (`docs/UMSTIEG-CHECKLISTE.md` Nr. 6a). Betrieb: ausgeschaltete Prüfungen in der
 Verbindungsliste („Zertifikat wird nicht geprüft“) regelmäßig durchsehen; wo möglich die CA des Mailservers statt der Abschaltung bevorzugen.
 
 ## Backup/Restore gegen die externe DB

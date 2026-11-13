@@ -16,6 +16,41 @@ public enum LegacyMailServer {
         allowSelfSigned?.trimmingCharacters(in: .whitespaces) != "1"
     }
 
+    /// A legacy connection in the native schema of `POST /connections` (finding C, 13.11.2026): `config` holds no secret, `secret` is the
+    /// SMTP password or the proxy ACODE. PHPMailer semantics of `SMTPSecurity`: `tls` = STARTTLS, `ssl` = implicit TLS, empty/`none` = plain
+    /// (which the server only accepts with FORM_ALLOW_INSECURE_DEV). Values are never part of an error, only the field name.
+    public struct NativeConnection { public let config: [String: Any]; public let secret: String? }
+    public struct NativeInvalid: Error, Equatable { public let reason: String }
+    public static func native(kind: String, values: [String: String?]) throws -> NativeConnection {
+        func v(_ k: String) -> String? { values[k] ?? nil }
+        if kind == "mail-proxy" {
+            guard let s = v("proxyURL")?.trimmingCharacters(in: .whitespaces), s.utf8.count <= 2048, let u = URL(string: s), u.scheme?.lowercased() == "https",
+                  u.host?.isEmpty == false, u.user == nil, u.password == nil, u.query == nil, u.fragment == nil else { throw NativeInvalid(reason: "url") }
+            guard let acode = v("proxyAuth"), !acode.isEmpty else { throw NativeInvalid(reason: "acode") }
+            return NativeConnection(config: ["url": s], secret: acode)
+        }
+        guard kind == "smtp" else { throw NativeInvalid(reason: "kind") }
+        guard let host = v("SMTPHost")?.trimmingCharacters(in: .whitespaces), !host.isEmpty, host.utf8.count <= 253,
+              host.range(of: "^[A-Za-z0-9.:-]+$", options: .regularExpression) != nil else { throw NativeInvalid(reason: "host") }
+        guard let port = v("SMTPPort").flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) }), (1...65535).contains(port) else { throw NativeInvalid(reason: "port") }
+        let security: String
+        switch (v("SMTPSecurity") ?? "").trimmingCharacters(in: .whitespaces).lowercased() {
+        case "tls", "starttls": security = "starttls"
+        case "ssl", "smtps": security = "tls"
+        case "", "none", "plain": security = "plain"
+        default: throw NativeInvalid(reason: "security")
+        }
+        let verify = verifiesCertificate(allowSelfSigned: v("SMTPallowSelfSigned"))
+        if security == "plain" && !verify { throw NativeInvalid(reason: "verifyCertificate") }
+        let user = v("SMTPUsername").map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
+        let password = v("SMTPPassword").flatMap { $0.isEmpty ? nil : $0 }
+        guard (user == nil) == (password == nil) else { throw NativeInvalid(reason: "credentials") }
+        if let user, user.utf8.count > 255 || user.unicodeScalars.contains(where: { $0.value < 0x20 }) { throw NativeInvalid(reason: "credentials") }
+        var config: [String: Any] = ["host": host, "port": port, "security": security, "verifyCertificate": verify]
+        if let user { config["username"] = user }
+        return NativeConnection(config: config, secret: password)
+    }
+
     /// Safe config JSON of a legacy mail connection: the legacy values (readable in the plan) plus, for SMTP, the new `verifyCertificate` boolean.
     static func safeConfigJSON(table: String, values: [String: String?]) throws -> String {
         var safe: [String: Any] = [:]
@@ -135,12 +170,23 @@ extension LegacyImporter {
             var values: [String:String?] = [:]
             let keys = table == "outgoingMailServer" ? ["SMTPHost","SMTPPort","SMTPSecurity","SMTPallowSelfSigned","fromMail"] : ["fromMail"]
             for key in keys { values[key] = try r.text(key) }
-            let safeJSON = try LegacyMailServer.safeConfigJSON(table: table, values: values)
+            let kind = table == "outgoingMailServer" ? "smtp" : "mail-proxy"
             let credential = table == "outgoingMailServer" ? ["username":try r.text("SMTPUsername"),"password":try r.text("SMTPPassword")] : ["url":try r.text("proxyURL"),"auth":try r.text("proxyAuth")]
-            let ref = try await secrets.put(Data(try json(credential).utf8),on:db)
-            var refs = [try await insert(db,"connections",["id":idSQL,"kind":val(table == "outgoingMailServer" ? "smtp":"mail-proxy"),"name":val(try r.required("name")),"safe_config_json":val(safeJSON),"credential_ref":val(ref),"enabled":"0"],key:["id":idSQL])]
+            // Native schema whenever the legacy values fit (finding C): the connection can be activated and used as it is. Otherwise the
+            // legacy projection stays (activation names the reason, e.g. no encryption, a proxy URL with credentials).
+            let safeJSON: String, secret: Data?
+            if let native = try? LegacyMailServer.native(kind: kind, values: values.merging(table == "outgoingMailServer" ? ["SMTPUsername":credential["username"] ?? nil,"SMTPPassword":credential["password"] ?? nil] : ["proxyURL":credential["url"] ?? nil,"proxyAuth":credential["auth"] ?? nil]) { a, _ in a }) {
+                safeJSON = String(decoding: try JSONSerialization.data(withJSONObject: native.config, options: [.sortedKeys]), as: UTF8.self)
+                secret = native.secret.map { Data($0.utf8) }
+            } else {
+                safeJSON = try LegacyMailServer.safeConfigJSON(table: table, values: values)
+                secret = Data(try json(credential).utf8)
+            }
+            var ref: String?
+            if let secret { ref = try await secrets.put(secret,on:db) }
+            var refs = [try await insert(db,"connections",["id":idSQL,"kind":val(kind),"name":val(try r.required("name")),"safe_config_json":val(safeJSON),"credential_ref":ref.map(val) ?? "NULL","enabled":"0"],key:["id":idSQL])]
             // Secret ciphertext is part of the integrity check as well.
-            refs.append(Destination(table:"managed_secrets",predicate:"ref=\(val(ref))"))
+            if let ref { refs.append(Destination(table:"managed_secrets",predicate:"ref=\(val(ref))")) }
             for c in owners { guard p.customers[c] != nil else { throw ImportFailure.invalidPlan }; refs.append(try await insert(db,"customer_connections",["customer_id":try uid(c),"connection_id":idSQL],key:["customer_id":try uid(c),"connection_id":idSQL])) }
             return refs
         case "formulare":

@@ -89,3 +89,22 @@ it('der Schalter fehlt bei unverschlüsselter Verbindung und beim Mail-Proxy', a
   await fireEvent.change(screen.getByLabelText('Art'), { target: { value: 'mail-proxy' } });
   expect(screen.queryByLabelText('Eigene/selbstsignierte Zertifikate erlauben')).toBeNull();
 });
+
+// Operator path, finding C (13.11.2026): a connection taken over by the Umstieg is disabled; the row menu activates it on the server.
+it('aktiviert eine deaktivierte (übernommene) Verbindung über das Zeilenmenü', async () => {
+  request.mockImplementation(async (method: string, path: string) => {
+    if (method === 'GET' && path === '/connections')
+      return { ok: true, data: { items: [{ ...smtp('imp', 'Alt-SMTP', {}), enabled: false }] } };
+    if (method === 'PUT') return { ok: true, data: undefined };
+    return { ok: true, data: { items: [] } };
+  });
+  render(Connections);
+  await fireEvent.click(await screen.findByRole('button', { name: /Aktionen für Alt-SMTP/ }));
+  await fireEvent.click(await screen.findByRole('menuitem', { name: 'Verbindung aktivieren' }));
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith('PUT', '/connections/imp/enabled', {
+      body: { enabled: true },
+    }),
+  );
+  expect(await screen.findByText(/Die Verbindung ist aktiv/)).toBeTruthy();
+});

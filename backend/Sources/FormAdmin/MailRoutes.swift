@@ -6,6 +6,7 @@ import FormCore
 import FormCrypto
 import FormDeploy
 import FormMail
+import FormMigration
 import FormPersistence
 import Foundation
 import SQLKit
@@ -81,6 +82,63 @@ enum MailRoutes {
                 let configJSON = String(decoding: try JSONSerialization.data(withJSONObject: cfg, options: [.sortedKeys]), as: UTF8.self)
                 try await tx.raw("UPDATE connections SET safe_config_json = \(bind: configJSON) WHERE id = \(bind: DB.bin(cid))").run()
                 if was != verify { try await audit(tx, actor: account, action: verify ? "connection.tls-verification-on" : "connection.tls-verification-off", subject: cid, at: DB.time(now())) }
+            }
+            return Response(status: .noContent)
+        }
+
+        // Activate or deactivate a connection (finding C, 13.11.2026): connections taken over by the Umstieg arrive disabled. Activation checks
+        // the configuration like `POST /connections` would; a row in the legacy projection of an earlier importer is converted once to the
+        // native schema (the legacy JSON credential is replaced by the password/ACODE). Audited without host or secret.
+        root.put("connections", ":connectionId", "enabled") { req async throws -> Response in
+            let s = try await guardian.requireAuthenticated(req, mutation: true)
+            try await guardian.budget(req)
+            let account = s.accountID!
+            try await perms.authorize(account: account, "system.manage", on: .system)
+            try await guardian.requireFreshAuthentication(s, now: now())
+            guard let cid = req.parameters.get("connectionId").flatMap(lowerUUID) else { throw Abort(.badRequest) }
+            let obj = try jsonObject(req, allowed: ["enabled"])
+            guard let enable = obj["enabled"] as? Bool else { throw ValidationFailed(detail: "enabled (true|false)") }
+            struct R: Decodable { let kind: String; let safe_config_json: String; let credential_ref: String?; let enabled: Int }
+            try await db.transaction { conn in
+                let tx = conn as! SQLDatabase
+                guard let r = try await tx.raw("SELECT kind, safe_config_json, credential_ref, enabled FROM connections WHERE id = \(bind: DB.bin(cid)) FOR UPDATE").first(decoding: R.self) else { throw Abort(.notFound) }
+                let ts = DB.time(now())
+                guard enable else {
+                    try await tx.raw("UPDATE connections SET enabled = 0 WHERE id = \(bind: DB.bin(cid))").run()
+                    if r.enabled == 1 { try await audit(tx, actor: account, action: "connection.disable", subject: cid, at: ts) }
+                    return
+                }
+                guard ["smtp", "mail-proxy"].contains(r.kind) else {
+                    try await tx.raw("UPDATE connections SET enabled = 1 WHERE id = \(bind: DB.bin(cid))").run()
+                    if r.enabled == 0 { try await audit(tx, actor: account, action: "connection.enable", subject: cid, at: ts) }
+                    return
+                }
+                var cfg = (try? JSONSerialization.jsonObject(with: Data(r.safe_config_json.utf8))) as? [String: Any] ?? [:]
+                var secret = try await r.credential_ref.asyncMap { try await secrets.get($0, on: tx) }.flatMap { $0 }.map { String(decoding: $0, as: UTF8.self) }
+                var ref = r.credential_ref
+                if cfg["SMTPHost"] != nil || cfg["legacyURLProtected"] != nil {
+                    // Legacy projection: values from the safe config, username/password or url/auth from the JSON credential.
+                    let stored = secret.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] } ?? [:]
+                    var values: [String: String?] = [:]
+                    for k in ["SMTPHost", "SMTPPort", "SMTPSecurity", "SMTPallowSelfSigned"] { values[k] = cfg[k] as? String }
+                    values["SMTPUsername"] = stored["username"] as? String; values["SMTPPassword"] = stored["password"] as? String
+                    values["proxyURL"] = stored["url"] as? String; values["proxyAuth"] = stored["auth"] as? String
+                    let native: LegacyMailServer.NativeConnection
+                    do { native = try LegacyMailServer.native(kind: r.kind, values: values) }
+                    catch let e as LegacyMailServer.NativeInvalid { throw ValidationFailed(detail: "Übernommene Verbindung nicht verwendbar (\(e.reason)); bitte neu anlegen") }
+                    cfg = native.config; secret = native.secret
+                    if let old = r.credential_ref { try await tx.raw("DELETE FROM managed_secrets WHERE ref = \(bind: old)").run() }
+                    ref = try await native.secret.asyncMap { try await secrets.put(Data($0.utf8), on: tx) }
+                }
+                do {
+                    if r.kind == "smtp" { _ = try MailConnection.smtpConfig(cfg, password: secret, allowInsecure: settings.allowInsecure) }
+                    else { _ = try MailConnection.proxyURL(cfg, allowInsecure: settings.allowInsecure); if secret?.isEmpty != false { throw MailConnection.Invalid(reason: "credential (ACODE)") } }
+                } catch let e as MailConnection.Invalid { throw ValidationFailed(detail: "config: \(e.reason)") }
+                let configJSON = String(decoding: try JSONSerialization.data(withJSONObject: cfg, options: [.sortedKeys]), as: UTF8.self)
+                try await tx.raw("UPDATE connections SET safe_config_json = \(bind: configJSON), credential_ref = \(bind: ref), enabled = 1 WHERE id = \(bind: DB.bin(cid))").run()
+                if r.enabled == 0 { try await audit(tx, actor: account, action: "connection.enable", subject: cid, at: ts) }
+                // Decision 0044: an imported "own certificates allowed" becomes visible in the audit when it goes live.
+                if r.kind == "smtp", cfg["verifyCertificate"] as? Bool == false, r.enabled == 0 { try await audit(tx, actor: account, action: "connection.tls-verification-off", subject: cid, at: ts) }
             }
             return Response(status: .noContent)
         }

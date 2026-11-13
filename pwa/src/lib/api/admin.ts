@@ -445,6 +445,9 @@ export function createAdminApi(http: Http) {
       http.request<void>('PUT', `/connections/${id(connectionId)}/tls-verification`, {
         body: { verifyCertificate },
       }),
+    /** Finding C: connections taken over by the Umstieg arrive disabled; activation checks and converts them on the server. */
+    setConnectionEnabled: (connectionId: string, enabled: boolean) =>
+      http.request<void>('PUT', `/connections/${id(connectionId)}/enabled`, { body: { enabled } }),
     testConnection: (connectionId: string) =>
       http.request<TestResult>('POST', `/connections/${id(connectionId)}/test`),
     assignConnection: (tenant: string, connectionId: string) =>
