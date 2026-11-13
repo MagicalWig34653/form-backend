@@ -17,6 +17,9 @@ let package = Package(
         .package(url: "https://github.com/vapor/vapor.git", exact: "4.122.3"),
         .package(url: "https://github.com/vapor/fluent.git", exact: "4.13.0"),
         .package(url: "https://github.com/vapor/fluent-mysql-driver.git", exact: "4.8.0"),
+        // Patched copy of vapor/mysql-nio 1.9.2 (TLS required = no plaintext fallback, no payload bytes in trace); overrides
+        // the transitive remote dependency of mysql-kit by identity. Patches: backend/Vendor/README.md.
+        .package(path: "Vendor/mysql-nio"),
         .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
         // SSH transport for SFTP (ADR 0011); Apache-2.0.
         .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),
@@ -124,7 +127,7 @@ let package = Package(
         .target(name: "FormMigration", dependencies: ["FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Fluent", package: "fluent"), .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"), .product(name: "Vapor", package: "vapor"), .product(name: "Crypto", package: "swift-crypto")], swiftSettings: v5),
         .testTarget(name: "FormMigrationTests", dependencies: ["FormAdmin", "FormMail", "FormMigration", "FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Crypto", package: "swift-crypto"), .product(name: "Vapor", package: "vapor")], resources: [.copy("Fixtures")], swiftSettings: v5),
         .testTarget(name: "FormCoreTests", dependencies: ["FormCore"], swiftSettings: v5),
-        .testTarget(name: "FormPersistenceTests", dependencies: ["FormPersistence"], swiftSettings: v5),
+        .testTarget(name: "FormPersistenceTests", dependencies: ["FormPersistence", "FormCore", .product(name: "Vapor", package: "vapor")], swiftSettings: v5),
         .testTarget(
             name: "FormIngestTests",
             dependencies: ["FormIngest", "FormAuth", "FormHTTP", "FormCrypto", "FormPersistence", .product(name: "XCTVapor", package: "vapor")],

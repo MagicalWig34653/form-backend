@@ -88,7 +88,7 @@ public struct MigrateLegacyCommand: AsyncCommand {
         var cfg = MySQLConfiguration(hostname:params.host,port:params.port,username:params.user,password:params.password,database:params.name)
         if params.insecure { cfg.tlsConfiguration = nil }
         let id = DatabaseID(string:"legacy-migration")
-        app.databases.use(.mysql(configuration:cfg,maxConnectionsPerEventLoop:1),as:id)
+        app.databases.use(.mysql(configuration:cfg,maxConnectionsPerEventLoop:1,sqlLogLevel:nil),as:id)
         var source = app.db(id).logger; source.logLevel = .critical
         let src = app.db(id,logger:source) as! SQLDatabase
         var targetLogger = app.db(.mysql).logger; targetLogger.logLevel = .critical

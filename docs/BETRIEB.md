@@ -361,6 +361,16 @@ und Zertifikatsprüfung, der DB-Hostname muss zum Zertifikat passen. Es existier
 Variable für eine eigene CA-Datei**. Bei privater CA diese in das Runtime-Image/Systemvertrauen
 aufnehmen und dies separat auf `main` vorbereiten. Keine Änderung an `main` erfolgt hier.
 
+**TLS ist zwingend, kein Rückfall auf Klartext.** Bietet der DB-Server in seiner Begrüßung kein `CLIENT_SSL` an
+(Server ohne TLS oder von einem Angreifer im Netz entferntes Flag), bricht der Treiber die Verbindung ab, bevor
+Zugangsdaten gesendet werden (`secureConnectionRequired`); der Start/Pool schlägt dann fehl. Das gilt für
+`verify` und für die Quellverbindung des Umstiegs mit TLS. Grundlage ist der gepatchte, lokal eingebundene
+Treiber `backend/Vendor/mysql-nio` (Patches und Update-Hinweis: `backend/Vendor/README.md`). Zusätzlich
+serverseitig `REQUIRE SSL` für das DB-Konto setzen.
+
+Treiber-Logging: SQL-Bind-Werte (Passwort-Hashes) werden nie protokolliert (`sqlLogLevel: nil`) und der
+Paket-Trace des Treibers gibt keine Payload-Bytes mehr aus, auch nicht bei `FORM_LOG_LEVEL=debug` oder `trace`.
+
 `FORM_DB_TLS=disable` funktioniert ausschließlich mit `FORM_ALLOW_INSECURE_DEV=1`.
 Diese Entwicklungsfreigabe erlaubt zugleich unsichere SMTP-/HTTP- und SDK-Deploy-Ziele und
 ist keine isolierte DB-Ausnahme. Im normalen externen Betrieb `verify` und Freigabe `0` lassen.

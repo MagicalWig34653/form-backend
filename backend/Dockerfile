@@ -4,6 +4,7 @@
 FROM swift:6.4-noble AS build
 WORKDIR /src
 COPY backend/Package.swift backend/Package.resolved ./backend/
+COPY backend/Vendor ./backend/Vendor
 WORKDIR /src/backend
 RUN swift package resolve
 COPY backend/Sources ./Sources

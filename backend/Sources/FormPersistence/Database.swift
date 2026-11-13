@@ -18,15 +18,19 @@ public enum Persistence {
     }
 
     /// Registers the MariaDB/MySQL connection pool as the default database. No Fluent migrations.
-    public static func configure(_ app: Application, _ config: AppConfig, maxConnectionsPerEventLoop: Int? = nil) {
+    public static func configure(_ app: Application, _ config: AppConfig, maxConnectionsPerEventLoop: Int? = nil,
+                                 tlsConfiguration: TLSConfiguration? = nil) {
         let loops = app.eventLoopGroup.makeIterator().reduce(0) { n, _ in n + 1 }
         let maxConnectionsPerEventLoop = maxConnectionsPerEventLoop ?? defaultMaxConnectionsPerEventLoop(eventLoops: loops)
-        var tls: TLSConfiguration? = TLSConfiguration.makeClientConfiguration()
+        // `tlsConfiguration` is a seam for tests (self-signed server certificate); production passes nil = system trust.
+        var tls: TLSConfiguration? = tlsConfiguration ?? TLSConfiguration.makeClientConfiguration()
         if config.dbTLS == .disable { tls = nil }
         let cfg = MySQLConfiguration(
             hostname: config.dbHost, port: config.dbPort, username: config.dbUser,
             password: config.dbPassword, database: config.dbName, tlsConfiguration: tls)
-        app.databases.use(.mysql(configuration: cfg, maxConnectionsPerEventLoop: maxConnectionsPerEventLoop), as: .mysql)
+        // sqlLogLevel nil: Fluent/MySQLKit would log every statement with its stringified bind values (password hashes) at debug.
+        // A non-nil TLS configuration is mandatory: the vendored driver aborts before authentication if the server lacks TLS.
+        app.databases.use(.mysql(configuration: cfg, maxConnectionsPerEventLoop: maxConnectionsPerEventLoop, sqlLogLevel: nil), as: .mysql)
     }
 
     /// Raw SQL access for the runner/readiness probe.

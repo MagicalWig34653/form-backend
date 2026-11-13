@@ -78,8 +78,8 @@ struct MigrationService {
         }
         let pinned = addresses[0], port = source.port
         if source.tls == "verify" {
-            // mysql-nio continues in plain text when the server does not offer TLS, after sending user name and password
-            // scramble in its first reply. Look at the greeting on a separate connection first.
+            // Stock mysql-nio continued in plain text when the server did not offer TLS; the vendored driver (backend/Vendor)
+            // now aborts before authentication. The probe stays for the named error (noTLS) before any credential is used.
             guard try await SourceTLSProbe.offersTLS(address: pinned, port: port, group: app.eventLoopGroup) else { throw SourceFailure.noTLS }
         } else {
             // Explicit, allowed only with FORM_ALLOW_INSECURE_DEV: loopback and throw-away sources without TLS.
@@ -91,7 +91,7 @@ struct MigrationService {
         if source.tls == "disable" { config.tlsConfiguration = nil }
         let connectionApp = try await Application.make(.production)
         connectionApp.logger.logLevel = .critical
-        connectionApp.databases.use(.mysql(configuration: config, maxConnectionsPerEventLoop: 1), as: .mysql)
+        connectionApp.databases.use(.mysql(configuration: config, maxConnectionsPerEventLoop: 1, sqlLogLevel: nil), as: .mysql)
         do {
             let sourceDB = connectionApp.db(.mysql) as! SQLDatabase
             let verify = source.tls == "verify"

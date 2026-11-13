@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## Sicherheitsbefunde S2-01 / S2-04: DB-TLS zwingend, kein Treiber-Logging von Geheimnissen (13.11.2026, Worktree-Branch `worktree-agent-a5a3849c493831cf8`, lokal committet, ungemergt)
+
+- S2-01: Der Treiber mysql-nio sendete ohne `CLIENT_SSL` in der Serverbegrüßung weiter im Klartext (`isTLS: false`), auch bei `FORM_DB_TLS=verify`. Jetzt lokal eingebundener, gepatchter Treiber `backend/Vendor/mysql-nio` (Patches: `backend/Vendor/README.md`): ist TLS verlangt und fehlt `CLIENT_SSL`, bricht der Handshake mit `secureConnectionRequired` ab, bevor `SSLRequest` oder Handshake-Antwort geschrieben wird. Begründung: Nur im Treiber-Handshake ist die Entscheidung atomar; eine Vorabprobe oder ein Hook von außen kann die folgende, getrennte Verbindung nicht schützen. Dockerfile kopiert `backend/Vendor`.
+- S2-04: `sqlLogLevel: nil` an allen drei Pools (Haupt-DB, Umstiegsquelle, Legacy-Befehl); `MySQLPacket.description` des Treibers gibt keine Payload-Bytes mehr aus (bei `trace` waren es 16 Bytes je Paket, bei `caching_sha2_password` über TLS inklusive DB-Passwort).
+- Tests: `backend/Tests/FormPersistenceTests/DBTLSTests.swift` gegen echte MariaDB (Proxy entfernt `CLIENT_SSL`, zählt Client-Bytes). Rot gegen vorherigen Stand, grün nach Fix; Zahlen in `docs/handoffs/S2-01-S2-04.md`.
+- Offen: kein Lauf gegen eine MariaDB mit `--skip-ssl` (Proxy-Entfernung des Flags ist auf dem Draht gleichwertig), kein `caching_sha2_password`-Server (MariaDB bietet ihn nicht), SwiftPM meldet die Warnung "Conflicting identity for mysql-nio" (gewollter Override).
+
 ## Große Uploads 500 (13.11.2026, Worktree-Branch `worktree-agent-a99e8714e8d8b2ed7`, lokal committet, ungemergt; Todolino 985BC399)
 
 - Ursache belegt: MySQLNIO 1.9.2 teilt Pakete ab 16 MiB − 1 weder beim Schreiben noch beim Lesen (3-Byte-Länge), unabhängig von `max_allowed_packet` (gemessen: gebundener Wert 17 MB = "ok", gespeichert 0 Byte). Folge: Uploads 14 bis 19,5 MB = 500 (`MySQLError`), Inventar-`SELECT *` auf Zellen über 16 MiB = "storage maintenance failed" / "Statement not closed" jede Minute, Aufbewahrung/Wartungslöschung scheiterte dauerhaft an solchen Zeilen.
