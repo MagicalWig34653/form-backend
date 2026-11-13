@@ -31,21 +31,16 @@ const KID_OLD = 'a6077815bba8b14c';
 const KID_ACTIVE = 'd19bf3f082782c87';
 
 async function checkSource(page: Page) {
-  // the SPA sometimes returns to the customer page right after the first click (customer selection loads late): click until the form shows
-  const host = page.getByLabel('Host', { exact: true });
-  for (let attempt = 0; attempt < 4 && !(await host.isVisible()); attempt++) {
-    await page.getByRole('link', { name: 'Umstieg', exact: true }).first().click();
-    await host.waitFor({ timeout: 6000 }).catch(() => undefined);
-  }
+  // Cause of the former flakes (Todolino E47068F4): Tenants.create navigated to the new customer AFTER the click on "Umstieg"
+  // (late navigate() after key preparation). Fixed in the product (no navigation once the list was left); no retry needed here.
+  await page.getByRole('link', { name: 'Umstieg', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Umstieg', exact: true })).toBeVisible();
-  await expect(async () => {
-    await page.getByLabel('Host', { exact: true }).fill('127.0.0.1');
-    await page.getByLabel('Port', { exact: true }).fill(env('E2E_LEGACY_PORT'));
-    await page.getByLabel('Datenbank', { exact: true }).fill(env('E2E_LEGACY_DB'));
-    await page.getByLabel('Benutzer', { exact: true }).fill(env('E2E_LEGACY_USER'));
-    await page.getByLabel('Passwort', { exact: true }).fill(env('E2E_LEGACY_PASSWORD'));
-    await page.getByLabel('TLS-Modus').selectOption('disable');
-  }).toPass({ timeout: 40_000 }); // the page may re-render and drop the fields once
+  await page.getByLabel('Host', { exact: true }).fill('127.0.0.1');
+  await page.getByLabel('Port', { exact: true }).fill(env('E2E_LEGACY_PORT'));
+  await page.getByLabel('Datenbank', { exact: true }).fill(env('E2E_LEGACY_DB'));
+  await page.getByLabel('Benutzer', { exact: true }).fill(env('E2E_LEGACY_USER'));
+  await page.getByLabel('Passwort', { exact: true }).fill(env('E2E_LEGACY_PASSWORD'));
+  await page.getByLabel('TLS-Modus').selectOption('disable');
   await page.getByRole('button', { name: 'Verbindung prüfen' }).click();
   await expect(page.getByText(/Nur lesender Zugang geprüft/)).toBeVisible();
 }

@@ -81,8 +81,12 @@
       loadError =
         r.error.status === 403 ? t.lists.forbidden : loadFailureText(r.error, t.lists.failed);
   }
+  // Creating a customer prepares its keys and can take a while; whoever has left this list meanwhile (opened the customer or another
+  // page) must not be pulled back by the late navigate() below.
+  let leftList = false;
   onMount(() => void load());
   onDestroy(() => {
+    leftList = true;
     controller?.abort();
     clearTimeout(timer);
   });
@@ -113,7 +117,7 @@
         return;
       }
       await session.refreshTenants();
-      router.navigate(tenantPath(pending.id));
+      if (!leftList) router.navigate(tenantPath(pending.id));
     } finally {
       busy = false;
     }

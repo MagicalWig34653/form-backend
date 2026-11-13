@@ -1,5 +1,10 @@
 # Tatsächlicher Stand
 
+## Umstieg-Formular „detached from the DOM“ (13.11.2026, Todolino E47068F4, Branch `worktree-agent-a498d16b54bd44bd5`, lokal committet, ungemergt, nicht gepusht)
+
+- Ursache belegt (kein Re-Render der Migration-Seite): `Tenants.create` rief nach `ensureCustomer`/`refreshTenants` verspätet `router.navigate` auf und zog Nutzer, die inzwischen „Umstieg“ geöffnet hatten, zurück zur Kundenseite (Formular aus dem DOM entfernt). Gleiches Muster in `Forms.create`. Fix: Flag `leftList`, kein spätes `navigate` nach Verlassen der Liste.
+- Geprüft: vitest rot->grün (`Lists.test.ts`, 2 neue Tests), 525/525; Diagnose-Echtlauf (Binary + MariaDB + Chromium) vorher 3/3 rot, nachher 20/20 grün (15 normal, 5 mit 4x `yes`-Last); Notnagel in `real-migration-rotation.spec.ts` entfernt. Details: `docs/handoffs/Umstieg-Formular-Rerender.md`.
+
 ## Selbstsignierte Mailserver-Zertifikate je Verbindung (13.11.2026, Todolino 734F1761, Branch `worktree-agent-ad61bcd80cb131b86`, lokal committet, ungemergt, nicht gepusht)
 
 - Nutzerentscheidung (Lino, Bestätigung in der App beim Review ausstehend): ADR 0044. `verifyCertificate:false` je SMTP-Verbindung produktiv erlaubt, nur ausdrücklich gesetzt, TLS bleibt Pflicht (`plain` weiter nur mit Dev-Schalter), Audit `connection.tls-verification-off`/`-on`, neuer `PUT /connections/{id}/tls-verification`. Ersetzt die Dev-Sperre der SMTP-TLS-Härtung; IP-SAN-Prüfung und Standard „prüfen“ bleiben.

@@ -139,11 +139,13 @@
       return;
     }
     formLists.invalidate(tenant);
-    router.navigate(formPath(tenant, r.data.id));
+    if (!leftList) router.navigate(formPath(tenant, r.data.id)); // not after the user went elsewhere meanwhile
   }
 
+  let leftList = false;
   onMount(() => void load());
   onDestroy(() => {
+    leftList = true;
     loader.cancel();
     controller?.abort();
     clearTimeout(timer);

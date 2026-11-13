@@ -123,6 +123,38 @@ it('setzt nach Vorbereitungsfehler denselben Kunden fort ohne zweiten POST', asy
   expect(mocks.createTenant).toHaveBeenCalledTimes(1);
   expect(mocks.ensureCustomer).toHaveBeenNthCalledWith(2, 'new');
 });
+it('springt nach dem Anlegen nicht mehr zum Kunden, wenn die Liste schon verlassen wurde (Umstieg-Formular blieb sonst nicht stehen)', async () => {
+  // The new customer's preparation (keys) is slow; meanwhile the user opened the customer or another page. A late navigate() would
+  // pull them back (seen live: the Umstieg form was removed from under the user 60 ms after opening it).
+  let finish!: () => void;
+  mocks.createTenant.mockResolvedValue({ ok: true, data: { id: 'new' } });
+  mocks.ensureCustomer.mockReturnValueOnce(new Promise<void>((done) => (finish = done)));
+  const view = render(Tenants);
+  await screen.findByText('Beispiel');
+  await fireEvent.click(screen.getByRole('button', { name: 'Kunde anlegen' }));
+  await fireEvent.input(screen.getByLabelText('Name des Kunden'), { target: { value: 'Neu' } });
+  await fireEvent.submit(screen.getByLabelText('Name des Kunden').closest('form')!);
+  await waitFor(() => expect(mocks.ensureCustomer).toHaveBeenCalledWith('new'));
+  view.unmount(); // the user left the customer list
+  finish();
+  await waitFor(() => expect(mocks.session.refreshTenants).toHaveBeenCalled());
+  await new Promise((r) => setTimeout(r, 20));
+  expect(mocks.navigate).not.toHaveBeenCalled();
+});
+it('springt nach dem Anlegen eines Formulars nicht mehr zurück, wenn die Liste schon verlassen wurde', async () => {
+  let finish!: (value: unknown) => void;
+  mocks.createForm.mockReturnValueOnce(new Promise((done) => (finish = done)));
+  const view = render(Forms, { tenant: 'a' });
+  await screen.findByRole('link', { name: 'Kontakt' });
+  await fireEvent.click(screen.getByRole('button', { name: 'Formular anlegen' }));
+  await fireEvent.input(screen.getByLabelText('Name des Formulars'), { target: { value: 'Neu' } });
+  await fireEvent.submit(screen.getByLabelText('Name des Formulars').closest('form')!);
+  await waitFor(() => expect(mocks.createForm).toHaveBeenCalled());
+  view.unmount();
+  finish({ ok: true, data: { id: 'nf' } });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(mocks.navigate).not.toHaveBeenCalled();
+});
 it('zeigt unveröffentlichten Formularstatus auch bei Statistikfehler', async () => {
   mocks.statistics.mockResolvedValue({ ok: false, error: { status: 403 } });
   const editor = {
