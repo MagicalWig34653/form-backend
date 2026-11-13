@@ -65,10 +65,20 @@ test('migration convert: drafts from the import, repetition, edit, publish, 409 
   // Imported customers are `disabled` and not listed in the UI; to open the drafts in the editor the import goes into an existing
   // (active) customer. Its own key generation (number 1) would collide with the imported one, so it is removed first (as in real-migration.spec.ts).
   const tenant = await createCustomer(page, CUSTOMER);
+  // The browser sets up the customer's key generation, its access and (later) its recovery asynchronously after the customer is created:
+  // wait until the access exists, then dismantle all three in ONE transaction (a delete in between would hit data_key_access' foreign key).
+  await expect
+    .poll(
+      () => target(`SELECT COUNT(*) FROM data_key_access WHERE customer_id = ${uuidBin(tenant)}`),
+      { timeout: 30_000 },
+    )
+    .not.toBe('0');
   target(`
+    START TRANSACTION;
     DELETE FROM data_key_access WHERE customer_id = ${uuidBin(tenant)};
     DELETE FROM data_key_recovery WHERE customer_id = ${uuidBin(tenant)};
     DELETE FROM customer_key_generations WHERE customer_id = ${uuidBin(tenant)};
+    COMMIT;
   `);
   resetBudget();
 

@@ -108,8 +108,11 @@ export async function expectReadable(
   marker: string,
 ): Promise<void> {
   // In-app navigation only: a page load would lock the keyring (RAM only).
-  await page.getByRole('link', { name: 'Kunden', exact: true }).first().click();
-  await page.getByRole('link', { name: `Öffnen: ${customer}` }).click();
+  // The customer list can arrive late on a loaded runner (seen once in CI: link not found after 20 s): repeat the in-app click path.
+  await expect(async () => {
+    await page.getByRole('link', { name: 'Kunden', exact: true }).first().click();
+    await page.getByRole('link', { name: `Öffnen: ${customer}` }).click({ timeout: 15_000 });
+  }).toPass({ timeout: 75_000 });
   await page
     .getByRole('link', { name: new RegExp(formName) })
     .first()

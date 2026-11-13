@@ -83,10 +83,20 @@ test('migration: source check, real conflict, resume, import, repetition, key ad
   ).toBe('1');
 
   // 3. cause removed in the target (the message names this way: dismantle the key), the SAME job is resumed
+  // The browser sets up the customer's key generation, its access and (later) its recovery asynchronously after the customer is created:
+  // wait until the access exists, then dismantle all three in ONE transaction (a delete in between would hit data_key_access' foreign key).
+  await expect
+    .poll(
+      () => target(`SELECT COUNT(*) FROM data_key_access WHERE customer_id = ${uuidBin(tenant)}`),
+      { timeout: 30_000 },
+    )
+    .not.toBe('0');
   target(`
+    START TRANSACTION;
     DELETE FROM data_key_access WHERE customer_id = ${uuidBin(tenant)};
     DELETE FROM data_key_recovery WHERE customer_id = ${uuidBin(tenant)};
     DELETE FROM customer_key_generations WHERE customer_id = ${uuidBin(tenant)};
+    COMMIT;
   `);
   resetBudget();
   await page.getByRole('button', { name: 'Fortsetzen', exact: true }).click();
