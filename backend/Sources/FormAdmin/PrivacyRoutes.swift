@@ -14,7 +14,25 @@ enum PrivacyRoutes {
     static let maxRetentionDays = 3650
     static let maxBatch = 100
 
-    struct RetentionBody: Encodable { let days: Int? }
+    /// `importedCount`: submissions imported from the legacy system (release_evidence = legacy-unknown). They carry NO due date until the
+    /// operator applies a period to them explicitly (QA 13.11.: the default period would delete months-old legacy data at once).
+    /// `importedWithoutDeadline`: of those, how many have no due date. `dueNowImported`: how many (not held) would be due immediately
+    /// under `days` (nil on GET without a candidate period: the stored one is used).
+    struct RetentionBody: Encodable {
+        let days: Int?
+        var importedCount = 0, importedWithoutDeadline = 0, dueNowImported = 0
+        var appliedToImported: Bool?
+        var dryRun: Bool?
+    }
+    struct ImportedCounts: Decodable { let total: Int; let open: Int; let due: Int }
+    /// Imported submissions of the form: all, without due date, and (not held) due at once under `days`.
+    static func importedCounts(_ sql: SQLDatabase, tenant: UUID, form: UUID, days: Int, now: Date) async throws -> ImportedCounts {
+        try await sql.raw("""
+            SELECT COUNT(*) AS total, COALESCE(SUM(retention_due_at IS NULL),0) AS open,
+                   COALESCE(SUM(removable = 1 AND received_at IS NOT NULL AND DATE_ADD(received_at, INTERVAL \(literal: days) DAY) <= \(bind: DB.time(now))),0) AS due
+            FROM submissions WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(form)) AND release_evidence = 'legacy-unknown'
+            """).first(decoding: ImportedCounts.self) ?? ImportedCounts(total: 0, open: 0, due: 0)
+    }
     struct HoldBody: Encodable { let id: String; let held: Bool }
     struct DeleteBody: Encodable { let deleted: [String]; let held: [String]; let missing: [String]; let pending: [String] }
     struct ExportItem: Encodable {
@@ -44,10 +62,14 @@ enum PrivacyRoutes {
             struct R: Decodable { let d: Int? }
             let d = try await sql.raw("SELECT CAST(JSON_VALUE(safe_value_json, '$') AS UNSIGNED) AS d FROM settings WHERE scope_key = \(bind: scopeKey(form)) AND setting_key = 'retention.days'").first(decoding: R.self)?.d
             // Every form has a period; without an entry the default applies (ingest and the upgrade fill it the same way).
-            return noStore(try FormAdmin.json(.ok, RetentionBody(days: d ?? Retention.defaultDays)))
+            let days = d ?? Retention.defaultDays
+            let c = try await importedCounts(sql, tenant: tenant, form: form, days: days, now: now())
+            return noStore(try FormAdmin.json(.ok, RetentionBody(days: days, importedCount: c.total, importedWithoutDeadline: c.open, dueNowImported: c.due)))
         }
 
-        // days = null switches the automatic deletion off. Existing, not held submissions get their due date recomputed.
+        // The period applies to the not imported submissions of the form at once. Imported (legacy) submissions are only touched with
+        // `applyToImported: true` (QA 13.11.: they carry no due date; the job deletes everything that is due). `dryRun: true` writes
+        // nothing and only reports `dueNowImported` (imported submissions that would be due immediately under `days`).
         tenants.put("forms", ":formId", "retention") { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
             try await guardian.budget(req)
@@ -55,10 +77,21 @@ enum PrivacyRoutes {
             let account = s.accountID!
             try await perms.authorize(account: account, "privacy.manage", on: .customer(tenant), exists: try await formExists(tenant, form))
             try await guardian.requireFreshAuthentication(s, now: now())
-            let obj = try MailRoutes.jsonObject(req, allowed: ["days"])
+            let obj = try MailRoutes.jsonObject(req, allowed: ["days", "applyToImported", "dryRun"])
             // The period is mandatory: missing, null and out-of-range values are rejected (no way to switch the deletion off).
             guard let days = obj["days"] as? Int, (Retention.minDays...Retention.maxDays).contains(days) else { throw RetentionProblem.required }
+            func flag(_ key: String) throws -> Bool {
+                guard let v = obj[key] else { return false }
+                guard let b = v as? Bool else { throw Abort(.badRequest) }
+                return b
+            }
+            let apply = try flag("applyToImported"), dryRun = try flag("dryRun")
             let ts = DB.time(now())
+            if dryRun {
+                let c = try await importedCounts(sql, tenant: tenant, form: form, days: days, now: now())
+                return noStore(try FormAdmin.json(.ok, RetentionBody(days: days, importedCount: c.total, importedWithoutDeadline: c.open, dueNowImported: c.due, appliedToImported: false, dryRun: true)))
+            }
+            var counts = ImportedCounts(total: 0, open: 0, due: 0)
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 try await PermissionService(sql: tx).authorize(account: account, "privacy.manage", on: .customer(tenant))
@@ -72,10 +105,12 @@ enum PrivacyRoutes {
                 try await tx.raw("""
                     UPDATE submissions SET retention_due_at = DATE_ADD(received_at, INTERVAL \(literal: days) DAY)
                     WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(form)) AND received_at IS NOT NULL
+                      AND (\(literal: apply ? 1 : 0) = 1 OR release_evidence <> 'legacy-unknown')
                     """).run()
-                try await ReleaseRoutes.audit(tx, tenant: tenant, form: form, actor: account, action: "privacy.retention.set", subject: form, at: ts, category: "privacy").run()
+                counts = try await importedCounts(tx, tenant: tenant, form: form, days: days, now: now())
+                try await ReleaseRoutes.audit(tx, tenant: tenant, form: form, actor: account, action: apply ? "privacy.retention.set.imported" : "privacy.retention.set", subject: form, at: ts, category: "privacy").run()
             }
-            return noStore(try FormAdmin.json(.ok, RetentionBody(days: days)))
+            return noStore(try FormAdmin.json(.ok, RetentionBody(days: days, importedCount: counts.total, importedWithoutDeadline: counts.open, dueNowImported: counts.due, appliedToImported: apply, dryRun: false)))
         }
 
         // --- hold ------------------------------------------------------------------------------------------------------

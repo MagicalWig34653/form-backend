@@ -460,6 +460,16 @@
           </tbody>
         </table>
       </div>
+      {#if sum.retention && sum.retention.imported > 0}
+        <div data-testid="migration-retention-note">
+          <Banner tone="warn">
+            {f.run.retentionNote
+              .replace('{n}', String(sum.retention.imported))
+              .replace('{d}', String(sum.retention.defaultDays))
+              .replace('{due}', String(sum.retention.dueNowAtDefault))}
+          </Banner>
+        </div>
+      {/if}
       {#if sum.issues.length}
         <div class="flex flex-col gap-1">
           <h4 class="m-0 text-sm font-semibold">{f.run.issuesTitle}</h4>

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { beforeEach, expect, it, vi } from 'vitest';
 import RetentionPanel from './RetentionPanel.svelte';
+import { confirmState } from '$lib/confirm.svelte';
 
 const api = vi.hoisted(() => ({ retention: vi.fn(), setRetention: vi.fn() }));
 vi.mock('$lib/api', () => ({ adminApi: api }));
@@ -59,4 +60,54 @@ it('zeigt den Grundtext des Servers bei 409 (Import läuft)', async () => {
   await fireEvent.input(input, { target: { value: '5' } });
   await fireEvent.click(screen.getByRole('button', { name: 'Aufbewahrung speichern' }));
   await screen.findByText(reason);
+});
+
+it('importierte Einsendungen: zeigt die sofort fälligen, verlangt Häkchen und Bestätigung', async () => {
+  api.retention.mockResolvedValue({
+    ok: true,
+    data: { days: 3, importedCount: 5, importedWithoutDeadline: 5 },
+  });
+  api.setRetention.mockImplementation(
+    async (_t: string, _f: string, d: number, o?: { dryRun?: boolean }) => ({
+      ok: true,
+      data: { days: d, importedWithoutDeadline: o?.dryRun ? 5 : 0, dueNowImported: 4 },
+    }),
+  );
+  render(RetentionPanel, { tenant: 'tenant', form: 'form' });
+  const input = await screen.findByLabelText('Aufbewahrung in Tagen');
+  await fireEvent.input(input, { target: { value: '30' } });
+  await screen.findByText(/wären 4 importierte Einsendungen sofort fällig/);
+  expect(api.setRetention).toHaveBeenCalledWith('tenant', 'form', 30, { dryRun: true });
+  // without the checkbox the period is saved WITHOUT touching imported submissions
+  await fireEvent.click(screen.getByRole('button', { name: 'Aufbewahrung speichern' }));
+  await waitFor(() => expect(api.setRetention).toHaveBeenCalledWith('tenant', 'form', 30));
+});
+
+it('importierte Einsendungen: mit Häkchen wird applyToImported erst nach Bestätigung gesendet', async () => {
+  api.retention.mockResolvedValue({
+    ok: true,
+    data: { days: 3, importedCount: 5, importedWithoutDeadline: 5 },
+  });
+  api.setRetention.mockImplementation(
+    async (_t: string, _f: string, d: number, o?: { dryRun?: boolean }) => ({
+      ok: true,
+      data: { days: d, importedWithoutDeadline: o?.dryRun ? 5 : 0, dueNowImported: 4 },
+    }),
+  );
+  render(RetentionPanel, { tenant: 'tenant', form: 'form' });
+  const input = await screen.findByLabelText('Aufbewahrung in Tagen');
+  await fireEvent.input(input, { target: { value: '30' } });
+  await fireEvent.click(
+    await screen.findByLabelText('Frist auch auf die importierten Einsendungen anwenden'),
+  );
+  await fireEvent.click(screen.getByRole('button', { name: 'Aufbewahrung speichern' }));
+  await waitFor(() => expect(confirmState.current?.confirmLabel).toBe('Anwenden und löschen'));
+  expect(confirmState.current?.description).toContain('4 importierte Einsendungen');
+  expect(api.setRetention).not.toHaveBeenCalledWith('tenant', 'form', 30, {
+    applyToImported: true,
+  });
+  confirmState.settle(true);
+  await waitFor(() =>
+    expect(api.setRetention).toHaveBeenCalledWith('tenant', 'form', 30, { applyToImported: true }),
+  );
 });

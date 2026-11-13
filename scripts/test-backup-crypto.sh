@@ -133,5 +133,17 @@ FORM_BACKUP_RETENTION_DAYS=1 "$S/backup-prune.sh" "$R2" >/dev/null 2>&1 || true
 FORM_BACKUP_RETENTION_DAYS=0 expect_fail 'Prune: Frist 0 abgelehnt' "$S/backup-prune.sh" "$R"
 FORM_BACKUP_RETENTION_DAYS=abc expect_fail 'Prune: ungueltige Frist abgelehnt' "$S/backup-prune.sh" "$R"
 
+# strip_definer (restore without SET USER privilege): DEFINER disappears from CREATE lines of triggers/routines, data lines stay untouched
+# shellcheck source=scripts/db-common.sh
+( source "$S/db-common.sh" 2>/dev/null; declare -f strip_definer >/dev/null ) && {
+  eval "$(sed -n '/^strip_definer()/p' "$S/db-common.sh")"
+  IN=$'/*!50003 CREATE*/ /*!50017 DEFINER=`form`@`%`*/ /*!50003 TRIGGER t BEFORE INSERT ON x FOR EACH ROW SET NEW.a=1 */;;\nCREATE DEFINER=`a`@`b` PROCEDURE p() BEGIN END;;\nINSERT INTO t VALUES (\'CREATE DEFINER=`x`@`y` bleibt\');'
+  OUT=$(printf '%s\n' "$IN" | strip_definer)
+  L1=$(printf '%s\n' "$OUT" | sed -n 1p); L2=$(printf '%s\n' "$OUT" | sed -n 2p); L3=$(printf '%s\n' "$OUT" | sed -n 3p)
+  [[ "$L1" != *DEFINER* && "$L1" == *'TRIGGER t BEFORE INSERT'* ]] && ok 'strip_definer: Trigger-Zeile ohne DEFINER, Rest bleibt' || bad "strip_definer Trigger: $L1"
+  [[ "$L2" == 'CREATE PROCEDURE p() BEGIN END;;' ]] && ok 'strip_definer: Routine ohne DEFINER' || bad "strip_definer Routine: $L2"
+  [[ "$L3" == *'DEFINER=`x`@`y` bleibt'* ]] && ok 'strip_definer: Datenzeile unveraendert' || bad "strip_definer Daten: $L3"
+} || bad 'strip_definer fehlt in db-common.sh'
+
 printf '\n%d bestanden, %d fehlgeschlagen\n' "$PASS" "$FAIL"
 [[ $FAIL == 0 ]]

@@ -220,6 +220,9 @@ jobs:
       - name: E2E migrate-legacy CLI as a real process (parameters, dry run, import, repetition, SIGINT/SIGTERM and resume, statistics)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33736 LEGACY_PORT=33977 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-cli.sh
+      - name: E2E imported submissions survive the retention job (no due date, upgrade 0035, explicit decision)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33738 LEGACY_PORT=33979 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-retention.sh
       - name: E2E Umstieg with a 27 MB attachment cell (target max_allowed_packet 16 MiB refused before the first write, 64 MiB imports byte for byte)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33737 P3B_PORT2=33738 LEGACY_PORT=33978 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-packet.sh

@@ -50,7 +50,7 @@ extension LegacyImporter {
                 if state == "accepted" { result.released += 1; continue }
                 guard state == "migration-review", !open.contains(entry.key),
                       try await scalar(target, "SELECT '1' AS v FROM stored_objects WHERE submission_id=(SELECT id FROM submissions WHERE \(ref.predicate)) AND object_role='data' AND state='ready' AND packet_format='KUBUS-AEAD:2' LIMIT 1") != nil,
-                      mac(try await snapshot(target, ref)) == hex(entry.target_hmac.data) else { result.kept += 1; continue }
+                      try await proofMatches(target, ref, stored: hex(entry.target_hmac.data), inTransaction: true) else { result.kept += 1; continue }
                 try await exec(target, "UPDATE submissions SET state='accepted' WHERE \(ref.predicate) AND state='migration-review'")
                 let digest = mac(try await snapshot(target, ref))
                 try await exec(target, "UPDATE migration_objects SET target_hmac=\(bin(try unhex(digest))) WHERE source_namespace=\(val(namespace)) AND source_table='anfragen' AND target_table='submissions' AND target_slot=\(val(String(format: "%08d", 0))) AND source_key=X'\(entry.key)'")

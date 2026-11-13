@@ -167,6 +167,77 @@ final class PrivacyTests: XCTestCase {
         }
     }
 
+    /// Imports `n` months-old legacy submissions (release_evidence legacy-unknown, no due date) into the form of `w`.
+    private func importedRows(_ f: AdminFixture, _ w: World, _ n: Int) async throws -> [Data] {
+        var ids: [Data] = []
+        for i in 0..<n {
+            let id = DB.bin(UUID())
+            try await f.sql.raw("INSERT INTO submissions (id,customer_id,form_id,release_evidence,received_at,environment,state,removable,malware_scan_status) VALUES (\(bind: id),\(bind: DB.bin(w.tenant)),\(bind: DB.bin(UUID(uuidString: w.form)!)),'legacy-unknown',DATE_SUB(UTC_TIMESTAMP(6), INTERVAL \(literal: 90 + i) DAY),'legacy-unknown','accepted',1,'none')").run()
+            ids.append(id.data)
+        }
+        return ids
+    }
+
+    /// QA 13.11.: a period change never pulls imported submissions along unless the operator says so; dryRun names the number first.
+    func testRetentionChangeLeavesImportedSubmissionsAloneUnlessConfirmed() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, rights: ["content.read", "privacy.manage"])
+            let policy = "tenants/\(w.tenant)/forms/\(w.form)/retention"
+            _ = try await importedRows(f, w, 3)
+            let native = try await submit(f, w, "RET-NATIVE", key: "n1")
+            struct Due: Decodable { let n: Int }
+            func importedWithDue() async throws -> Int { try await f.sql.raw("SELECT COUNT(*) AS n FROM submissions WHERE release_evidence = 'legacy-unknown' AND retention_due_at IS NOT NULL").first(decoding: Due.self)?.n ?? -1 }
+            func total() async throws -> Int { try await f.sql.raw("SELECT COUNT(*) AS n FROM submissions").first(decoding: Due.self)?.n ?? -1 }
+            try await w.admin.get(policy) { XCTAssertEqual(self.obj($0)["importedCount"] as? Int, 3); XCTAssertEqual(self.obj($0)["importedWithoutDeadline"] as? Int, 3) }
+            // dry run: writes nothing, names the immediately due imported submissions
+            try await w.admin.send(.PUT, policy, body: "{\"days\":30,\"dryRun\":true}") {
+                XCTAssertEqual($0.status, .ok, self.text($0)); XCTAssertEqual(self.obj($0)["dueNowImported"] as? Int, 3); XCTAssertEqual(self.obj($0)["dryRun"] as? Bool, true)
+            }
+            try await w.admin.get(policy) { XCTAssertEqual(self.obj($0)["days"] as? Int, 3, "dry run changed nothing") }
+            // plain change: the native row follows, the imported ones stay without a due date, the job deletes nothing imported
+            try await w.admin.send(.PUT, policy, body: "{\"days\":30}") {
+                XCTAssertEqual($0.status, .ok, self.text($0)); XCTAssertEqual(self.obj($0)["appliedToImported"] as? Bool, false); XCTAssertEqual(self.obj($0)["importedWithoutDeadline"] as? Int, 3)
+            }
+            let nd = try await dueDays(f, native); XCTAssertEqual(nd, 30)
+            let none = try await importedWithDue(); XCTAssertEqual(none, 0)
+            var n = try await SubmissionEraser.purgeDue(db: f.app.db(.mysql), now: Date().addingTimeInterval(3000 * 86_400)); XCTAssertEqual(n, 1, "only the native submission is due")
+            let t1 = try await total(); XCTAssertEqual(t1, 3)
+            // wrong types are rejected
+            try await w.admin.send(.PUT, policy, body: "{\"days\":30,\"applyToImported\":\"yes\"}") { XCTAssertEqual($0.status, .badRequest) }
+            // explicit confirmation: the imported ones get the date and the job removes the due ones (older than 30 days: all three)
+            try await w.admin.send(.PUT, policy, body: "{\"days\":30,\"applyToImported\":true}") {
+                XCTAssertEqual($0.status, .ok, self.text($0)); XCTAssertEqual(self.obj($0)["appliedToImported"] as? Bool, true); XCTAssertEqual(self.obj($0)["importedWithoutDeadline"] as? Int, 0)
+            }
+            let all = try await importedWithDue(); XCTAssertEqual(all, 3)
+            n = try await SubmissionEraser.purgeDue(db: f.app.db(.mysql), now: Date()); XCTAssertEqual(n, 3)
+            let t2 = try await total(); XCTAssertEqual(t2, 0)
+        }
+    }
+
+    /// Upgrade 0035: already imported submissions lose a due date set by the old import; native ones keep theirs; idempotent.
+    func testUpgrade0035ClearsDueDatesOfImportedSubmissionsOnly() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, rights: ["content.read", "privacy.manage"])
+            let name = "0035-imported-no-retention"
+            XCTAssertTrue(MigrationRunner.upgrades.contains(name))
+            let imported = try await importedRows(f, w, 2)
+            try await f.sql.raw("UPDATE submissions SET retention_due_at = DATE_ADD(received_at, INTERVAL 3 DAY)").run()  // what the old import wrote
+            let native = try await submit(f, w, "UPG35", key: "u35")
+            let schema = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("db/schema-p3.sql").path
+            struct Due: Decodable { let n: Int }
+            for round in 1...2 {
+                try await f.sql.raw("DELETE FROM schema_migrations WHERE name = \(bind: name)").run()
+                _ = try await MigrationRunner(db: f.sql).run(schemaFile: MigrationRunner.upgradeFile(name, schemaFile: schema), name: name)
+                let left = try await f.sql.raw("SELECT COUNT(*) AS n FROM submissions WHERE release_evidence = 'legacy-unknown' AND retention_due_at IS NOT NULL").first(decoding: Due.self)?.n
+                XCTAssertEqual(left, 0, "round \(round)")
+                let nd = try await dueDays(f, native); XCTAssertEqual(nd, 3, "round \(round)")
+            }
+            XCTAssertEqual(imported.count, 2)
+            let n = try await SubmissionEraser.purgeDue(db: f.app.db(.mysql), now: Date().addingTimeInterval(5000 * 86_400))
+            XCTAssertEqual(n, 1, "only the native submission is deleted")
+        }
+    }
+
     func testCiphertextExportIsPagedAuditedAndReadableOnlyWithTheKey() async throws {
         try await AdminFixture.with { f in
             let w = try await world(f, rights: ["content.read"])

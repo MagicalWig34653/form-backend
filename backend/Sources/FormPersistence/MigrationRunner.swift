@@ -71,7 +71,7 @@ public struct MigrationRunner {
     /// Upgrade scripts `migrate` applies after the schema, in this order, from `upgrades/<name>.sql` next to the schema file. Each
     /// is recorded under its own name and checksum; a schema change after a release is a NEW upgrade here, never an edit of
     /// schema-p3.sql (that would break the checksum of every existing database). Every upgrade must be idempotent.
-    public static let upgrades = ["0027-account-recovery", "0033-sdk-deploy-recovery", "0034-retention-default"]
+    public static let upgrades = ["0027-account-recovery", "0033-sdk-deploy-recovery", "0034-retention-default", "0035-imported-no-retention"]
 
     public static func upgradeFile(_ name: String, schemaFile: String) -> String {
         URL(fileURLWithPath: schemaFile).deletingLastPathComponent().appendingPathComponent("upgrades/\(name).sql").path

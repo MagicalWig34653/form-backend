@@ -38,6 +38,10 @@
   let status = $state('');
   let statusKind = $state<'ok' | 'error'>('ok');
   let savedAt = $state<Date | null>(null);
+  /** Imported (legacy) submissions carry no due date; applying the period to them needs an explicit confirmation. */
+  let importedOpen = $state(0);
+  let dueNowImported = $state<number | null>(null);
+  let applyImported = $state(false);
 
   /** The period is mandatory (server default 72 h = 3 days): there is no way to switch the deletion off. */
   /** `bind:value` on a number input yields a number (or null when empty), so normalise to text first. */
@@ -47,14 +51,26 @@
   const target = $derived(valid ? parsed : null);
   /** Shortening deletes existing submissions: the user has to confirm. */
   const shortens = $derived(target !== null && saved !== null && target < saved);
-  const dirty = $derived(loaded && text !== String(saved));
+  const dirty = $derived(loaded && (text !== String(saved) || applyImported));
   $effect(() => ondirty?.(dirty));
+
+  /** Dry run: how many imported submissions would be due at once under the typed period (nothing is written). */
+  $effect(() => {
+    const d = target;
+    if (!loaded || d === null || importedOpen === 0) return void (dueNowImported = null);
+    let current = true;
+    void adminApi.setRetention(tenant, form, d, { dryRun: true }).then((res) => {
+      if (current) dueNowImported = res.ok ? (res.data.dueNowImported ?? 0) : null;
+    });
+    return () => (current = false);
+  });
 
   async function load(): Promise<void> {
     loadError = '';
     const res = await adminApi.retention(tenant, form);
     if (res.ok) {
       saved = res.data.days;
+      importedOpen = res.data.importedWithoutDeadline ?? 0;
       days = String(saved);
       loaded = true;
     } else if (!handleSessionError(res.error)) loadError = loadFailureText(res.error, r.loadFailed);
@@ -78,9 +94,23 @@
       }))
     )
       return;
+    if (
+      applyImported &&
+      !(await confirmAction({
+        title: r.importedConfirmTitle,
+        description: r.importedConfirmBody
+          .replace('{n}', String(dueNowImported ?? 0))
+          .replace('{d}', String(target)),
+        confirmLabel: r.importedConfirmLabel,
+        destructive: true,
+      }))
+    )
+      return;
     busy = true;
     status = '';
-    const res = await adminApi.setRetention(tenant, form, target);
+    const res = applyImported
+      ? await adminApi.setRetention(tenant, form, target, { applyToImported: true })
+      : await adminApi.setRetention(tenant, form, target);
     busy = false;
     if (!res.ok) {
       if (needsFreshLogin(res.error)) return void (await reauthenticate(router.path));
@@ -91,6 +121,8 @@
       return;
     }
     saved = target;
+    importedOpen = res.data.importedWithoutDeadline ?? 0;
+    applyImported = false;
     savedAt = new Date();
     status = '';
     statusKind = 'ok';
@@ -98,6 +130,7 @@
 
   function discard(): void {
     days = saved === null ? '' : String(saved);
+    applyImported = false;
     status = '';
   }
   $effect(() => {
@@ -170,6 +203,27 @@
           </div>
         </div>
       </Row>
+      {#if importedOpen > 0}
+        <div class="flex flex-col gap-3" data-testid="retention-imported">
+          <Banner tone="warn">{r.importedNoDeadline.replace('{n}', String(importedOpen))}</Banner>
+          {#if dueNowImported !== null}
+            <p class="m-0 text-sm" data-testid="retention-imported-due">
+              {r.importedDueNow
+                .replace('{n}', String(dueNowImported))
+                .replace('{d}', String(target))}
+            </p>
+          {/if}
+          <label class="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="mt-1"
+              bind:checked={applyImported}
+              disabled={!canWrite || busy}
+            />
+            <span>{r.importedApply}</span>
+          </label>
+        </div>
+      {/if}
       {#if dirty && shortens}<Banner tone="warn"
           >{r.shortenWarn.replace('{n}', String(target))}</Banner
         >{/if}

@@ -1,5 +1,9 @@
 # Tatsächlicher Stand
 
+## QA-Befund Aufbewahrungsjob löschte importierte Einsendungen (13.11.2026, Todolino 32884165, Branch `worktree-agent-aaf4ecf27611b6ce9`, lokal committet, ungemergt, nicht gepusht)
+
+- Ursache: Import setzte `retention_due_at = received_at + 3 Tage`; Alt-Einsendungen waren sofort fällig, der Job löschte sie. Fix: importierte Einsendungen ohne Frist (NULL), `PUT retention` nur mit `applyToImported` (+`dryRun`/`dueNowImported`), Upgrade 0035, Ledger-Nachweis ohne `retention_due_at` (Altnachweise weiter gültig, Freigabe prüft beide), Bericht `retention` (Schritt Prüfung), PWA-Dialog mit Häkchen/Bestätigung. Doku: ADR 0012 Nr. 2, UMSTIEG-CHECKLISTE 5a, BETRIEB.md.
+
 ## QA-Befund Upload-Verlust bei Anhang über DB-Paketgrenze (13.11.2026, Todolino 60B799DA, Worktree-Branch `worktree-agent-a5d49d428d8dd123a`, lokal committet, ungemergt, nicht gepusht)
 
 - Befund im Ingest (Test `IngestPacketLimitTests`, echte MariaDB mit 4 MiB und 16 MiB): vorher HTTP 500 `internal_error`, Transaktion zurückgerollt, 0 Zeilen in submissions/stored_objects (im Ingest-Pfad KEIN stilles „angenommen“, das stille Erfolgsverhalten trat nur bei einer einzelnen Schreibanweisung ohne Transaktion auf). Antwort 500 hieß für Praxis/SDK „später erneut“, obwohl es nie gelingen kann.

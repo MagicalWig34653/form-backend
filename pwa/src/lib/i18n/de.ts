@@ -520,6 +520,15 @@ try {
     toEntries: 'Einsendungen verwalten',
     loadFailed: 'Die Aufbewahrung konnte nicht geladen werden.',
     invalid: 'Bitte eine ganze Zahl zwischen 1 und 3650 eingeben.',
+    importedNoDeadline:
+      '{n} importierte Einsendungen haben keine Aufbewahrungsfrist und bleiben bestehen, bis Sie hier ausdrücklich bestätigen, dass die Frist auch für sie gilt.',
+    importedDueNow:
+      'Bei {d} Tagen wären {n} importierte Einsendungen sofort fällig und würden beim nächsten Lauf gelöscht.',
+    importedApply: 'Frist auch auf die importierten Einsendungen anwenden',
+    importedConfirmTitle: 'Importierte Einsendungen einbeziehen',
+    importedConfirmBody:
+      '{n} importierte Einsendungen sind bei {d} Tagen sofort fällig und werden endgültig gelöscht (samt Anhängen). Das lässt sich nicht rückgängig machen. Gehaltene Einsendungen bleiben erhalten.',
+    importedConfirmLabel: 'Anwenden und löschen',
   },
   rights: {
     labels: {
@@ -2466,6 +2475,8 @@ try {
           errorColumn: 'Spalte',
           processed: 'Bisher verarbeitete Zeilen',
           tablesCaption: 'Übernommene Zeilen je Tabelle des Altsystems',
+          retentionNote:
+            '{n} importierte Einsendungen bleiben ohne Aufbewahrungsfrist (keine automatische Löschung). Bei der Standardfrist von {d} Tagen wären {due} davon sofort fällig und gelöscht worden. Legen Sie die Aufbewahrung nach dem Import unter Datenschutz bewusst fest.',
           colTable: 'Tabelle',
           colSource: 'Quelle',
           colImported: 'Ziel',

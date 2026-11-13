@@ -80,3 +80,7 @@ db_counts() {
   done <<< "$tables"
 }
 checksum() { openssl dgst -sha256 "$1" | awk '{print $NF}'; }
+
+# Entfernt DEFINER=`u`@`h` aus CREATE-Anweisungen von Triggern/Routinen/Events/Views im Dump (nur in Zeilen, die mit CREATE bzw. /*!NNNNN CREATE*/ beginnen,
+# nie in Datenzeilen). Ein Restore-Benutzer ohne SET USER/SUPER-Recht scheitert sonst am ersten Trigger (ERROR 1227); ohne DEFINER gehoeren die Objekte ihm.
+strip_definer() { LC_ALL=C sed -E '/^(\/\*![0-9]+ CREATE\*\/ |CREATE )/ s/ ?DEFINER=`[^`]*`@`[^`]*`//'; }

@@ -215,10 +215,11 @@ extension LegacyImporter {
             // Only a UUID is taken over as a transport id; any other value stays an examination case.
             let sentText = try r.text("sentServer")
             let sentServer = sentText.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
-            // The imported submission gets the retention period of its target form (ADR 0012 no. 2); the value is fixed at write time.
-            let received = try timestamp(r.text("time"),table:r.table,column:"time")
-            let due = "DATE_ADD(COALESCE(CAST(\(received) AS DATETIME(6)),UTC_TIMESTAMP(6)),INTERVAL COALESCE((SELECT CAST(JSON_VALUE(safe_value_json,'$') AS UNSIGNED) FROM settings WHERE scope_key=\(val(Retention.scopeKey(UUID(uuidString:try r.required("formularUUID")) ?? UUID()))) AND setting_key=\(val(Retention.settingKey))),\(Retention.defaultDays)) DAY)"
-            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"retention_due_at":due,"malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft"),"legacy_sent_server":sentServer.map(val) ?? "NULL"],key:["id":id])
+            // QA 13.11. (data destruction): an imported submission gets NO retention date. The legacy dump carries none (the old system
+            // deleted by its own 72 h rule), and months-old data would be due at once under the default period, so the retention job
+            // (it skips NULL) would delete it right after the import. The operator decides explicitly after the import
+            // (PUT .../retention with applyToImported). The form setting `retention.days` is still created (ADR 0012 no. 2).
+            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"retention_due_at":"NULL","malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft"),"legacy_sent_server":sentServer.map(val) ?? "NULL"],key:["id":id])
             var refs = [sub]
             // Each package is checked independently. Unsupported packages stay in the immutable source dump.
             var review = false

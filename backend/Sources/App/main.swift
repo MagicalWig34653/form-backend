@@ -186,7 +186,8 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
         app.lifecycle.use(FlowMaintenance())
         app.lifecycle.use(MailMaintenanceScheduler())
         app.lifecycle.use(AuthMaintenanceScheduler())
-        app.lifecycle.use(RetentionScheduler())
+        // FORM_RETENTION_INTERVAL_SECONDS (1...3600, test/real-run knob): how often the retention pass runs; default hourly.
+        app.lifecycle.use(RetentionScheduler(interval: ProcessInfo.processInfo.environment["FORM_RETENTION_INTERVAL_SECONDS"].flatMap(TimeInterval.init).map { min(3600, max(1, $0)) } ?? 3600))
         app.lifecycle.use(WebhookScheduler(service: WebhookDispatcher(db: app.db(.mysql), secrets: secrets)))
         app.logger.info("admin API enabled")
     } catch {

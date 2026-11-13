@@ -4,6 +4,7 @@ import Crypto
 import SQLKit
 import Fluent
 import FormAuth
+import FormCore
 import FormCrypto
 import FormPersistence
 import MySQLNIO
@@ -179,7 +180,16 @@ public struct TableParity: Codable {
     public var sourceCount = 0, importedCount = 0, reviewCount = 0
     public var sourceHMAC = "", targetHMAC = ""
 }
+/// What the default retention period would do to the imported submissions (QA 13.11.): they stay WITHOUT a due date.
+public struct RetentionReport: Codable, Equatable {
+    public var defaultDays = Retention.defaultDays
+    /// Imported submissions (all stay without a due date until the operator sets a period and confirms).
+    public var importedWithoutDeadline = 0
+    /// Of those, how many would be due at once under the default period (received_at + defaultDays <= now).
+    public var dueNowAtDefault = 0
+}
 public struct ImportReport: Codable {
+    public var retention: RetentionReport?
     public var tables: [String:TableParity] = [:]
     public var inventory: [String:Int] = [:]
     public var schemaHMAC = ""
@@ -306,12 +316,40 @@ public struct LegacyImporter {
         }
         return row
     }
-    func snapshot(_ db: SQLDatabase, _ d: Destination) async throws -> String {
-        let cols = try await columns(db,d.table)
+    /// Columns the operator may change after the import and that therefore never belong to the ledger evidence (retention_due_at:
+    /// set by the operator's explicit retention decision, QA 13.11.). `withMutable` reproduces the older evidence that included them.
+    static let mutableColumns: [String:Set<String>] = ["submissions":["retention_due_at"]]
+    func snapshot(_ db: SQLDatabase, _ d: Destination, withMutable: Bool = false) async throws -> String {
+        let cols = try await columns(db,d.table).filter { withMutable || !(Self.mutableColumns[d.table]?.contains($0) ?? false) }
         let projection = try await projection(db,d.table,cols,big:.digest)
         guard let s = try await scalar(db,"SELECT \(projection) AS v FROM \(try ident(d.table)) WHERE \(d.predicate)") else { throw ImportFailure.missingTarget }
         let obj = try JSONSerialization.jsonObject(with:Data(s.utf8))
         return String(decoding:try JSONSerialization.data(withJSONObject:obj,options:[.sortedKeys]),as:UTF8.self)
+    }
+    /// True when the row still matches its ledger proof. New proofs ignore `mutableColumns`. Proofs written before QA 13.11. also cover
+    /// retention_due_at (the old import set received_at + the form period): the row is compared as written back then, i.e. with the
+    /// current value, and, when the due date was reset to NULL since (upgrade 0035), with the two values the old import can have
+    /// written (default 3 days, current form period). The HMAC proves the match, a wrong candidate can never pass.
+    func proofMatches(_ db: SQLDatabase, _ ref: Destination, stored: String, inTransaction: Bool) async throws -> Bool {
+        if mac(try await snapshot(db,ref)) == stored { return true }
+        guard Self.mutableColumns[ref.table] != nil else { return false }
+        if mac(try await snapshot(db,ref,withMutable:true)) == stored { return true }
+        guard ref.table == "submissions",
+              try await scalar(db,"SELECT '1' AS v FROM \(try ident(ref.table)) WHERE \(ref.predicate) AND retention_due_at IS NULL AND received_at IS NOT NULL") != nil else { return false }
+        let current = try await scalar(db,"SELECT CAST(JSON_VALUE(safe_value_json,'$') AS CHAR) AS v FROM settings WHERE setting_key='retention.days' AND scope_key=CONCAT('form:',(SELECT LOWER(CONCAT(SUBSTR(HEX(form_id),1,8),'-',SUBSTR(HEX(form_id),9,4),'-',SUBSTR(HEX(form_id),13,4),'-',SUBSTR(HEX(form_id),17,4),'-',SUBSTR(HEX(form_id),21,12))) FROM submissions WHERE \(ref.predicate)))").flatMap { Int($0) }
+        for days in Set([Retention.defaultDays] + (current.map { [$0] } ?? [])).sorted() {
+            // Try the candidate inside a rolled-back unit of work: nothing is written.
+            try await exec(db, inTransaction ? "SAVEPOINT proof_candidate" : "START TRANSACTION")
+            var matched = false
+            do {
+                try await exec(db,"UPDATE submissions SET retention_due_at=DATE_ADD(received_at,INTERVAL \(days) DAY) WHERE \(ref.predicate)")
+                matched = mac(try await snapshot(db,ref,withMutable:true)) == stored
+            } catch { try? await exec(db, inTransaction ? "ROLLBACK TO SAVEPOINT proof_candidate" : "ROLLBACK"); throw error }
+            try await exec(db, inTransaction ? "ROLLBACK TO SAVEPOINT proof_candidate" : "ROLLBACK")
+            if inTransaction { try await exec(db,"RELEASE SAVEPOINT proof_candidate") }
+            if matched { return true }
+        }
+        return false
     }
     func insert(_ db: SQLDatabase, _ table: String, _ values: [String:String], key: [String:String]) async throws -> Destination {
         let cols = values.keys.sorted()
@@ -419,7 +457,7 @@ public struct LegacyImporter {
         if !dry && existing == nil {
             _ = try await insert(dst,"migration_runs",["id":runID,"source_namespace":val(p.namespace),"dump_sha256":bin(try unhex(p.dumpSHA256)),"mapping_sha256":bin(try unhex(mapping)),"importer_version":"'p9-1'","state":"'running'","started_at":"UTC_TIMESTAMP(6)","report_json":"'{}'"],key:["id":runID])
         }
-        var report = ImportReport(dryRun:dry); report.sourceFingerprint = startFingerprint; var processed = 0
+        var report = ImportReport(dryRun:dry); report.sourceFingerprint = startFingerprint; var processed = 0; var retention = RetentionReport()
         do { try await keyPreflight(src,dst,p) } catch { if !dry { try? await exec(dst,"UPDATE migration_runs SET state='failed' WHERE id=\(runID)") }; throw error }
         let inventory = try await src.raw("SELECT table_name AS v FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY table_name").all(decoding:TextRow.self)
         var manifest = ""
@@ -472,7 +510,12 @@ public struct LegacyImporter {
                         if mappingReview && !dry { try await reviewIssue(dst,p,table,key,"unmapped-column") }
                         let outcome = try await object(dst,p,runID,table,key,row,dry) { db in try await transform(src,db,p,table,row) }
                         parity.sourceCount += 1; sourceHashes.update(data:Data(mac(try json(dict)).utf8))
-                        if let digest = outcome { parity.importedCount += 1; targetHashes.update(data:Data(digest.utf8)); if table == "anfragen" || mappingReview { parity.reviewCount += 1 } } else { parity.reviewCount += 1 }
+                        if let digest = outcome {
+                            if table == "anfragen" {
+                                retention.importedWithoutDeadline += 1
+                                if let t = try row.text("time").flatMap({ Int64($0) }), t > 0, Date(timeIntervalSince1970:Double(t)).addingTimeInterval(Double(Retention.defaultDays) * 86_400) <= Date() { retention.dueNowAtDefault += 1 }
+                            }
+                            parity.importedCount += 1; targetHashes.update(data:Data(digest.utf8)); if table == "anfragen" || mappingReview { parity.reviewCount += 1 } } else { parity.reviewCount += 1 }
                         processed += 1
                         try await checkpoint?(table, processed)
                         if let stop, processed == stop { throw ImportFailure.interrupted }
@@ -485,7 +528,7 @@ public struct LegacyImporter {
                     let mapped = try await scalar(dst,"SELECT CAST(COUNT(DISTINCT source_key) AS CHAR) AS v FROM migration_objects WHERE source_namespace=\(val(p.namespace)) AND source_table=\(val(table))")
                     if (Int(mapped ?? "0") ?? 0) > parity.sourceCount { try await reviewIssue(dst,p,table,"@table","source-deletion-review") }
                 }
-                parity.sourceHMAC = hex(Data(sourceHashes.finalize())); parity.targetHMAC = hex(Data(targetHashes.finalize())); report.tables[table] = parity
+                parity.sourceHMAC = hex(Data(sourceHashes.finalize())); parity.targetHMAC = hex(Data(targetHashes.finalize())); report.tables[table] = parity; report.retention = retention
             }
             if !dry {
                 // Quiesce check: the snapshot transaction ends first, so the read is a fresh one (it sees writes after the snapshot).
@@ -529,9 +572,8 @@ public struct LegacyImporter {
                 let originalMAC = mac((try json(originalPlan)) + (try json(row.values)))
                 guard hex(item.source_hmac.data) == sourceMAC || hex(item.source_hmac.data) == originalMAC else { throw ImportFailure.conflict }
                 let ref = try JSONDecoder().decode(Destination.self,from:item.target_key.data)
-                let digest = mac(try await snapshot(db,ref))
-                guard digest == hex(item.target_hmac.data) else { throw ImportFailure.conflict }
-                combined += digest
+                guard try await proofMatches(db,ref,stored:hex(item.target_hmac.data),inTransaction:false) else { throw ImportFailure.conflict }
+                combined += hex(item.target_hmac.data)
             }
             return mac(combined)
         }

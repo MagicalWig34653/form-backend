@@ -123,11 +123,12 @@ final class MigrationTests: XCTestCase {
             XCTAssertEqual(state,"migration-review")
             let hold = try await importer.scalar(dst,"SELECT CAST(removable AS CHAR) AS v FROM submissions")
             XCTAssertEqual(hold,"0")
-            // ADR 0012 no. 2: the imported form gets the default period (3 days), the imported submission its due date from it
+            // ADR 0012 no. 2: the imported form gets the default period (3 days); the imported submission gets NO due date
+            // (QA 13.11.: a due date from the default would delete months-old legacy data right after the import)
             let period = try await importer.scalar(dst,"SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key='form:\(self.form)' AND setting_key='retention.days'")
             XCTAssertEqual(period,"3")
-            let dueDays = try await importer.scalar(dst,"SELECT CAST(DATEDIFF(retention_due_at,received_at) AS CHAR) AS v FROM submissions")
-            XCTAssertEqual(dueDays,"3")
+            let dueDays = try await importer.scalar(dst,"SELECT COALESCE(CAST(retention_due_at AS CHAR),'NULL') AS v FROM submissions")
+            XCTAssertEqual(dueDays,"NULL","imported submissions stay without a retention date until the operator decides")
             let evidence = try await importer.scalar(dst,"SELECT digest_evidence AS v FROM ingest_idempotency")
             XCTAssertEqual(evidence,"legacy-missing")
             try await dst.raw("UPDATE forms SET name='tampered'").run()
@@ -167,7 +168,29 @@ final class MigrationTests: XCTestCase {
             XCTAssertEqual(state,"disabled","an existing target customer keeps its state")
         }
     }
-    /// A period that already exists for the target form is kept; the imported submissions get exactly that one.
+    /// QA 13.11. (data destruction): the retention job must never delete imported legacy submissions, however old they are.
+    func testRetentionJobNeverDeletesImportedSubmissions() async throws {
+        try await withDatabases { src,dst,secrets in
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"synthetic",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            let report = try await importer.run(plan:plan,batchSize:1)
+            XCTAssertEqual(report.retention?.importedWithoutDeadline,1)
+            XCTAssertEqual(report.retention?.defaultDays,3)
+            XCTAssertEqual(report.retention?.dueNowAtDefault,1,"the source report names how many would have been due at the default")
+            // hold off (removable = 1) so that only the due date protects the row
+            try await dst.raw("UPDATE submissions SET removable = 1").run()
+            func counts() async throws -> String {
+                try await importer.scalar(dst,"SELECT CONCAT((SELECT COUNT(*) FROM submissions),'/',(SELECT COUNT(*) FROM stored_objects),'/',(SELECT COUNT(*) FROM migration_objects)) AS v") ?? ""
+            }
+            let before = try await counts()
+            let deleted = try await SubmissionEraser.purgeDue(db: dst as! Database, now: Date().addingTimeInterval(86_400 * 3650))
+            XCTAssertEqual(deleted,0,"nothing imported is due")
+            let after = try await counts()
+            XCTAssertEqual(before,after)
+            XCTAssertFalse(before.hasPrefix("0/"))
+        }
+    }
+    /// A period that already exists for the target form is kept; imported submissions still get no due date.
     func testMigrationKeepsAnExistingRetentionPeriodForTheImportedSubmissions() async throws {
         try await withDatabases { src,dst,secrets in
             let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
@@ -176,9 +199,10 @@ final class MigrationTests: XCTestCase {
             _ = try await importer.run(plan:plan,batchSize:1)
             let period = try await importer.scalar(dst,"SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key='form:\(self.form)'")
             XCTAssertEqual(period,"5")
-            let dueDays = try await importer.scalar(dst,"SELECT CAST(DATEDIFF(retention_due_at,received_at) AS CHAR) AS v FROM submissions")
-            XCTAssertEqual(dueDays,"5")
-            // resuming compares the snapshots (incl. the due date) and stays green
+            let dueDays = try await importer.scalar(dst,"SELECT COALESCE(CAST(retention_due_at AS CHAR),'NULL') AS v FROM submissions")
+            XCTAssertEqual(dueDays,"NULL")
+            // a later (operator confirmed) due date does not break a repeated run: the ledger snapshot ignores retention_due_at
+            try await dst.raw("UPDATE submissions SET retention_due_at = DATE_ADD(received_at, INTERVAL 5 DAY)").run()
             _ = try await importer.run(plan:plan,batchSize:2)
         }
     }

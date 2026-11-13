@@ -495,6 +495,8 @@ export interface ReportSummary {
   processed: number | null;
   tables: Array<{ table: string; source: number; imported: number; review: number }>;
   issues: Array<{ code: string; count: number }>;
+  /** Imported submissions stay without a retention date; `dueNowAtDefault` would have been due at once under the default period. */
+  retention: { defaultDays: number; imported: number; dueNowAtDefault: number } | null;
 }
 /** Reads the job report into table counts and open cases for display; unknown shapes yield empty lists. */
 export function summarizeReport(report: unknown): ReportSummary {
@@ -511,5 +513,19 @@ export function summarizeReport(report: unknown): ReportSummary {
   const issues = (Array.isArray(r.issues) ? r.issues : [])
     .map((i: Record<string, unknown>) => ({ code: String(i?.code ?? ''), count: num(i?.count) }))
     .filter((i) => i.code);
-  return { processed: typeof r.processed === 'number' ? r.processed : null, tables, issues };
+  const ret = r.retention as Record<string, unknown> | undefined;
+  const retention =
+    ret && typeof ret === 'object'
+      ? {
+          defaultDays: num(ret.defaultDays) || 3,
+          imported: num(ret.importedWithoutDeadline),
+          dueNowAtDefault: num(ret.dueNowAtDefault),
+        }
+      : null;
+  return {
+    processed: typeof r.processed === 'number' ? r.processed : null,
+    tables,
+    issues,
+    retention,
+  };
 }

@@ -194,6 +194,14 @@ export interface TestResult {
 const id = (s: string) => encodeURIComponent(s);
 
 /** Typed calls of the admin API (contracts/auth/admin-api.openapi.yaml plus the VORGESCHLAGEN operations of docs/handoffs). */
+export interface RetentionInfo {
+  days: number;
+  importedCount?: number;
+  importedWithoutDeadline?: number;
+  dueNowImported?: number;
+  appliedToImported?: boolean;
+}
+
 export function createAdminApi(http: Http) {
   const t = (tenant: string) => `/tenants/${id(tenant)}`;
   const f = (tenant: string, form: string) => `${t(tenant)}/forms/${id(form)}`;
@@ -312,10 +320,20 @@ export function createAdminApi(http: Http) {
         { body: { ids } },
       ),
     retention: (tenant: string, form: string) =>
-      http.request<{ days: number }>('GET', `${f(tenant, form)}/retention`),
-    setRetention: (tenant: string, form: string, days: number) =>
-      http.request<{ days: number }>('PUT', `${f(tenant, form)}/retention`, {
-        body: { days },
+      http.request<RetentionInfo>('GET', `${f(tenant, form)}/retention`),
+    /** Imported (legacy) submissions are only touched with `applyToImported`; `dryRun` writes nothing and names `dueNowImported`. */
+    setRetention: (
+      tenant: string,
+      form: string,
+      days: number,
+      options?: { applyToImported?: boolean; dryRun?: boolean },
+    ) =>
+      http.request<RetentionInfo>('PUT', `${f(tenant, form)}/retention`, {
+        body: {
+          days,
+          ...(options?.applyToImported ? { applyToImported: true } : {}),
+          ...(options?.dryRun ? { dryRun: true } : {}),
+        },
       }),
     exportPage: (tenant: string, form: string, cursor?: string) =>
       http.request<{ items: ExportItem[]; nextCursor: string | null }>(
