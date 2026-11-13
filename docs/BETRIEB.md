@@ -93,8 +93,11 @@ Extern vorab bereitstellen:
 - `max_allowed_packet` der MariaDB mindestens **64 MiB** (`max_allowed_packet=64M` in der Serverkonfiguration oder
   `--max-allowed-packet=67108864` am Serverstart, bei Compose-betriebener MariaDB als `command:`). Uploads sind bis 20 MB
   erlaubt (Paket ≈ 27 MB, Anfragelimit 32 MiB) und werden als ein Wert geschrieben; beim Standard von 16 MiB trägt die
-  Datenbank nur etwa 12 MB große Anhänge. Gemessen: darüber meldet der Treiber Erfolg, die Zeile wird aber nicht geschrieben
-  (siehe Übergabe QA-15C5D5E9). Der Umstieg-Import schreibt große Zellen stückweise (`CONCAT`), MariaDB prüft das Ergebnis
+  Datenbank nur etwa 12 MB große Anhänge. Die Einsendung wird nie als angenommen bestätigt, wenn ihre Daten nicht gespeichert
+  werden können: Ist ein versiegeltes Paket größer als das `max_allowed_packet` der Verbindung (plus 64 KiB Reserve), antwortet
+  der Ingest VOR dem Schreiben mit 413 `payload_too_large`, speichert nichts und loggt den Betreiberhinweis; beim Start warnt
+  der Dienst („max_allowed_packet X MiB < ingest limit Y MiB“). Ein zu kleiner Wert bedeutet also abgelehnte große Uploads,
+  keine verlorenen (siehe Übergaben QA-15C5D5E9 und Upload-Verlust). Der Umstieg-Import schreibt große Zellen stückweise (`CONCAT`), MariaDB prüft das Ergebnis
   gegen die Grenze (Fehler 1301). Der Prüflauf meldet eine zu kleine Grenze vorab als `target_packet_too_small`, die
   Quellprüfung warnt. Nach einer Änderung Datenbank und App neu starten.
 - DB-Netzwerkzugriff von allen App-/Migrations-Nodes und vom Client für Backup/Restore.
