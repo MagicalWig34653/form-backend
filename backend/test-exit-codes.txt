@@ -1,0 +1,2 @@
+swift test exit code: 0
+PHP exit code: 0

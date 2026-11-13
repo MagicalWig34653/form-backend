@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Formular-Backend</title>
+<meta name="description" content="Sicheres, verschlüsselndes Backend für Webformulare mit Passkey-Anmeldung, Veröffentlichungs-Bestätigung und Docker-Betrieb.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/site.css">
+<script src="./assets/theme-init.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="./"><img src="./assets/icon.svg" alt="" width="28" height="28"><span>Formular-Backend</span></a>
+    <button class="icon-btn menu-btn" type="button" aria-expanded="false" aria-controls="site-nav">Menü</button>
+    <nav id="site-nav" aria-label="Hauptnavigation">
+<a href="./" aria-current="page">Start</a>
+<a href="./einrichtung.html">Einrichtung</a>
+<a href="./benutzung.html">Benutzung</a>
+<a href="./sdk.html">PHP-SDK</a>
+<a href="./api.html">Admin-API</a>
+<a href="./sicherheit.html">Sicherheit</a>
+<a href="./architektur.html">Architektur</a>
+<a href="./status.html">Stand & Roadmap</a>
+<a href="./entwicklung.html">Entwicklung</a>
+    </nav>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Design wechseln"><span aria-hidden="true">◐</span></button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="toc" aria-label="Auf dieser Seite"><div class="toc-inner"><p>Auf dieser Seite</p><ul id="toc-list"></ul></div></aside>
+  <main id="main" tabindex="-1">
+<section class="hero">
+  <p><span class="badge warn">Frühe Entwicklung</span></p>
+  <h1>Webformulare annehmen und sofort so verschlüsseln, dass nur Sie sie lesen können.</h1>
+  <p class="lead">Das Formular-Backend nimmt Einsendungen Ihrer Webseiten entgegen, verschlüsselt sie so, dass nur Sie sie lesen können, und verwaltet Formulare, Versionen und Veröffentlichungen mit einer Anmeldung per Passkey und zweitem Faktor.</p>
+  <div class="cta">
+    <a class="btn primary" href="einrichtung.html">Einrichtung starten</a>
+    <a class="btn" href="status.html">Was funktioniert heute?</a>
+    <a class="btn" href="https://github.com/MagicalWig34653/form-backend">Quellcode</a>
+  </div>
+</section>
+
+<div class="note warn">
+  <p><strong>Ehrlicher Hinweis zum Stand:</strong> Dieses Projekt ist ein Neubau und noch kein fertiges Produkt. Stand main vom 03.11.2026: Verwaltungsoberfläche, Ersteinrichtung, Mailversand, PHP-SDK und Datei-Uploads sind vorhanden. Hinzu kommen Löschung, Hold, Aufbewahrung, Export, Domains, Ereignisstatistik und Webhooks. Externe Speicher sind implementiert, Sicherheitsreview und Bestandsupgrade bleiben offen. Die Seite <a href="status.html">Stand &amp; Roadmap</a> zeigt jeden Punkt genau.</p>
+</div>
+
+<h2>Was das System ausmacht</h2>
+<div class="grid">
+  <div class="card"><h3>Verschlüsselt gespeichert <span class="badge ok">umgesetzt</span></h3><p>Der Server versiegelt jede Einsendung beim Eingang mit dem öffentlichen Schlüssel Ihres Kunden (HPKE) und speichert nur Chiffrat. Der Server besitzt keinen Schlüssel zum Entschlüsseln.</p></div>
+  <div class="card"><h3>Passkey und zweiter Faktor <span class="badge ok">umgesetzt</span></h3><p>Anmeldung mit Passkey (WebAuthn) plus Passwort als zweitem Faktor, mit Sperren nach Fehlversuchen und einheitlicher Fehlermeldung.</p></div>
+  <div class="card"><h3>Veröffentlichen mit Bestätigung <span class="badge ok">umgesetzt</span></h3><p>Eine Formularänderung wird erst durch eine bewusste menschliche Bestätigung zur neuen, unveränderlichen Version. Nichts geht „aus Versehen“ live.</p></div>
+  <div class="card"><h3>Feine Rechte <span class="badge ok">umgesetzt</span></h3><p>Einzelrechte je Kunde oder Formular, live aus der Datenbank geprüft. Wer ein Objekt nicht sehen darf, erfährt nicht einmal, dass es existiert.</p></div>
+  <div class="card"><h3>Docker, amd64 und arm64 <span class="badge ok">umgesetzt</span></h3><p>Ein Image für beide Architekturen, nicht als Root, mit eingebauter Oberfläche. CI ist für beide Plattformen eingerichtet; ein aktueller erfolgreicher Gesamtlauf wird hier nicht zugesichert.</p></div>
+  <div class="card"><h3>Formularverwaltung in der Oberfläche <span class="badge ok">umgesetzt</span></h3><p>Die PWA verwaltet Kunden, Formulare, Felder, Mail, Veröffentlichungen, Schlüssel und Einsendungen. Dazu gibt es eine <a href="api.html">Admin-API</a>.</p></div>
+</div>
+
+<h2>So finden Sie sich zurecht</h2>
+<table>
+  <tr><th>Ich möchte …</th><th>Seite</th></tr>
+  <tr><td>das System selbst betreiben</td><td><a href="einrichtung.html">Einrichtung</a></td></tr>
+  <tr><td>verstehen, wie Formulare, Entwürfe und Veröffentlichungen zusammenhängen</td><td><a href="benutzung.html">Benutzung</a></td></tr>
+  <tr><td>Formulare von meiner Webseite aus einsenden</td><td><a href="sdk.html">PHP-SDK</a></td></tr>
+  <tr><td>Formulare per Programm verwalten</td><td><a href="api.html">Admin-API</a></td></tr>
+  <tr><td>wissen, wie Daten geschützt werden</td><td><a href="sicherheit.html">Sicherheit</a></td></tr>
+  <tr><td>den Aufbau verstehen</td><td><a href="architektur.html">Architektur</a></td></tr>
+  <tr><td>sehen, was fertig ist und was fehlt</td><td><a href="status.html">Stand &amp; Roadmap</a></td></tr>
+  <tr><td>am Projekt mitarbeiten</td><td><a href="entwicklung.html">Entwicklung</a></td></tr>
+</table>
+
+<h2>Neu seit dem ersten Formular-Durchstich</h2>
+<ul>
+  <li><a href="benutzung.html#datenschutz">Datenschutz:</a> Einzel- und Stapellöschung, Löschschutz (Hold), Aufbewahrungsfristen und Export mit lokaler Entschlüsselung.</li>
+  <li><a href="benutzung.html#domains-und-statistik">Domains und Statistik:</a> feste Releasebindungen, pseudonyme Ereignisse und Conversion.</li>
+  <li><a href="api.html#webhooks">Webhooks:</a> signierte Benachrichtigungen ohne Formularinhalt.</li>
+  <li><a href="einrichtung.html#externe-speicher">S3/SFTP:</a> verschlüsselte Datenpakete und Anhänge extern speichern; Review und Upgrade-Pfad offen.</li>
+  <li><a href="sdk.html#sdk-selbstupdate">SDK-Selbstupdate:</a> Installation und Rollback per FTPS/SFTP; Automatik standardmäßig aus und wegen offener Reviewpunkte nicht freigegeben.</li>
+  <li><a href="einrichtung.html">Deploy:</a> Swarm oder Compose mit externer DB und externem TLS-Proxy, ohne mitgelieferten Caddy.</li>
+</ul>
+<p>Datenschlüsselrotation, Ablaufengine, MCP und Altdatenmigration sind noch nicht auf main. Last-, Recovery- und externe Sicherheitsabnahme stehen aus; Details unter <a href="status.html">Stand &amp; Roadmap</a>.</p>
+
+  </main>
+</div>
+<footer class="foot">
+  <p>Formular-Backend · AGPL-3.0-only · <a href="https://github.com/MagicalWig34653/form-backend">Quellcode auf GitHub</a></p>
+  <p class="muted">Projekt in früher Entwicklung. Aussagen auf diesen Seiten beschreiben den tatsächlichen Stand; Geplantes ist als solches gekennzeichnet.</p>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

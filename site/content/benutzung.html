@@ -1,0 +1,120 @@
+<!-- title: Benutzung | description: Konzepte und Ablauf: Anmeldung, Formulare, Entwürfe, Bestätigung und Veröffentlichung, Rechte und Sitzungen. -->
+<h1>Benutzung</h1>
+<p class="lead">Wie Sie mit dem Backend arbeiten: von der Anmeldung über das Anlegen eines Formulars bis zur Veröffentlichung. Zuerst die Begriffe, dann der Ablauf Schritt für Schritt.</p>
+
+<div class="note warn">
+  <p><strong>Was heute in der Oberfläche geht:</strong> Anmelden (Passkey und Passwort), Kunden anlegen (Systemadministration), Formulare anlegen, Felder bearbeiten, Mail-Versand einrichten, Versionen veröffentlichen, Kundenschlüssel hinterlegen, SDK-Zugangsdaten erzeugen sowie Versandverbindungen verwalten und Kunden zuweisen. Einsendungen lesen und im Browser entschlüsseln. Auch Konten-/Mitgliederrechte, eigene Passkeys, Browser-Schlüssel mit Wiederherstellung, Statistik sowie Löschen, Hold und Export sind vorhanden. Domain- und Webhookverwaltung erfolgen über die <a href="api.html">Admin-API</a>. Stand: main, 03.11.2026.</p>
+</div>
+
+<h2>Begriffe</h2>
+<table>
+  <tr><th>Begriff</th><th>Bedeutung</th></tr>
+  <tr><td>Kunde</td><td>Ein Mandant. Er besitzt Formulare und den öffentlichen Schlüssel, mit dem Einsendungen verschlüsselt werden.</td></tr>
+  <tr><td>Formular</td><td>Gehört einem Kunden. Hat eine eigene Kennung (UUID), die Ihre Webseite beim Absenden mitschickt.</td></tr>
+  <tr><td>Entwurf</td><td>Die bearbeitbare Konfiguration eines Formulars: Felder, Ansicht, Ablauf und Speicherung. Jede Änderung erhöht die Revision.</td></tr>
+  <tr><td>Veröffentlichung (Release)</td><td>Ein unveränderlicher Stand der Konfiguration. Der Eingang nutzt das aktuelle Release oder eine ausdrücklich festgelegte API-Host-Releasebindung.</td></tr>
+  <tr><td>Bestätigung</td><td>Der bewusste Schritt eines angemeldeten Menschen, genau diesen Entwurfsstand veröffentlichen zu wollen.</td></tr>
+  <tr><td>Recht</td><td>Eine einzelne Erlaubnis (z. B. <code>form.read</code>), vergeben für einen Kunden oder ein einzelnes Formular.</td></tr>
+</table>
+
+<h2>Anmelden</h2>
+<ol class="steps">
+  <li><strong>Passkey.</strong> Auf der Startseite „Mit Passkey anmelden“ wählen und die Abfrage Ihres Geräts oder Sicherheitsschlüssels bestätigen. Der Benutzername wird nicht abgefragt; der Passkey bestimmt das Konto.</li>
+  <li><strong>Passwort.</strong> Als zweiter Faktor folgt Ihr Passwort. Erst danach sind Sie angemeldet. Der zweite Faktor wird immer verlangt.</li>
+  <li><strong>Abmelden</strong> beendet die Sitzung sofort und serverseitig.</li>
+</ol>
+<ul>
+  <li>Nach dem Passkey haben Sie <strong>5 Minuten</strong> für den zweiten Schritt.</li>
+  <li>Eine angemeldete Sitzung endet nach <strong>30 Minuten Inaktivität</strong>, spätestens nach <strong>12 Stunden</strong>.</li>
+  <li>Nach mehreren Fehlversuchen kommt eine Wartezeit („Zu viele Versuche. Bitte warten Sie … Sekunden“), nach fünf Passwortfehlern 15 Minuten. Die Fehlermeldung verrät nie, ob Passkey oder Passwort falsch war.</li>
+</ul>
+
+<h2>Ein Formular anlegen</h2>
+<ol class="steps">
+  <li><strong>Anlegen.</strong> Sie vergeben einen Namen (1 bis 190 Zeichen). Das Formular entsteht <em>inaktiv</em> und mit einem <strong>Standard-Entwurf</strong>: ein Textfeld „Nachricht“, eine Standardansicht und der einfachste Ablauf (Eingang direkt zum Erfolg), Speicherung in der Datenbank.</li>
+  <li><strong>Entwurf anpassen</strong> (optional). Sie ersetzen das Entwurfsdokument als Ganzes. Der Server prüft es streng und nennt bei einem Fehler den Ort und die verletzte Regel. Änderungen sind nur mit dem aktuellen Stand (<code>If-Match</code>) möglich; wer gleichzeitig mit jemand anderem bearbeitet, bekommt „Vorbedingung nicht erfüllt“ statt fremde Änderungen zu überschreiben.</li>
+  <li><strong>Bestätigen.</strong> Sie bestätigen genau diese Revision mit ihrem Prüfwert (Hash). Dafür muss Ihre Anmeldung <strong>frisch</strong> sein (höchstens 5 Minuten alt); sonst verlangt der Server eine erneute Anmeldung. Die Bestätigung gilt 5 Minuten, einmalig und nur für Ihre aktuelle Sitzung.</li>
+  <li><strong>Veröffentlichen.</strong> Mit der Bestätigung entsteht das Release. Das geschieht atomar: Entweder wird alles übernommen (Versionen, Release, Aktivierung) oder nichts. Das <em>erste</em> Release aktiviert das Formular.</li>
+  <li><strong>Webseite anbinden.</strong> Datenschlüssel einrichten, SDK-Zugangsdaten einmalig herunterladen und das <a href="sdk.html">PHP-SDK</a> einbinden. Domain-/API-Hostbindungen bei Bedarf ausdrücklich konfigurieren; sie folgen neuen Releases nicht automatisch.</li>
+</ol>
+
+<div class="note">
+  <h3>Versionen sind unveränderlich</h3>
+  <p>Jede veröffentlichte Version (Formular, Ansicht, Ablauf) bleibt für immer so, wie sie war. Möchten Sie etwas ändern, erhöhen Sie die Versionsnummer im Entwurf (z. B. <code>1.0.0</code> → <code>1.1.0</code>). Veröffentlichen Sie dieselbe Versionsnummer mit anderem Inhalt, lehnt der Server das mit „Konflikt“ ab und verändert nichts, auch nicht die Bestätigung.</p>
+</div>
+
+<h2>E-Mail-Versand</h2>
+<p>Wie im Altsystem kann das Backend bei jeder Einsendung Mails <strong>mit Inhalt</strong> senden: eine <em>Organisationsmail</em> an feste Empfänger und eine <em>Bestätigungsmail</em> an die Adresse, die der Absender im Formular angegeben hat.</p>
+<div class="note warn"><p><strong>Was das für den Datenschutz bedeutet:</strong> Die Einsendung wird gespeichert wie immer, nur als Chiffrat. Die Mail wird aus dem Arbeitsspeicher des Servers gerendert und im Klartext an Ihren Mailserver gesendet (SMTP über TLS oder HTTPS zum Mail-Proxy). Der Inhalt wird für die Mail <strong>nirgends zwischengespeichert</strong>; ab dem Mailserver gilt aber der Schutz der Mailkette, nicht mehr der der Datenbank. Mail ist nur aktiv, wenn Sie sie für das Formular konfigurieren.</p></div>
+<h3>Konfiguration im Entwurf</h3>
+<p>Der Abschnitt <code>mail</code> im Formular des Entwurfs wird mit dem Release veröffentlicht (und ist damit unveränderlich und bestätigt):</p>
+<pre><code>"mail": {
+  "from": { "address": "info@example.org", "name": "Praxis Müller" },
+  "organisation": {
+    "to": ["empfang@example.org"], "bcc": ["archiv@example.org"],
+    "replyToField": "email",
+    "subject": "Neue Anfrage von #=[name]=#",
+    "body": "&lt;p&gt;#=[nachricht]=#&lt;/p&gt;", "format": "html"
+  },
+  "confirmation": {
+    "toField": "email",
+    "subject": "Danke, #=[name]=#",
+    "body": "Wir melden uns, #=[name]=#.", "format": "text"
+  }
+}</code></pre>
+<ul>
+  <li><strong>Platzhalter</strong> <code>#=[feldname]=#</code> (wie im Altsystem) setzen den Wert des eingesendeten Feldes mit diesem Namen ein. Unbekannte Platzhalter bleiben stehen. Listen erscheinen als „a, b“.</li>
+  <li><strong>HTML wird abgesichert:</strong> In HTML-Mails (<code>"format":"html"</code>) werden eingesetzte Werte HTML-maskiert (anders als im Altsystem). Betreffzeilen sind reiner Text, Zeilenumbrüche in Werten werden entfernt.</li>
+  <li><code>organisation</code> und <code>confirmation</code> sind unabhängig; mindestens eines ist nötig. Bis zu 20 Empfänger und 20 BCC-Empfänger; BCC erscheint nie in den Kopfzeilen. <code>toField</code> und <code>replyToField</code> nennen Felder, die im Formular vorkommen müssen.</li>
+  <li>Adressen müssen schlichte ASCII-Adressen sein (<code>name@domain.tld</code>), ohne Anzeigenamen oder Sonderformen. Eine ungültige Bestätigungsadresse des Absenders führt nicht zu einem Fehler bei der Einsendung, sondern zum Status <code>abandoned</code>.</li>
+</ul>
+<h3>Verbindung einrichten</h3>
+<ol class="steps">
+  <li>Ein Systemadministrator legt die Verbindung an (<code>POST /connections</code>, <a href="api.html">Admin-API</a>) und prüft sie mit <code>/test</code>.</li>
+  <li>Er stellt sie dem Kunden zur Verfügung (<code>PUT /tenants/{t}/connections/{id}</code>).</li>
+  <li>Der Formularverwalter wählt sie für das Formular (<code>PUT …/mail-connection</code>).</li>
+</ol>
+<h3>Was bei Fehlern passiert</h3>
+<ul>
+  <li>Ein Mailfehler macht eine bereits angenommene Einsendung nicht rückgängig (200); Validierungs- und Speicherfehler können die Annahme weiterhin verhindern. Der Mailstatus ist nur für Administratoren sichtbar (<code>GET …/mail-deliveries</code>).</li>
+  <li>Der Versand startet nach der Antwort an den Absender. Scheitert er, steht die Mail auf <code>waiting-manual</code> mit einem Fehlercode (z. B. <code>rcpt_rejected</code>, <code>auth_failed</code>, <code>timeout</code>). Es gibt <strong>keine automatische Wiederholung</strong>: Der Server hat den Klartext nicht mehr.</li>
+  <li>Hat der Server den Versand begonnen und ist dann abgestürzt, steht die Mail nach Ablauf der Frist (2 Minuten) auf <code>uncertain</code>.</li>
+  <li>Manueller Wiederversand aus dem Browser ist umgesetzt. Nach lokaler Entschlüsselung gibt der Browser den Inhaltsschlüssel des Original-Datenpakets für diesen Versand frei. Der Server prüft das Original und verwendet die gebundene Mailkonfiguration; Schlüssel und Klartext werden nicht dauerhaft gespeichert. Datei-Uploads und Anhang-Downloads sind vorhanden; Mailanhänge sind damit nicht zugesichert.</li>
+</ul>
+
+<h2>Einsendungen lesen</h2>
+<p>Der Tab <strong>Einsendungen</strong> eines Formulars listet die eingegangenen Einsendungen (neueste zuerst, seitenweise). Die Liste enthält nur Zeitpunkt und Kennungen, <strong>nie Inhalte</strong>. Zum Lesen geben Sie Ihren <strong>privaten Datenschlüssel</strong> ein (X25519, base64url oder 64 Hexzeichen) und wählen <em>Entschlüsseln</em>. Der Server liefert nur das versiegelte Paket; die Entschlüsselung geschieht im Browser (WebCrypto).</p>
+<ul>
+  <li>Der Schlüssel bleibt im Arbeitsspeicher dieses Tabs. Er wird weder gesendet noch gespeichert; <em>Schlüssel vergessen</em>, Verlassen der Seite oder Schließen des Fensters verwerfen ihn samt angezeigtem Klartext.</li>
+  <li>Passt der Schlüssel nicht zur Einsendung, erscheint eine Fehlermeldung mit der erwarteten Schlüsselkennung.</li>
+  <li>Nötig sind die Rechte <code>content.read</code> (Liste) und zusätzlich <code>content.decrypt</code> (Paket abrufen) sowie eine frische Anmeldung (maximal 5 Minuten). Jeder Abruf eines Pakets wird im Audit protokolliert.</li>
+  <li>Die Browser-Schlüsselverwaltung unterstützt Passkey-Entsperrung und Wiederherstellungscode. Anhänge können lokal entschlüsselt und heruntergeladen werden; Export und Löschung stehen im selben Tab bereit. Eine serverseitige Suche nach Personen in verschlüsselten Inhalten gibt es nicht.</li>
+</ul>
+
+<h2>Wiederholen ohne Risiko</h2>
+<p>Das Veröffentlichen verlangt einen <code>Idempotency-Key</code>. Geht die Antwort verloren und Sie senden dieselbe Anfrage mit demselben Schlüssel erneut, erhalten Sie dasselbe Release zurück; es entsteht kein zweites. Mit demselben Schlüssel und anderem Inhalt gibt es einen Konflikt.</p>
+
+<h2>Rechte</h2>
+<p>Rechte werden bei <strong>jeder</strong> Anfrage frisch aus der Datenbank geprüft; ein Entzug wirkt sofort. Ein Recht gilt für einen Kunden (alle seine Formulare) oder für genau ein Formular. Für Gruppen gilt die Schnittmenge aus Gruppen- und Zuweisungsbereich.</p>
+<table>
+  <tr><th>Recht</th><th>Erlaubt</th></tr>
+  <tr><td><code>form.read</code></td><td>Formulare und Entwürfe ansehen</td></tr>
+  <tr><td><code>form.create</code></td><td>Formulare im Kundenbereich anlegen</td></tr>
+  <tr><td><code>draft.write</code></td><td>Entwürfe anlegen und ändern</td></tr>
+  <tr><td><code>release.publish</code></td><td>Veröffentlichung bestätigen und ausführen</td></tr>
+  <tr><td><code>content.read</code></td><td>Liste der Einsendungen (ohne Inhalte)</td></tr>
+  <tr><td><code>content.decrypt</code></td><td>Versiegelte Pakete zum Entschlüsseln im Browser abrufen</td></tr>
+</table>
+<p>Weitere umgesetzte Rechte sind <code>content.delete</code>, <code>content.hold</code>, <code>content.export</code>, <code>privacy.manage</code>, <code>domain.manage</code>, <code>statistics.read</code> und <code>statistics.delete</code>. Datenschutzfrist, Domains und Statistiklöschung benötigen die jeweiligen Rechte am Kunden; Formularrechte allein genügen dafür nicht. Wer nur lesen darf, bekommt beim Schreiben „Zugriff verweigert“; wer ein Objekt gar nicht sehen darf, bekommt „Nicht gefunden“.</p>
+
+<h2 id="datenschutz">Löschung, Hold, Aufbewahrung und Export</h2>
+<p>Im Tab Einsendungen können Sie einzelne Einträge oder bis zu 100 ausgewählte Einträge löschen. <code>content.delete</code> und eine höchstens fünf Minuten alte Anmeldung sind erforderlich. Ein Hold (<code>content.hold</code>) schützt vor manueller und automatischer Löschung. Er ersetzt keine Sicherung und ist noch nicht mit Datenschlüsselrotation verbunden (ADR 0012).</p>
+<p>Eine Aufbewahrungsfrist von 1–3650 Tagen gilt je Formular; ohne Frist findet keine automatische Inhaltslöschung statt. Änderungen benötigen <code>privacy.manage</code> am Kunden und berechnen auch bestehende Fälligkeiten neu. Nach Aufheben eines Holds kann eine bereits abgelaufene Einsendung sofort fällig sein. Der Aufbewahrungsjob läuft stündlich.</p>
+<p>Export benötigt <code>content.export</code> und <code>content.read</code> sowie frische Anmeldung. Die API liefert seitenweise ausschließlich Chiffrate; Klartext entsteht nur durch lokale Entschlüsselung im Browser. Anhänge werden separat abgerufen. Heruntergeladene Klartextdateien unterliegen anschließend Ihrem eigenen Zugriffsschutz.</p>
+<p>Bei externer Speicherung kann eine Löschung zunächst ausstehen (<code>pending</code>, einzeln HTTP 202). Erst nach bestätigter Entfernung aller externen Kopien entsteht der Löschnachweis. Audit, Statistikereignisse, inhaltsfreie Webhook-Metadaten und der belegte Idempotenzschlüssel bleiben erhalten. Wiederholung einer gelöschten Einsendung liefert 409 und legt sie nicht neu an.</p>
+<h2 id="domains-und-statistik">Domains und Statistik</h2>
+<p>Domainzuordnungen starten inaktiv im Testmodus. Aktivierung verbindet eine konkrete veröffentlichte Ansicht mit Host und Release und verlangt eine menschliche Bestätigung. Neue Veröffentlichungen ändern die Bindung nicht. Domainverwaltung erfolgt derzeit per API.</p>
+<p>Die Statistik zeigt Besuche, Beginn, Absenden, Abbruch und Conversion für Produktion nach UTC-Tagen. Conversion ist Absenden/Besuche; bei null Besuchen erscheint „—“. Ereignisse werden nach 13 Kalendermonaten gelöscht. Inhaltslöschung ändert die Ereignisstatistik nicht. Statistiklöschung ist ein eigener Vorgang mit <code>statistics.delete</code> am Kunden und lässt importierte Altstatistik bestehen.</p>
+<p><strong>Integrationsgrenze:</strong> Seit dem 03.11.2026, 00:00 UTC, zählen neue Einsendungen nur mit signiertem <code>_statistics</code>-Kontext. Webseite und Ansicht müssen Besuche/Beginn/Abbruch instrumentieren. Ohne diesen Kontext kann ein Formular annehmen, während die Ereignisstatistik leer bleibt. Ältere Einsendungen haben nur einen begrenzten Legacy-Zählpfad; fehlende Besuchswerte werden nicht erfunden.</p>
+<h2>Ausgehende Benachrichtigungen</h2>
+<p><a href="api.html#webhooks">Webhooks</a> melden neue Einsendungen signiert und ohne Inhalte. Empfänger müssen Signatur und Zeitfenster prüfen und die Delivery-UUID deduplizieren. Ein unklarer Versandzustand wird nicht automatisch erneut zugestellt. Eine Webhook-PWA ist noch nicht vorhanden.</p>

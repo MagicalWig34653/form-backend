@@ -1,0 +1,81 @@
+<!-- title: Sicherheit | description: Wie das Formular-Backend Daten und Zugänge schützt, und wo die Grenzen des heutigen Stands liegen. -->
+<h1>Sicherheit</h1>
+<p class="lead">Was das System schützt, wie, und – genauso wichtig – was es heute noch nicht abdeckt.</p>
+
+<h2>Einsendungen</h2>
+<ul>
+  <li><strong>Gespeichert wird nur Chiffrat.</strong> Der Server versiegelt jede Einsendung beim Eingang mit dem öffentlichen Schlüssel des Kunden (HPKE nach RFC 9180 mit AES-256-GCM) und hält danach nur diesen öffentlichen Schlüssel und das Chiffrat. Der private Schlüssel liegt nie auf dem Server; auch ein Datenbankabzug oder ein Administrator des Backends kann gespeicherte Einsendungen nicht lesen.</li>
+  <li><strong>Was das nicht bedeutet:</strong> Es ist keine Ende-zu-Ende-Verschlüsselung vom Browser des Besuchers aus. Die Daten gelangen im Klartext (durch TLS geschützt) vom Server der Kundenwebseite zum Backend und liegen dort für die Dauer der Anfrage im Arbeitsspeicher, bevor sie versiegelt werden. Ein vollständig kompromittierter Backend-Server könnte also <em>künftige</em> Einsendungen mitlesen; bereits gespeicherte nicht.</li>
+  <li><strong>Signierte Eingänge.</strong> Anfragen der Webseite tragen eine Ed25519-Signatur mit Zeitstempel (±5 Minuten). Unsignierte oder falsch signierte Einsendungen werden ohne Nebenwirkung abgelehnt; die Prüfung entspricht dem Verhalten von libsodium (keine verformbaren Signaturen, keine Punkte kleiner Ordnung).</li>
+  <li><strong>Wiederholungen</strong> mit demselben <code>Idempotency-Key</code> ergeben keine doppelte Einsendung; paralleles Absenden wurde mit acht gleichzeitigen Anfragen geprüft.</li>
+  <li><strong>Datenhaltung:</strong> Das Chiffrat liegt in MariaDB oder gemäß Betriebsrichtlinie auf S3/SFTP; das Inventar bleibt in MariaDB; Klartext wird nicht protokolliert.</li>
+</ul>
+<ul>
+  <li><strong>Signaturschlüssel:</strong> Der private Ed25519-Schlüssel eines Formulars wird bei der Ausgabe der SDK-Zugangsdaten einmal angezeigt und nicht gespeichert; der Server hält nur den öffentlichen Teil. Bei Rotation gilt der alte Schlüssel noch eine Stunde.</li>
+  <li><strong>Geheimnisse in der Datenbank</strong> (z. B. der HMAC-Schlüssel für Wiederholungsprüfungen) liegen AES-256-GCM-verschlüsselt, der Schlüssel dafür wird aus der Schlüsseldatei des Servers abgeleitet; jeder Eintrag ist an seine Referenz gebunden.</li>
+</ul>
+<div class="note warn"><p><strong>Stand:</strong> Das Lesen im Browser ist umgesetzt: Der Server liefert nur das versiegelte Paket (Recht <code>content.decrypt</code>, frische Anmeldung, Audit), entschlüsselt wird im Browser mit dem privaten Datenschlüssel, der nur im Arbeitsspeicher des Tabs liegt. Das schützt nicht vor bereits kompromittiertem Seitencode. Die Browser-Schlüsselverwaltung unterstützt Passkey-PRF und Wiederherstellungscode; auf dem Server liegen öffentliche Schlüssel und verschlüsselte Schlüsselpakete. Die Verfügbarkeit von PRF hängt vom Browser und Authenticator ab. Eine vollständige Firefox-/Safari-/Hardware-Matrix ist nicht belegt. Datenschlüsselrotation samt Hold-Rewrap ist noch nicht auf main.</p></div>
+
+<h2>E-Mail-Versand</h2>
+<ul>
+  <li><strong>Mailinhalt wird an einen weiteren Empfänger übertragen.</strong> Mails mit Inhalt werden aus dem Arbeitsspeicher des Servers gerendert und im Klartext an den Mailserver bzw. den Mail-Proxy gesendet. Im Backend wird er dafür nicht gespeichert (keine Mail-Warteschlange mit Inhalt, nur Zustand und Fehlercode). Ab dem Mailserver gelten dessen Schutzmaßnahmen.</li>
+  <li><strong>Transport:</strong> SMTP nur über TLS (SMTPS oder STARTTLS), Zertifikat und Hostname werden geprüft; AUTH nie unverschlüsselt. Der Mail-Proxy nur über HTTPS, ohne Weiterleitungen. Klartext-Verbindungen gibt es nur im Entwicklungsmodus.</li>
+  <li><strong>Zielschutz:</strong> Der Server löst den Zielhost selbst auf und verbindet sich mit der geprüften Adresse. Loopback-, private, Link-Local- und Metadaten-Adressen sind gesperrt, außer sie stehen in <code>FORM_MAIL_ALLOWED_NETS</code>. Verbindungen verwaltet nur ein Systemadministrator.</li>
+  <li><strong>Keine Header-Injektion:</strong> Adressen werden streng geprüft (ASCII, keine Zeilenumbrüche, keine Anzeigenamen), Betreff und Anzeigename können keine Kopfzeilen einschleusen. Alle Empfänger müssen angenommen werden, sonst wird vor dem Senden des Inhalts abgebrochen (kein Teilversand).</li>
+  <li><strong>Maskierung:</strong> Eingesendete Werte werden in HTML-Mails maskiert; das Altsystem tat das nicht.</li>
+  <li><strong>Missbrauch:</strong> Die Bestätigungsmail geht an eine vom Absender angegebene Adresse. Da nur signierte Einsendungen angenommen werden, kann nur Ihre eigene Webseite (mit Ihrem Signaturschlüssel) Mails auslösen. Schützen Sie Ihr Formular dort (z. B. Captcha), sonst kann es zum Versand an Fremde missbraucht werden.</li>
+</ul>
+
+<h2>Anmeldung und Sitzungen</h2>
+<ul>
+  <li><strong>Einrichtung des ersten Passkeys:</strong> einmaliger 256-Bit-Link (in der Datenbank nur als Hash, höchstens 7 Tage, standardmäßig 24 Stunden, Code im URL-Fragment). Die Antworten bei ungültigem, abgelaufenem oder verbrauchtem Link sind identisch; parallele Registrierungen mit demselben Link ergeben genau einen Passkey. Das Anlegen des ersten Kontos verweigert sich, sobald ein Konto existiert, auch bei gleichzeitigen Aufrufen.</li>
+  <li><strong>Passkey plus zweiter Faktor.</strong> Anmeldung mit WebAuthn (ES256, RS256 oder EdDSA; Benutzerverifikation Pflicht; RSA mindestens 2048 Bit) und danach Passwort. Eine Herkunftsprüfung vergleicht exakt, ohne Teilübereinstimmung.</li>
+  <li><strong>Keine Auskunft über Konten.</strong> Jeder Anmeldefehler liefert dieselbe Antwort. Auch unbekannte Passkeys durchlaufen dieselbe Prüfung samt Sperrzähler, damit weder Antwort noch Sperre verraten, ob ein Konto existiert.</li>
+  <li><strong>Wiederholung unmöglich:</strong> Eine Challenge gilt einmal und 120 Sekunden und ist nach jedem Versuch verbraucht, auch nach einem Fehlschlag. Der Zähler des Passkeys schützt vor geklonten Schlüsseln.</li>
+  <li><strong>Sperren:</strong> Backoff ab dem dritten Fehler (1, 2, 4 … höchstens 60 Sekunden), nach fünf Passwortfehlern 15 Minuten Sperre. Abfragen während einer Sperre verlängern sie nicht. Zusätzlich Anfragebegrenzung je IP.</li>
+  <li><strong>Sitzungen:</strong> zufälliges 256-Bit-Token im <code>Secure</code>/<code>HttpOnly</code>-Cookie, in der Datenbank nur als Hash. Bei jedem Wechsel (Passkey, zweiter Faktor) wird die Sitzung erneuert; das alte Token ist sofort ungültig. Das schützt vor Sitzungsübernahme durch vorab bekannte Kennungen.</li>
+  <li><strong>CSRF und Herkunft:</strong> Jede Änderung braucht ein sitzungsgebundenes Token <em>und</em> die exakte <code>Origin</code>.</li>
+  <li><strong>Passwörter:</strong> Argon2id (Standard, mindestens 19 MiB Speicher, 2 Durchläufe). Hashes aus dem Altsystem (bcrypt) bleiben gültig, bis sie ersetzt werden. Ein fehlender oder unbekannter Hash kostet gleich viel Rechenzeit wie ein echter.</li>
+</ul>
+
+<h2>Rechte und Veröffentlichung</h2>
+<ul>
+  <li><strong>Eine Rechteprüfung für alles</strong>, live aus der Datenbank, ohne Zwischenspeicher. Nicht sichtbare Objekte sind „nicht gefunden“, sichtbare ohne Aktionsrecht „verweigert“.</li>
+  <li><strong>Pfad-Kennungen sind keine Berechtigung.</strong> Ein Formular wird immer zusammen mit dem Kunden aus der URL gesucht; ein Formular eines anderen Kunden ist nicht erreichbar.</li>
+  <li><strong>Veröffentlichung nur durch einen Menschen:</strong> frische Anmeldung (≤ 5 Minuten), Bestätigung für genau diesen Stand, einmalig, an die Sitzung gebunden. Ein Skript oder Token kann nicht veröffentlichen.</li>
+  <li><strong>Nachvollziehbar:</strong> Veröffentlichungen und Formularanlage schreiben Ereignisse ins Audit-Protokoll, in derselben Transaktion wie die Änderung.</li>
+</ul>
+
+<h2>Betrieb</h2>
+<ul>
+  <li><strong>Container</strong> laufen nicht als Root. Der Server liefert die Oberfläche mit strenger Content-Security-Policy aus (nur eigene Herkunft, keine Inline-Skripte, kein Einbetten in fremde Seiten).</li>
+  <li><strong>Geheimnisse</strong> gehören in Dateien oder die Umgebung, nie ins Repository. Der Server prüft die Rechte der Schlüsseldatei und startet sonst nicht.</li>
+  <li><strong>Fehlermeldungen</strong> enthalten keine Anfragewerte, Pfade oder SQL; Protokolle nur Fehlertypen und Anfragekennungen.</li>
+  <li><strong>Der Service Worker</strong> der Oberfläche speichert nur statische Dateien, nie Antworten der API.</li>
+</ul>
+
+<h2>Bekannte Grenzen</h2>
+<div class="note danger">
+  <ul>
+    <li>Es gibt interne technische Reviews mit Korrekturen, aber <strong>keine abgeschlossene externe Sicherheitsprüfung</strong> des Gesamtsystems. Insbesondere externe Speicher und SDK-Updateautomatik haben noch offene Abnahme-/Reviewpunkte.</li>
+    <li>Die Zeitgleichheit der Fehlerpfade ist strukturell hergestellt (gleiche Arbeit), aber nicht gemessen.</li>
+    <li>Hinter einem Proxy gilt die Begrenzung nur dann je Client, wenn <code>FORM_TRUSTED_PROXIES</code> richtig gesetzt ist; ein zu weit gefasstes Netz würde gefälschte <code>X-Forwarded-For</code>-Werte glauben.</li>
+    <li>Der Eingang puffert bis zu 32 MiB vor der Signaturprüfung und hat noch keine eigene Anfragebegrenzung.</li>
+    <li>Mails: kein automatischer Wiederversand. Manueller Wiederversand gibt den Inhaltsschlüssel des Original-Datenpakets vorübergehend an den Server frei; er wird nicht dauerhaft gespeichert. Eine allgemeine Trennung von Test-/Produktivempfängern oder Empfänger-Erlaubnisliste ist nicht zugesichert.</li>
+    <li>Konten-/Mitgliederrechte und das Entfernen eigener Passkeys sind umgesetzt; daraus folgt noch keine vollständige externe Prüfung der Zugangsverwaltung. Die Hersteller-Beglaubigung (Attestation) wird nicht geprüft.</li>
+    <li>Die Argon2-Parameter sind der Mindestwert und noch nicht auf Ihrer Hardware gemessen.</li>
+  </ul>
+</div>
+<p>Melden Sie Sicherheitslücken bitte vertraulich an die Projektverantwortlichen bzw. den Betreiber Ihrer Installation, nicht als öffentliches Ticket.</p>
+
+<h2>Datenschutz und Löschgrenzen</h2>
+<p>Löschung entfernt Inhalt und Anhänge physisch, sofern kein Hold besteht. Bei externen Speicherfehlern bleibt sie ausdrücklich ausstehend; ein Löschnachweis entsteht erst nach vollständiger Bestätigung. Aufbewahrungsfristen und Holds sind getrennt von der 13-Monats-Frist der Ereignisstatistik. Hold-Rewrap für künftige Datenschlüsselrotation ist noch offen (ADR 0012/0019).</p>
+<p>Audit, Löschbelege, Statistikereignisse und inhaltsfreie Webhook-Outbox können nach Inhaltslöschung bestehen bleiben. Idempotenzbelege verhindern das Wiederanlegen durch Replay. Backups, heruntergeladene Exporte und bereits zugestellte Mails werden dadurch nicht automatisch gelöscht; dafür braucht der Betreiber eigene Fristen.</p>
+<h2>Domains und pseudonyme Statistik</h2>
+<p>Statistikereignisse enthalten zufällige Besuchspseudonyme statt aus IP oder User-Agent abgeleiteter Identitäten. Formularwerte, URLs, GCLID, IP und User-Agent werden am Collector abgewiesen. Bindungen und exakte Origin werden über einen vertrauenswürdigen Proxy geprüft; Origin ist kein kryptographischer Nachweis von Domainbesitz. Nichtbrowserbasierter Missbrauch und ausgeschöpfte Budgets bleiben Betriebsrisiken (ADR 0015).</p>
+<h2>Webhooks und ausgehende Speicherzugriffe</h2>
+<p>Webhooks enthalten ausschließlich Ereignisname, Delivery-/Formular-/Einsendungskennung und Zeitpunkt. Der Signierseed liegt verschlüsselt im SecretStore. HTTPS, erneute DNS-/HostGuard-Prüfung, IP-Pinning und verbotene Redirects begrenzen Zielangriffe. Empfänger prüfen die Signatur über die tatsächlichen Bytes, das Zeitfenster und eine transaktionale Delivery-Deduplizierung. Verlorene Antworten können Wiederholungen verursachen; abgelaufene Leases werden <code>uncertain</code> und nicht automatisch erneut gesendet.</p>
+<p>S3/SFTP erhalten nur verschlüsselte Objekte. Lesewege prüfen Inventarzustand, Größe und SHA-256. S3 benötigt unversionierte Buckets; ein Delete-Marker ist kein vollständiger Löschbeleg. SFTP verlangt Host-Key-Pinning mit unabhängig geprüftem Fingerabdruck. DB-/Server-Key-Sicherung allein sichert keine externen Objekte.</p>
+<h2>SDK-Selbstupdate</h2>
+<p>Das Backend installiert ausführbaren PHP-Code auf Kunden-Webspace. FTPS schützt Kontroll- und Datenkanal, SFTP prüft einen fest hinterlegten Host-Key; Klartext-FTP ist nur im Entwicklungsmodus möglich. Staging, Rücklesen und Hashprüfung sichern den normalen Updatepfad, ersetzen aber keine Crash-/Konkurrenzabnahme. Wegen offener Reviewpunkte bleibt Automatik standardmäßig aus und nicht freigegeben.</p>
+<p>Stand main 03.11.2026: Rotation, Engine, MCP und Altdatenmigration sind nicht gemergt. Last-, Recovery- und vollständige Browser-/Authenticatorprüfungen bleiben offen. Diese Dokumentationsaktualisierung führt keine neuen Backend- oder Sicherheitstests aus.</p>

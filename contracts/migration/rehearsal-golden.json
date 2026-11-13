@@ -1,0 +1,156 @@
+{
+  "_comment": "Gemeinsame Pruefdatei: Backend-Test ImportRehearsalTests (Antwort von POST /migration/test, Altquelle synthetisch, ein aktiver Schluessel wie im Altsystem) und PWA-Test migrationFlow.golden.test.ts (buildPlan). dumpSHA256 und der Namespace je Lauf werden hier nicht verglichen. schemaHMAC ist maskiert.",
+  "customers": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "Müller & Söhne GmbH"
+    }
+  ],
+  "formChoice": {},
+  "inventory": {
+    "connectionIds": [
+      "44444444-4444-4444-8444-444444444441",
+      "44444444-4444-4444-8444-444444444442",
+      "44444444-4444-4444-8444-444444444443"
+    ],
+    "connections": [
+      {
+        "id": "44444444-4444-4444-8444-444444444441",
+        "kind": "smtp",
+        "name": "SMTP Müller (Produktion)"
+      },
+      {
+        "id": "44444444-4444-4444-8444-444444444442",
+        "kind": "smtp",
+        "name": "SMTP Test",
+        "verifyCertificateOff": true
+      },
+      {
+        "id": "44444444-4444-4444-8444-444444444443",
+        "kind": "mail-proxy",
+        "name": "Mail-Proxy Büro"
+      }
+    ],
+    "counts": {
+      "anfrageIdempotenz": 3,
+      "anfragen": 30,
+      "datenschluessel": 2,
+      "formularFelder": 7,
+      "formularWebhooks": 1,
+      "formulare": 3,
+      "outgoingMailProxy": 1,
+      "outgoingMailServer": 2,
+      "statistics": 6
+    },
+    "formIds": [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "33333333-3333-4333-8333-333333333333"
+    ],
+    "forms": [
+      {
+        "connectionIds": [
+          "44444444-4444-4444-8444-444444444441",
+          "44444444-4444-4444-8444-444444444442"
+        ],
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "Kontaktformular Müller & Söhne 🚀"
+      },
+      {
+        "connectionIds": [
+          "44444444-4444-4444-8444-444444444443"
+        ],
+        "id": "22222222-2222-4222-8222-222222222222",
+        "name": null
+      },
+      {
+        "connectionIds": [
+          "44444444-4444-4444-8444-444444444442"
+        ],
+        "id": "33333333-3333-4333-8333-333333333333",
+        "name": "Newsletter-Anmeldung „Größe“"
+      }
+    ],
+    "invalidKeys": 0,
+    "keyUsage": {
+      "complete": true,
+      "items": [
+        {
+          "formIds": [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+            "33333333-3333-4333-8333-333333333333"
+          ],
+          "formIdsComplete": true,
+          "inKeyStore": true,
+          "kid": "a6077815bba8b14c",
+          "submissions": 12
+        },
+        {
+          "formIds": [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+            "33333333-3333-4333-8333-333333333333"
+          ],
+          "formIdsComplete": true,
+          "inKeyStore": true,
+          "kid": "d19bf3f082782c87",
+          "submissions": 15
+        }
+      ],
+      "scannedSubmissions": 30
+    },
+    "keys": [
+      {
+        "createdAt": 1700000000,
+        "kid": "a6077815bba8b14c",
+        "publicKeyValid": true,
+        "status": "auslaufend"
+      },
+      {
+        "createdAt": 1750000000,
+        "kid": "d19bf3f082782c87",
+        "publicKeyValid": true,
+        "status": "aktiv"
+      }
+    ],
+    "keysComplete": true,
+    "readOnly": true,
+    "schemaHMAC": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "plan": {
+    "connectionCustomers": {
+      "44444444-4444-4444-8444-444444444441": [
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      ],
+      "44444444-4444-4444-8444-444444444442": [
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      ],
+      "44444444-4444-4444-8444-444444444443": [
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      ]
+    },
+    "customers": {
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": "Müller & Söhne GmbH"
+    },
+    "formCustomers": {
+      "11111111-1111-4111-8111-111111111111": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "22222222-2222-4222-8222-222222222222": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "33333333-3333-4333-8333-333333333333": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    "keyCustomers": {
+      "a6077815bba8b14c": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "d19bf3f082782c87": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    "keyGenerationNumbers": {
+      "a6077815bba8b14c": 1,
+      "d19bf3f082782c87": 2
+    },
+    "namespace": "legacy-altsystem",
+    "statisticsPublicKeys": {}
+  },
+  "source": {
+    "database": "altsystem",
+    "host": "db.example.test"
+  }
+}

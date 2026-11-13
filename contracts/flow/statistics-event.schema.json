@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/flow/0.1.0/statistics-event.schema.json",
+  "title": "Pseudonymes Statistikereignis",
+  "description": "P2-4; Vertragsentwurf 0.1.0, VORGESCHLAGEN. Best\u00e4tigte Anforderungen siehe README.md.",
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.1.0"
+    },
+    "proposalStatus": {
+      "const": "VORGESCHLAGEN"
+    },
+    "eventId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "tenantId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "form": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "view": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "release": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "domainAlias": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "occurredAt": {
+      "$ref": "common.schema.json#/$defs/instant"
+    },
+    "visitPseudonym": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{2}){16,32}$"
+    },
+    "event": {
+      "enum": [
+        "visit",
+        "begin",
+        "submit",
+        "abandon"
+      ]
+    },
+    "source": {
+      "enum": [
+        "client",
+        "ingest",
+        "collector"
+      ]
+    },
+    "environment": {
+      "enum": [
+        "production",
+        "test"
+      ]
+    },
+    "retentionMonths": {
+      "const": 13
+    },
+    "submissionId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "stepId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "abandonmentEvidence": {
+      "enum": [
+        "client-signal",
+        "inactivity-inferred"
+      ]
+    },
+    "ads": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gclidPresent"
+      ],
+      "properties": {
+        "gclidPresent": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "required": [
+    "contractVersion",
+    "proposalStatus",
+    "eventId",
+    "tenantId",
+    "form",
+    "view",
+    "release",
+    "domainAlias",
+    "occurredAt",
+    "visitPseudonym",
+    "event",
+    "source",
+    "environment",
+    "retentionMonths"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "submit"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "submissionId"
+        ],
+        "properties": {
+          "source": {
+            "const": "ingest"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "submissionId"
+          ]
+        },
+        "properties": {
+          "source": {
+            "enum": [
+              "client",
+              "collector"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "abandon"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "abandonmentEvidence"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "abandonmentEvidence"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "abandonmentEvidence": {
+            "const": "inactivity-inferred"
+          }
+        },
+        "required": [
+          "abandonmentEvidence"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source": {
+            "const": "collector"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "abandonmentEvidence": {
+            "const": "client-signal"
+          }
+        },
+        "required": [
+          "abandonmentEvidence"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source": {
+            "const": "client"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "ads"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "enum": [
+              "visit",
+              "submit"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

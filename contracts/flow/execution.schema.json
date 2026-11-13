@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://form-backend.invalid/contracts/flow/0.1.0/execution.schema.json",
+  "title": "Ausführungszustand und Wiederanlauf",
+  "description": "P2-4; Vertragsentwurf 0.1.0, VORGESCHLAGEN. Bestätigte Anforderungen siehe README.md.",
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.1.0"
+    },
+    "proposalStatus": {
+      "const": "VORGESCHLAGEN"
+    },
+    "engineContractVersion": {
+      "const": "0.1.0"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "tenantId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "submissionId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "release": {
+      "$ref": "common.schema.json#/$defs/resourceReference"
+    },
+    "mode": {
+      "enum": [
+        "production",
+        "test"
+      ]
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "waiting",
+        "waiting-manual",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "uncertain"
+      ]
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "startedAt": {
+      "$ref": "common.schema.json#/$defs/instant"
+    },
+    "deadlineAt": {
+      "$ref": "common.schema.json#/$defs/instant"
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "stepsConsumed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeMsConsumed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limits": {
+          "$ref": "common.schema.json#/$defs/limits"
+        }
+      },
+      "required": [
+        "stepsConsumed",
+        "activeMsConsumed",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "idempotency": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "const": "tenant-form-submission-release-run-slot"
+        },
+        "key": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestDigest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "retainUntil": {
+          "$ref": "common.schema.json#/$defs/instant"
+        }
+      },
+      "required": [
+        "scope",
+        "key",
+        "requestDigest",
+        "retainUntil"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextNode": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "nodeVisits": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minProperties": 0
+        },
+        "loopIterations": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minProperties": 0
+        },
+        "payload": {
+          "$ref": "common.schema.json#/$defs/protectedRef"
+        },
+        "nodeAttempts": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "visit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "attempts": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "visit",
+              "attempts"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "sequence",
+        "nextNode",
+        "nodeVisits",
+        "loopIterations",
+        "payload",
+        "nodeAttempts"
+      ],
+      "additionalProperties": false
+    },
+    "lease": {
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "fence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "acquiredAt": {
+          "$ref": "common.schema.json#/$defs/instant"
+        },
+        "expiresAt": {
+          "$ref": "common.schema.json#/$defs/instant"
+        }
+      },
+      "required": [
+        "ownerId",
+        "fence",
+        "acquiredAt",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "suspension": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "timer"
+            },
+            "nodeId": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "resumeAt": {
+              "$ref": "common.schema.json#/$defs/instant"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeId",
+            "resumeAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "approval"
+            },
+            "nodeId": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "requestId": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "expiresAt": {
+              "$ref": "common.schema.json#/$defs/instant"
+            },
+            "permission": {
+              "const": "flow.approve"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeId",
+            "requestId",
+            "expiresAt",
+            "permission"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "manual-resend"
+            },
+            "effectId": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "requiresAuthorizedUserAndKey": {
+              "const": true
+            }
+          },
+          "required": [
+            "kind",
+            "effectId",
+            "requiresAuthorizedUserAndKey"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "module-pause"
+            },
+            "nodeId": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "module": {
+              "$ref": "common.schema.json#/$defs/reference"
+            },
+            "pausedAt": {
+              "$ref": "common.schema.json#/$defs/instant"
+            },
+            "resumePermission": {
+              "const": "flow.resume"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeId",
+            "module",
+            "pausedAt",
+            "resumePermission"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "crash-recovery"
+            },
+            "requiresHumanRelease": {
+              "const": true
+            }
+          },
+          "required": [
+            "kind",
+            "requiresHumanRelease"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "effectId": {
+            "$ref": "common.schema.json#/$defs/uuid"
+          },
+          "nodeId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "visit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "enum": [
+              "mail",
+              "webhook",
+              "storage",
+              "other"
+            ]
+          },
+          "idempotencyKey": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "status": {
+            "enum": [
+              "prepared",
+              "in-flight",
+              "confirmed",
+              "uncertain",
+              "failed"
+            ]
+          },
+          "externalReceiptRef": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "effectSlot": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"
+          }
+        },
+        "required": [
+          "effectId",
+          "nodeId",
+          "visit",
+          "kind",
+          "idempotencyKey",
+          "status",
+          "attempt",
+          "effectSlot"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "failureCode": {
+      "enum": [
+        "step-limit",
+        "active-timeout",
+        "deadline",
+        "memory-limit",
+        "state-limit",
+        "validation",
+        "capability",
+        "module-disabled",
+        "effect-uncertain",
+        "node-failed"
+      ]
+    },
+    "runSlot": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"
+    },
+    "continuationPolicy": {
+      "const": "human-after-wait-or-crash"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "proposalStatus",
+    "engineContractVersion",
+    "id",
+    "tenantId",
+    "submissionId",
+    "release",
+    "mode",
+    "state",
+    "revision",
+    "startedAt",
+    "deadlineAt",
+    "budget",
+    "idempotency",
+    "checkpoint",
+    "effects",
+    "runSlot",
+    "continuationPolicy"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "running"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "lease"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "lease"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "waiting",
+              "waiting-manual"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "suspension"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "suspension"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "failureCode"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "failureCode"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "waiting-manual"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "suspension": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "manual-resend",
+                  "crash-recovery"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "waiting"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "suspension": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "timer",
+                  "approval",
+                  "module-pause"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

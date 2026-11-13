@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: Deploy branch
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/**
+      - scripts/**
+      - docs/BETRIEB.md
+      - LICENSE
+      - .github/workflows/deploy-branch.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: deploy-branch
+  cancel-in-progress: false
+jobs:
+  export:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Export deployment files and append one commit when content changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse HEAD)
+          export_dir=$(mktemp -d)
+          target_dir=$(mktemp -d)
+          export EXPORT_DIR="$export_dir"
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          out = Path(os.environ['EXPORT_DIR'])
+          # Explicit allowlist: never export source code, local env files, secrets or backups.
+          files = [
+              'LICENSE', 'docs/BETRIEB.md',
+              'deploy/branch/README.md', 'deploy/branch/.gitignore',
+              'deploy/swarm/setup.sh', 'deploy/swarm/update.sh', 'deploy/swarm/lib.sh',
+              'deploy/swarm/healthcheck.sh', 'deploy/swarm/admin.sh', 'deploy/swarm/stack.yaml',
+              'deploy/swarm/settings.sh', 'deploy/swarm/config-registry.tsv', 'deploy/swarm/config-extra.tsv', 'deploy/swarm/config-help.tsv',
+              'deploy/swarm/stack.env.example', 'deploy/docker-entrypoint.sh',
+              'deploy/compose/setup.sh', 'deploy/compose/update.sh', 'deploy/compose/admin.sh', 'deploy/compose/settings.sh',
+              'deploy/compose/compose.yaml', 'deploy/compose/.env.example',
+              'scripts/backup-db.sh', 'scripts/restore-db.sh', 'scripts/db-common.sh',
+              'scripts/backup-crypto.sh', 'scripts/backup-offsite.sh', 'scripts/backup-prune.sh',
+              'scripts/check-deploy.py',
+          ]
+          for name in files:
+              dest = out / name
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(name, dest)
+          shutil.copy2('deploy/branch/README.md', out / 'README.md')
+          shutil.copy2('deploy/branch/.gitignore', out / '.gitignore')
+          PY
+          if git ls-remote --exit-code --heads origin deploy >/dev/null; then
+            git fetch origin refs/heads/deploy:refs/remotes/origin/deploy
+            git worktree add --detach "$target_dir" origin/deploy
+          else
+            git worktree add --detach "$target_dir" HEAD
+            git -C "$target_dir" switch --orphan deploy-export
+          fi
+          # Only clean the disposable export worktree, never the source checkout.
+          find "$target_dir" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          cp -a "$export_dir/." "$target_dir/"
+          git -C "$target_dir" add --all
+          if ! git -C "$target_dir" diff --cached --quiet; then
+            git -C "$target_dir" -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Deploy-Dateien aus main (${source_sha:0:12})"
+            git -C "$target_dir" push origin HEAD:refs/heads/deploy
+          fi
+          git worktree remove "$target_dir"
+          rm -rf "$export_dir"

@@ -1,0 +1,196 @@
+MIT License - collected copyright notices
+=========================================
+
+The MIT License text below applies to every component listed after it.
+The copyright line(s) of each component are given in its own entry.
+This file is generated from the license files of the pinned versions
+(see THIRD-PARTY-NOTICES.md for the method).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-----------------------------------------------------------------------
+Copyright notices by component
+-----------------------------------------------------------------------
+
+[backend] async-kit 1.22.0
+  Copyright (c) 2018 Vapor Community
+
+[backend] console-kit 4.16.2
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] fluent 4.13.0
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] fluent-kit 1.57.0
+  Copyright (c) 2020 Qutheory, LLC
+
+[backend] fluent-mysql-driver 4.8.0
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] multipart-kit 4.7.1
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] mysql-kit 4.10.2
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] mysql-nio 1.9.2
+  Copyright (c) 2023 Qutheory, LLC
+
+[backend] routing-kit 4.9.3
+  Copyright (c) 2018 Qutheory, LLC
+
+[backend] sql-kit 3.36.0
+  Copyright (c) 2019 Qutheory, LLC
+
+[backend] vapor 4.122.3
+  Copyright (c) 2020 Qutheory, LLC
+
+[backend] websocket-kit 2.16.2
+  Copyright (c) 2020 Qutheory, LLC
+
+[backend (vendored in swift-nio: CNIOLLHTTP)] llhttp (vendored)
+  Copyright Fedor Indutny, 2018.
+  Full text: Sources/CNIOLLHTTP/LICENSE of swift-nio (MIT).
+
+[backend (vendored in swift-nio)] cpp_magic.h (uSHET) (vendored)
+  Copyright Thomas Nixon, Jonathan Heathcote (MIT; see swift-nio NOTICE.txt)
+
+[pwa-bundled] svelte 5.57.3
+  Copyright (c) 2016-2025 [Svelte Contributors](https://github.com/sveltejs/svelte/graphs/contributors)
+
+[pwa-bundled] @jridgewell/remapping 2.3.5
+  Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+
+[pwa-bundled] @jridgewell/gen-mapping 0.3.13
+  Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+
+[pwa-bundled] @jridgewell/sourcemap-codec 1.6.0
+  Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+
+[pwa-bundled] @jridgewell/trace-mapping 0.3.31
+  Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+
+[pwa-bundled] @jridgewell/resolve-uri 3.1.2
+  Copyright 2019 Justin Ridgewell <jridgewell@google.com>
+
+[pwa-bundled] @sveltejs/acorn-typescript 1.0.13
+  Copyright (c) 2022 Tyreal Hu
+  Copyright (c) 2025 The Svelte Team
+
+[pwa-bundled] @types/estree 1.0.10
+  Copyright (c) Microsoft Corporation.
+
+[pwa-bundled] acorn 8.19.0
+  Copyright (C) 2012-2022 by various contributors (see AUTHORS)
+
+[pwa-bundled] clsx 2.1.1
+  Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+
+[pwa-bundled] devalue 5.9.4
+  Copyright (c) 2018-19 [these people](https://github.com/rich-harris/devalue/graphs/contributors)
+
+[pwa-bundled] esm-env 1.2.2
+  Copyright 2022 Benjamin McCann
+
+[pwa-bundled] esrap 2.4.0
+  Copyright (c) 2023-2025 [these people](https://github.com/sveltejs/esrap/graphs/contributors)
+
+[pwa-bundled] is-reference 3.0.3
+  (no LICENSE file in package; MIT per package.json metadata)
+
+[pwa-bundled] locate-character 3.0.0
+  (no LICENSE file in package; MIT per package.json metadata)
+
+[pwa-bundled] magic-string 0.30.21
+  Copyright 2018 Rich Harris
+
+[pwa-bundled] zimmerframe 1.1.5
+  Copyright (c) 2023 [these people](https://github.com/Rich-Harris/zimmerframe/graphs/contributors)
+
+[pwa-bundled] bits-ui 2.20.2
+  Copyright (c) 2023 Hunter Johnston
+
+[pwa-bundled] @floating-ui/core 1.8.0
+  Copyright (c) 2021-present Floating UI contributors
+
+[pwa-bundled] @floating-ui/utils 0.2.12
+  Copyright (c) 2021-present Floating UI contributors
+
+[pwa-bundled] @floating-ui/dom 1.8.0
+  Copyright (c) 2021-present Floating UI contributors
+
+[pwa-bundled] runed 0.35.1
+  Copyright (c) 2024 Hunter Johnston <https://github.com/huntabyte>
+  Copyright (c) 2024 Thomas G. Lopes <https://github.com/tglide>
+
+[pwa-bundled] dequal 2.0.3
+  Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+
+[pwa-bundled] lz-string 1.5.0
+  Copyright (c) 2013 pieroxy
+
+[pwa-bundled] svelte-toolbelt 0.10.6
+  Copyright (c) 2024 Hunter Johnston <https://github.com/huntabyte>
+  Copyright (c) 2024 Thomas G. Lopes <https://github.com/tglide>
+
+[pwa-bundled] style-to-object 1.0.14
+  Copyright (c) 2017 Menglin "Mark" Xu <mark@remarkablemark.org>
+
+[pwa-bundled] inline-style-parser 0.2.7
+  Copyright (c) 2012 TJ Holowaychuk <tj@vision-media.ca>
+
+[pwa-bundled] tabbable 6.5.1
+  Copyright (c) 2015 David Clark
+
+[pwa-bundled] tailwind-merge 3.7.0
+  Copyright (c) 2021 Dany Castillo
+
+[pwa-bundled, lazy chunk] mjml-browser 4.18.0 (mail builder, MJML -> HTML)
+  Copyright (c) 2016 Mailjet SAS, https://mjml.io
+  mjml-browser is a prebuilt webpack bundle of mjml-core 4.18.0 and its
+  dependencies. MIT-licensed parts inside the bundle (copyright lines from
+  the packages as resolved for mjml-core@4.18.0; the bundle itself ships no
+  separate notices):
+    juice - Copyright (c) 2021 Automattic
+    cheerio - Copyright (c) 2022 The Cheerio contributors
+    htmlparser2 - Copyright 2010, 2011, Chris Winberry <chris@winberry.net>
+    dom-serializer - Copyright (c) 2014 The cheeriojs contributors
+    lodash - Copyright OpenJS Foundation and other contributors
+             <https://openjsf.org/>; based on Underscore.js, copyright
+             Jeremy Ashkenas, DocumentCloud and Investigative Reporters &
+             Editors
+    mensch - Copyright (c) Brett Stimmerman <brettstimmerman@gmail.com>
+    slick - Valerio Proietti and MooTools authors (MIT per package metadata,
+            http://mootools.net/license.txt; no LICENSE file shipped)
+    web-resource-inliner - Jarrett Widman (MIT per package metadata; may be
+                           absent from the browser bundle)
+    he - Copyright Mathias Bynens <https://mathiasbynens.be/>
+    @babel/runtime - Copyright (c) 2014-present Sebastian McKenzie and other
+                     contributors
+  BSD-2-Clause and ISC parts of the bundle: see
+  LICENSES/mjml-browser-bundled-BSD-2-Clause-ISC.txt
+
+[pwa-source] shadcn-svelte derived UI components (pwa/src/lib/components/ui) 
+  Copyright (c) 2023 Hunter Johnston <https://github.com/huntabyte>
+  Copyright (c) 2023 CokaKoala <https://github.com/adriangonz97>
+  Copyright (c) 2023 shadcn
+  (also kept verbatim in pwa/SHADCN-LICENSE.md)
+
+[agent-roles] .claude/agents/vg-*.md (VoltAgent/awesome-claude-code-subagents) 
+  Copyright (c) 2025 VoltAgent
