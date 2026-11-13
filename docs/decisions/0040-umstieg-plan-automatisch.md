@@ -42,7 +42,7 @@ Neu sind diese reinen Metadaten (Vertrag in `contracts/auth/p5-implementiert.ope
   `db/schema.sql` und die Migrationen sind geprüft). Es wird kein Name vorgeschlagen.
 - Der Namespace wird als `legacy-<Datenbankname>` vorgeschlagen (Host als Ersatz), mit den Zeichen
   `[A-Za-z0-9._-]` und höchstens 64 Zeichen. Er ist je Quelle stabil und bleibt änderbar. Bei
-  Wiederholung oder Delta muss er gleich bleiben; danach steht er im gespeicherten Plan des Laufs.
+  Wiederholung muss er gleich bleiben (Delta gibt es nicht mehr, ADR 0043); danach steht er im gespeicherten Plan des Laufs.
 - Schema-HMAC und Snapshot-Kennung werden bei jeder Prüfung neu gesetzt. Ändert der Nutzer danach die
   Verbindungsangaben, sperrt das den Start („erneute Quellprüfung“). Lehnt der Server mit 422 ab
   (Schema- oder Formularmenge geändert), nennt die Oberfläche diese wahrscheinliche Ursache.

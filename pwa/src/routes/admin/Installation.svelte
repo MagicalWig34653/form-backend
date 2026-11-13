@@ -298,6 +298,15 @@
               {/if}
             {:else}
               <p class="m-0 text-sm">{text.purpose}</p>
+              {#if step.id === 'customer' && step.detail === 'imported'}
+                <p class="m-0 text-sm font-medium" data-testid="customer-imported-hint">
+                  {ui.steps.customer.imported}
+                </p>
+              {:else if step.id === 'migration' && (step.detail === 'dryRun' || step.detail === 'running')}
+                <p class="m-0 text-sm font-medium" data-testid="migration-run-hint">
+                  {ui.steps.migration[step.detail]}
+                </p>
+              {/if}
               {#if step.state === 'error'}
                 <Notice message={ui.stepError} />
                 <div>
@@ -402,6 +411,9 @@
               {/if}
             {/if}
             {#if step.id === 'customer' && customerOk}<Notice message={customerOk} kind="ok" />{/if}
+            {#if step.id === 'customer' && step.state === 'done'}<Notice
+                message={customerMessage}
+              />{/if}
           </div>
         </li>
       {/each}

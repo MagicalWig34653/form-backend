@@ -47,6 +47,7 @@ jobs:
               'deploy/compose/setup.sh', 'deploy/compose/update.sh', 'deploy/compose/admin.sh', 'deploy/compose/settings.sh',
               'deploy/compose/compose.yaml', 'deploy/compose/.env.example',
               'scripts/backup-db.sh', 'scripts/restore-db.sh', 'scripts/db-common.sh',
+              'scripts/backup-crypto.sh', 'scripts/backup-offsite.sh', 'scripts/backup-prune.sh',
               'scripts/check-deploy.py',
           ]
           for name in files:

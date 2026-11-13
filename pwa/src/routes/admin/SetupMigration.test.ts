@@ -117,7 +117,7 @@ it('zeigt Verbindungsfehler ohne erfundene Fortschrittswerte und bietet Retry', 
   expect(screen.queryByRole('progressbar')).toBeNull();
   expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeTruthy();
 });
-it('startet Delta als bewussten neuen Snapshot-Prüflauf', async () => {
+it('wiederholt den Prüflauf per Knopf und zeigt bei source_changed Grundtext und Knopf', async () => {
   const id = '11111111-1111-4111-8111-111111111111';
   request.mockImplementation(async (method) =>
     method === 'POST'
@@ -125,21 +125,52 @@ it('startet Delta als bewussten neuen Snapshot-Prüflauf', async () => {
       : {
           ok: true,
           data: {
-            items: [{ id, state: 'review', phase: 'verification', dryRun: false, report: {} }],
+            items: [
+              {
+                id,
+                state: 'failed',
+                phase: 'anfragen',
+                dryRun: false,
+                report: {},
+                error: 'source_changed',
+              },
+            ],
           },
         },
   );
   render(Migration);
-  await screen.findByRole('button', { name: 'Delta-Prüflauf starten' });
-  await fireEvent.input(screen.getByLabelText('Neuer Snapshot-SHA256 für Delta-Prüflauf'), {
-    target: { value: 'a'.repeat(64) },
-  });
-  await fireEvent.click(screen.getByRole('button', { name: 'Delta-Prüflauf starten' }));
+  await screen.findByRole('button', { name: 'Prüflauf wiederholen' });
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Die Altdaten wurden seit dem Prüflauf verändert',
+  );
+  expect(screen.queryByRole('button', { name: 'Fortsetzen' })).toBeNull();
+  expect(screen.queryByLabelText(/Snapshot-SHA256/)).toBeNull();
+  await fireEvent.click(screen.getByRole('button', { name: 'Prüflauf wiederholen' }));
   await waitFor(() =>
-    expect(request).toHaveBeenCalledWith('POST', `/migration/jobs/${id}/delta`, {
-      body: { dumpSHA256: 'a'.repeat(64) },
+    expect(request).toHaveBeenCalledWith('POST', `/migration/jobs/${id}/rehearse`, {
+      body: undefined,
     }),
   );
+});
+it('zeigt nach dem Prüflauf Import und Prüflauf wiederholen, aber keinen Delta-Knopf', async () => {
+  request.mockResolvedValue({
+    ok: true,
+    data: {
+      items: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          state: 'review',
+          phase: 'verification',
+          dryRun: true,
+          report: {},
+        },
+      ],
+    },
+  });
+  render(Migration);
+  await screen.findByRole('button', { name: 'Prüflauf wiederholen' });
+  expect(screen.getByRole('button', { name: 'Import starten' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /Delta/ })).toBeNull();
 });
 it('lädt die Probe ohne privaten Schlüssel und verwirft ungültige lokale Eingaben', async () => {
   const id = '11111111-1111-4111-8111-111111111111';

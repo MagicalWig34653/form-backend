@@ -39,8 +39,13 @@ export interface Facts {
   /** Submissions found in published forms. */
   testEntries: EntryFacts | null;
   /** Import runs; `available: false` hides the step (no right or switched off). */
-  migration: { available: boolean; jobs: number | null };
+  migration: { available: boolean; jobs: number | null; status: MigrationStatus | null };
 }
+/**
+ * What the import runs prove: `imported` = a real (non-dry) run reached review/verified/closed; `dryRun` = only a dry run finished;
+ * `running` = a run is queued/running/paused; `none` = nothing usable yet.
+ */
+export type MigrationStatus = 'none' | 'running' | 'dryRun' | 'imported';
 export interface FormFacts {
   total: number;
   published: number;
@@ -66,7 +71,7 @@ export interface Step {
   /** Marked "optional" in the list. */
   optional: boolean;
   /** Extra situation that changes the wording of an open step. */
-  detail?: 'draftOnly' | 'needsCustomer' | 'needsPublished';
+  detail?: 'draftOnly' | 'needsCustomer' | 'needsPublished' | 'imported' | 'dryRun' | 'running';
 }
 
 export const emptyFacts: Facts = {
@@ -79,7 +84,7 @@ export const emptyFacts: Facts = {
   passkeys: null,
   tokens: null,
   testEntries: null,
-  migration: { available: false, jobs: null },
+  migration: { available: false, jobs: null, status: null },
 };
 
 /** Steps whose absence blocks finishing; everything else may be postponed. */
@@ -113,7 +118,7 @@ function doneOf(id: StepId, f: Facts): boolean | null {
       if (f.forms.published === 0) return false;
       return f.testEntries === null ? null : !!f.testEntries.withEntries;
     case 'migration':
-      return f.migration.jobs === null ? null : f.migration.jobs > 0;
+      return f.migration.status === null ? null : f.migration.status === 'imported';
   }
 }
 
@@ -131,6 +136,13 @@ export function deriveSteps(facts: Facts, skipped: readonly StepId[] = []): Step
     if (id === 'form' && state === 'open' && facts.forms) {
       if ((facts.customers ?? 0) === 0) step.detail = 'needsCustomer';
       else if (facts.forms.total > 0) step.detail = 'draftOnly';
+    }
+    // Imported customers stay 'disabled' until the cutover and are not listed as customers: say so instead of offering "first customer".
+    if (id === 'customer' && state === 'open' && facts.migration.status === 'imported')
+      step.detail = 'imported';
+    if (id === 'migration' && state === 'open') {
+      if (facts.migration.status === 'dryRun') step.detail = 'dryRun';
+      else if (facts.migration.status === 'running') step.detail = 'running';
     }
     if (id === 'testEntry' && state === 'open' && facts.forms?.published === 0)
       step.detail = 'needsPublished';

@@ -8,13 +8,14 @@
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
 DOCKER=${DOCKER:-docker}; command -v "$DOCKER" >/dev/null 2>&1 || DOCKER=/opt/homebrew/bin/docker
-NAME=p7f-failover-mariadb; PORT=${P3B_PORT:-33700}; WPORT=${E2E_PORT:-4300}; PA=$((WPORT+100)); PB=$((WPORT+101)); WB=$((WPORT+1)); PS=$((WPORT+102))
+. backend/e2e-common.sh
+NAME=$(e2e_name p7f-failover-mariadb); PORT=${P3B_PORT:-$(e2e_pick_port)}; WPORT=${E2E_PORT:-$(e2e_pick_port)}; PA=$((WPORT+100)); PB=$((WPORT+101)); WB=$((WPORT+1)); PS=$((WPORT+102))
 PW=$(openssl rand -hex 16); TMP=$(mktemp -d); A_PID=""; B_PID=""; S_PID=""
-cleanup() { for p in "$A_PID" "$B_PID" "$S_PID"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done; "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; rm -rf "$TMP"; echo "cleanup done"; }
+cleanup() { for p in "$A_PID" "$B_PID" "$S_PID"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done; e2e_cleanup; rm -rf "$TMP"; echo "cleanup done"; }
 trap cleanup EXIT
+e2e_reap_stale
 umask 077; openssl rand -hex 32 > "$TMP/server.key"; mkdir "$TMP/sess"
-"$DOCKER" rm -f "$NAME" >/dev/null 2>&1
-"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "${MARIADB_IMAGE:-mariadb:lts}" >/dev/null || { echo "ENV: container"; exit 2; }
+"$DOCKER" run -d "${E2E_LABEL_ARGS[@]}" --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "${MARIADB_IMAGE:-mariadb:lts}" >/dev/null || { echo "ENV: container"; exit 2; }
 for _ in $(seq 90); do
   "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' e2e >/dev/null 2>&1 && sleep 2 && "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' e2e >/dev/null 2>&1 && up=1 && break; sleep 1
 done
@@ -22,10 +23,10 @@ done
 SB="swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App"
 export CLANG_MODULE_CACHE_PATH="$PWD/backend/.build/ModuleCache" SWIFTPM_MODULECACHE_OVERRIDE="$PWD/backend/.build/ModuleCache"
 $SB >/dev/null 2>&1 || { sleep 2; $SB >/dev/null 2>&1; } || { echo "ENV: build"; exit 2; }  # retry: the Swift frontend crashes sporadically
-(cd pwa && npm run build >/dev/null 2>&1) || { echo "ENV: pwa build"; exit 2; }
+e2e_pwa_build "$TMP/dist" || { echo "ENV: pwa build"; exit 2; }
 BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=e2e FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
-export FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
+export FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$TMP/dist"
 export FORM_SERVER_KEY_FILE="$TMP/server.key" FORM_RP_ID=localhost
 export FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$PA FORM_ADMIN_ORIGIN=http://localhost:$WPORT E2E_PUBLIC_URL=http://127.0.0.1:$PA
 "$BIN" migrate >/dev/null 2>&1 || { echo "FAIL migrate"; exit 1; }
@@ -39,8 +40,9 @@ stop() { eval "p=\$$1_PID"; [ -n "$p" ] && kill "$p" 2>/dev/null && wait "$p" 2>
 start_a || { echo "ENV: instance A not ready"; tail -5 "$TMP/a.log"; exit 2; }
 CRED="$TMP/credentials.json"
 export E2E_SETUP_LINK="$LINK" E2E_PASSWORD="$PASSWORD" E2E_PORT=$WPORT E2E_SPEC=real-load-setup.spec.ts E2E_CREDENTIALS_OUT="$CRED"
-(cd pwa && npx playwright test -c e2e-real/playwright.config.ts 2>&1 | tail -4)
-[ -s "$CRED" ] || { echo "FAIL provisioning (no credentials)"; exit 1; }
+(cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; prc=$?  # own status, not hidden behind tail
+tail -4 "$TMP/playwright.log"
+[ "$prc" = 0 ] && [ -s "$CRED" ] || { echo "FAIL provisioning (playwright rc=$prc, credentials missing or empty)"; exit 1; }
 echo "ok   form provisioned, credentials issued (not shown)"
 
 rc=0

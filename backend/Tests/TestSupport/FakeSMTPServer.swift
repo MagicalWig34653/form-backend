@@ -11,6 +11,8 @@ public final class FakeSMTPServer: @unchecked Sendable {
         public var greetingDelay: TimeAmount? = nil
         public var startTLS = false
         public var implicitTLS = false
+        /// Certificate file in Fixtures/ presented by the server (all variants share test-key.pem).
+        public var certificate = "test-cert.pem"
         public var authMechanisms: [String] = []
         public var user = "user", password = "secret"
         public var rejectRecipients: Set<String> = []
@@ -35,15 +37,21 @@ public final class FakeSMTPServer: @unchecked Sendable {
 
     public init(_ o: Options = Options()) { options = o }
 
-    public static func tlsContext() throws -> NIOSSLContext {
+    /// A fixture certificate as trust anchor for client-side verification tests (self-signed, so it is its own root).
+    public static func fixtureCertificate(_ name: String = "test-cert.pem") throws -> NIOSSLCertificate {
         let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
-        let cert = try NIOSSLCertificate(file: dir.appendingPathComponent("test-cert.pem").path, format: .pem)
+        return try NIOSSLCertificate(file: dir.appendingPathComponent(name).path, format: .pem)
+    }
+
+    public static func tlsContext(certificate: String = "test-cert.pem") throws -> NIOSSLContext {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        let cert = try NIOSSLCertificate(file: dir.appendingPathComponent(certificate).path, format: .pem)
         let key = try NIOSSLPrivateKey(file: dir.appendingPathComponent("test-key.pem").path, format: .pem)
         return try NIOSSLContext(configuration: .makeServerConfiguration(certificateChain: [.certificate(cert)], privateKey: .privateKey(key)))
     }
 
     public func start() async throws {
-        let tls = try Self.tlsContext()
+        let tls = try Self.tlsContext(certificate: options.certificate)
         let opts = options, me = self
         channel = try await ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
             .childChannelInitializer { ch in

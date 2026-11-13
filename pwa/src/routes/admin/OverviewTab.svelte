@@ -7,7 +7,7 @@
   import type { Statistics } from '$lib/api/admin';
   import type { Editor } from '$lib/draft/editor.svelte';
   import { setTitle, title } from '$lib/draft/doc';
-  import { describeError } from '$lib/admin/describe';
+  import { describeError, loadFailureText } from '$lib/admin/describe';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import Row from '$lib/components/admin/Row.svelte';
@@ -49,7 +49,7 @@
           ? t.lists.forbidden
           : r.error.status === 404
             ? t.lists.notFound
-            : t.lists.failed;
+            : loadFailureText(r.error, t.lists.failed);
   }
   onMount(() => void loadStats());
   onDestroy(() => {

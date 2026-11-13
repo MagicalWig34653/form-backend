@@ -5,6 +5,13 @@ import { keyring } from './keyring.svelte';
 import { fromBase64Url } from './packageV2';
 import { rewrapPackage } from './rewrap';
 
+/** A generation we cannot open and cannot repair on our own (needs the recovery code or the legacy key, i.e. the user). */
+class AccessMissing extends Error {
+  constructor(readonly confirmation: boolean) {
+    super('access');
+  }
+}
+
 /** The server inventory is the durable queue. CAS makes retries and competing tabs safe. */
 class AccessAutomation {
   busy = $state(false);
@@ -13,6 +20,23 @@ class AccessAutomation {
   private tenants: string[] = [];
   private timer: ReturnType<typeof setInterval> | undefined;
   private generation = 0;
+  /** `tenant/kid` of generations whose automatic repair failed for good: not retried (no spam, no dialog) until the next lock. */
+  private missing = new Set<string>();
+
+  constructor() {
+    keyring.onLock(() => this.missing.clear());
+  }
+
+  /** Opens `kid` from the own access if needed; throws AccessMissing when only the user can (recovery code, legacy key). */
+  private async ensureGeneration(tenant: string, kid: string): Promise<void> {
+    if (keyring.dataKey(kid, false)) return;
+    const name = `${tenant}/${kid}`;
+    if (this.missing.has(name)) throw new AccessMissing(false);
+    const result = await keyring.repairAutomatic(tenant, kid);
+    if (result === 'ok') return;
+    if (result === 'missing') this.missing.add(name);
+    throw new AccessMissing(result === 'reauth');
+  }
 
   start(tenants: string[]): void {
     this.tenants = tenants;
@@ -30,8 +54,14 @@ class AccessAutomation {
     const response = await adminApi.customerKey(tenant);
     if (response.ok) return;
     if (response.error.status !== 404) throw new Error(t.access.checkFailed);
-    if (!keyring.unlocked || keyring.pendingCode || keyring.recoveryRequired)
+    if (!keyring.unlocked) {
+      // A reload locks the keyring: an account key that exists on the server needs unlocking, not "setup".
+      const bundle = await adminApi.keyBundle();
+      if (bundle.ok && bundle.data.accountPublicKey && bundle.data.recovery)
+        throw new Error(t.access.lockedNeeded);
       throw new Error(t.access.setupNeeded);
+    }
+    if (keyring.pendingCode || keyring.recoveryRequired) throw new Error(t.access.setupNeeded);
     const created = await keyring.createCustomerKey(tenant);
     if (typeof created === 'string') throw new Error(t.access.setupFailed);
   }
@@ -56,11 +86,8 @@ class AccessAutomation {
           if (active && !retiring && response.data.requested) {
             await keyring.refreshAccess();
             operation.check();
-            if (
-              !(await keyring.repairAutomatic(tenant, active.kid)) ||
-              !(await keyring.rotateAutomatic(tenant, active.kid))
-            )
-              throw new Error();
+            await this.ensureGeneration(tenant, active.kid);
+            if (!(await keyring.rotateAutomatic(tenant, active.kid))) throw new Error();
             operation.check();
             const refreshed = await adminApi.rotation(tenant);
             operation.check();
@@ -73,8 +100,7 @@ class AccessAutomation {
             operation.check();
           }
           for (const g of [active, retiring]) {
-            if (!keyring.dataKey(g.kid, false) && !(await keyring.repairAutomatic(tenant, g.kid)))
-              throw new Error();
+            await this.ensureGeneration(tenant, g.kid);
             operation.check();
           }
           const old = keyring.dataKey(retiring.kid, false);
@@ -116,10 +142,15 @@ class AccessAutomation {
           operation.check();
           if (!finish.ok) throw new Error();
           keyring.forget(retiring.kid);
-        } catch {
+        } catch (error) {
           operation.check();
           if (generation !== this.generation) return;
-          this.message = t.access.retry;
+          this.message =
+            error instanceof AccessMissing
+              ? error.confirmation
+                ? t.access.needsConfirmation
+                : t.access.missingGeneration
+              : t.access.retry;
         }
       }
     } catch {

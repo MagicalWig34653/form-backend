@@ -82,6 +82,7 @@
       keyring.recoveryRequired ||
       issue === 'unsupported' ||
       issue === 'no-account-key' ||
+      issue === 'no-passkey' ||
       issue === 'mismatch'
     ) {
       step = 'recovery';

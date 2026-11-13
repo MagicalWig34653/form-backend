@@ -138,6 +138,15 @@ export function buildNav(c: NavContext): NavGroup[] {
       icon: 'ops',
       active: route.name === 'ops',
     });
+  // Same visibility rule as the operations page: both need audit.read (system, customer or form scope).
+  if (c.opsVisible || route.name === 'audit')
+    system.push({
+      id: 'audit',
+      label: t.audit.title,
+      href: '/audit',
+      icon: 'audit',
+      active: route.name === 'audit',
+    });
   if (c.systemAdministrator)
     system.push(
       {

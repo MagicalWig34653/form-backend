@@ -9,7 +9,7 @@ import {
   LOGIN_PRF_SALT,
   type PrfResult,
 } from '$lib/api/webauthn';
-import type { ApiResult } from '$lib/api/client';
+import type { ApiError, ApiResult } from '$lib/api/client';
 import type { KeyCandidate } from '$lib/api/admin';
 import {
   generateKeyPair,
@@ -29,9 +29,18 @@ import { KeyOperation } from './operation';
 import { identity, randomBytes, hkdf, bytes } from './packageV2';
 import { sealLegacyKey } from './legacyAdoption';
 
+const needsConfirmation = (e: ApiError): boolean =>
+  e.kind === 'http' &&
+  (e.status === 403 || e.status === 401) &&
+  e.code === 'reauthentication_required';
+
 export type KeyringIssue =
   | 'unsupported' // no PRF / cancelled
   | 'no-account-key'
+  | 'no-passkey' // the account key exists but no passkey can open it (no PRF): only the account recovery code does
+  | 'no-recovery' // the generation has no recovery wrap (e.g. left out by the migration)
+  | 'wrong-code' // the recovery code does not open the wrap
+  | 'reauth' // a fresh confirmation was demanded and not given
   | 'locked'
   | 'no-access'
   | 'mismatch'
@@ -217,12 +226,18 @@ class Keyring {
       operation.dispose();
     }
   }
-  async repairAutomatic(tenant: string, kid: string): Promise<boolean> {
-    if (this.data.has(kid)) return true;
-    if (!this.owner || !this.account) return false;
+  /**
+   * Background repair of the own access with the automatic (account derived) recovery code. Never opens a passkey dialog:
+   * 'reauth' = needs a fresh confirmation first, 'missing' = this generation has no automatic recovery (imported ones do not).
+   */
+  async repairAutomatic(tenant: string, kid: string): Promise<'ok' | 'reauth' | 'missing'> {
+    if (this.data.has(kid)) return 'ok';
+    if (!this.owner || !this.account) return 'missing';
     const result = await this.recover(tenant, await this.customerRecoveryCode(), kid, false);
-    if (result) return false;
-    return (await this.repairOwnAccess(tenant, this.owner, kid, false)) === null;
+    if (result === 'reauth') return 'reauth';
+    if (result) return 'missing';
+    const repaired = await this.repairOwnAccess(tenant, this.owner, kid, false);
+    return repaired === null ? 'ok' : repaired === 'reauth' ? 'reauth' : 'missing';
   }
   async rotateAutomatic(tenant: string, kid: string): Promise<boolean> {
     if (!this.owner || !this.recoveryRevision) return false;
@@ -426,7 +441,8 @@ class Keyring {
     const e = this.epoch;
     const b = await adminApi.keyBundle();
     if (!b.ok) return 'server';
-    if (!b.data.accountPublicKey || b.data.wraps.length === 0) return 'no-account-key';
+    if (!b.data.accountPublicKey) return 'no-account-key';
+    if (b.data.wraps.length === 0) return 'no-passkey';
     this.rpId = b.data.rpId;
     const wraps = b.data.wraps.map((w) => ({
       raw: w,
@@ -640,12 +656,13 @@ class Keyring {
     if (activity) this.touch();
     const g = await grantAccess(secret, (await identity(account)).publicKey, kid);
     if (e !== this.epoch) return 'locked';
-    const r = await adminApi.grantKeyAccess(tenant, accountId, {
-      kid,
-      enc: toBase64Url(g.enc),
-      sealed: toBase64Url(g.sealed),
-    });
-    return r.ok ? null : 'server';
+    const r = await adminApi.grantKeyAccess(
+      tenant,
+      accountId,
+      { kid, enc: toBase64Url(g.enc), sealed: toBase64Url(g.sealed) },
+      !activity,
+    );
+    return r.ok ? null : needsConfirmation(r.error) ? 'reauth' : 'server';
   }
 
   /**
@@ -713,8 +730,13 @@ class Keyring {
   ): Promise<KeyringIssue | null> {
     const e = this.epoch;
     if (activity) this.touch();
-    const rec = await adminApi.keyRecovery(tenant, expectedKid);
-    if (!rec.ok) return 'server';
+    const rec = await adminApi.keyRecovery(tenant, expectedKid, !activity);
+    if (!rec.ok) {
+      if (needsConfirmation(rec.error)) return 'reauth';
+      // 404 with a code: authorised, but this generation has no recovery wrap (without the code the caller had no right)
+      if (rec.error.status === 404 && rec.error.code === 'recovery_missing') return 'no-recovery';
+      return 'server';
+    }
     if (rec.data.keyId !== expectedKid) return 'mismatch'; // the server must hand out the wrap of the key we expect
     try {
       const secret = await openRecovery(
@@ -734,7 +756,7 @@ class Keyring {
       this.remember(rec.data.keyId, secret);
       return null;
     } catch {
-      return 'mismatch';
+      return 'wrong-code';
     }
   }
 }

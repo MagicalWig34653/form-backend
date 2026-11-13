@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.route('**/admin/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -55,4 +55,35 @@ test('Fortschritt und sicherer Fehler bleiben beim Fortsetzen am selben Lauf', a
   await expect(page.getByRole('alert')).toContainText('Pausiert');
   await page.getByRole('button', { name: 'Fortsetzen', exact: true }).click();
   await expect.poll(() => resumed).toBe(true);
+});
+const runs = (items: { state: string; dryRun: boolean }[]) => async (page: Page) =>
+  page.route('**/admin/api/v1/migration/jobs', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: items.map((i, n) => ({ id: `${n}`, phase: '', error: '', report: {}, ...i })),
+      }),
+    }),
+  );
+test('nur Prüflauf: Umstieg offen mit Hinweis, kein Kundenhinweis', async ({ page }) => {
+  await runs([{ state: 'review', dryRun: true }])(page);
+  await page.goto('/installation');
+  await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'open');
+  await expect(page.getByTestId('migration-run-hint')).toContainText('Prüflauf ist erledigt');
+  await expect(page.getByTestId('customer-imported-hint')).toHaveCount(0);
+});
+test('echter Import: Umstieg erledigt, Kunden-Schritt nennt den importierten Kunden', async ({
+  page,
+}) => {
+  await runs([
+    { state: 'review', dryRun: false },
+    { state: 'review', dryRun: true },
+  ])(page);
+  await page.goto('/installation');
+  await expect(page.getByTestId('step-migration')).toHaveAttribute('data-state', 'done');
+  await expect(page.getByTestId('step-customer')).toHaveAttribute('data-state', 'open');
+  await expect(page.getByTestId('customer-imported-hint')).toContainText(
+    'wird beim Live-Gang aktiviert',
+  );
 });

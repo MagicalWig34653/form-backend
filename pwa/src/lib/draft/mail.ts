@@ -19,12 +19,16 @@ export interface DerivedRule {
   format: string;
   timeZone: string;
 }
+/** ADR 0041 (decision 13.11.2026): `full` = all submitted values, from the template or, without one, as a field list (default, as the legacy
+ * backend); `notification` = form name, time, reference and PWA link only, only by explicit choice. */
+export type OrganisationContent = 'notification' | 'full';
 export interface MailForm {
   derived: DerivedRule[];
   fromAddress: string;
   fromName: string;
   organisation: MailTemplateForm & {
     enabled: boolean;
+    content: OrganisationContent;
     to: string;
     bcc: string;
     replyToField: string;
@@ -48,6 +52,7 @@ export const emptyMailForm = (): MailForm => ({
   fromName: '',
   organisation: {
     enabled: true,
+    content: 'full',
     to: '',
     bcc: '',
     replyToField: '',
@@ -112,6 +117,8 @@ export function mailToForm(mail: unknown): MailForm {
   const o = obj(m.organisation);
   f.organisation = {
     enabled: Object.keys(o).length > 0,
+    // A stored form without the key is delivered in full (the server applies the same default).
+    content: o.content === 'notification' ? 'notification' : 'full',
     to: strings(o.to).join('\n'),
     bcc: strings(o.bcc).join('\n'),
     replyToField: str(o.replyToField),
@@ -144,6 +151,15 @@ export function mailToForm(mail: unknown): MailForm {
   return f;
 }
 
+/** Notification mode: a non-empty template within the server's hard limits (size, no control characters in the subject). */
+function keepHiddenTemplate(t: MailTemplateForm): boolean {
+  if (t.subject.trim() === '' && t.body.trim() === '') return false;
+  // eslint-disable-next-line no-control-regex
+  if (t.subject.length > 300 || /[\x00-\x1f\x7f]/.test(t.subject) || t.body.includes('\0'))
+    return false;
+  return new TextEncoder().encode(t.body).length <= 100_000;
+}
+
 /** `null` when neither mail is switched on (the section is then removed). */
 export function formToMail(f: MailForm): JsonObject | null {
   if (!f.organisation.enabled && !f.confirmation.enabled) return null;
@@ -160,9 +176,12 @@ export function formToMail(f: MailForm): JsonObject | null {
       to: parseAddressLines(o.to),
       ...(bcc.length ? { bcc } : {}),
       ...(o.replyToField ? { replyToField: o.replyToField } : {}),
-      subject: o.subject,
-      body: o.body,
-      format: o.format,
+      content: o.content,
+      // The template stays stored in notification mode (not rendered) so a switch back does not lose it. It is hidden there, so it is only
+      // kept when the server accepts it as it is; a hidden field must never block saving or publishing (review ADR 0041).
+      ...(o.content === 'full' || keepHiddenTemplate(o)
+        ? { subject: o.subject, body: o.body, format: o.format }
+        : {}),
     };
   }
   if (f.confirmation.enabled) {
@@ -195,10 +214,15 @@ export function validateMailForm(f: MailForm, fieldNames: string[]): MailErrors 
   const e: MailErrors = {};
   if (!f.organisation.enabled && !f.confirmation.enabled) return e;
   if (!isMailAddress(f.fromAddress)) e.fromAddress = 'address';
-  const text = (t: MailTemplateForm, subject: string, body: string) => {
-    if (t.subject.trim() === '' || t.subject.length > 300 || /[\r\n]/.test(t.subject))
+  // `optional`: the organisation template may stay empty (the server then sends the standard mail with all fields).
+  const text = (t: MailTemplateForm, subject: string, body: string, optional = false) => {
+    if (
+      (!optional && t.subject.trim() === '') ||
+      t.subject.length > 300 ||
+      /[\r\n]/.test(t.subject)
+    )
       e[subject] = 'subject';
-    if (t.body.trim() === '') e[body] = 'body';
+    if (!optional && t.body.trim() === '') e[body] = 'body';
     else if (new TextEncoder().encode(t.body).length > 100_000) e[body] = 'bodySize';
   };
   if (f.organisation.enabled) {
@@ -206,7 +230,7 @@ export function validateMailForm(f: MailForm, fieldNames: string[]): MailErrors 
       bcc = parseAddressLines(f.organisation.bcc);
     if (to.length === 0 || to.length > 20 || !to.every(isMailAddress)) e.orgTo = 'recipients';
     if (bcc.length > 20 || !bcc.every(isMailAddress)) e.orgBcc = 'recipients';
-    text(f.organisation, 'orgSubject', 'orgBody');
+    if (f.organisation.content === 'full') text(f.organisation, 'orgSubject', 'orgBody', true);
   }
   const seen = new Set<string>();
   for (const d of f.derived) {

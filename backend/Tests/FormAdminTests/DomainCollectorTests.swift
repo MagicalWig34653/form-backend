@@ -161,6 +161,10 @@ final class DomainCollectorTests: XCTestCase {
     func testDomainInvalidBudgetCannotExhaustLegitimatePostOrOptionsBudgets() async throws {
         try await AdminFixture.with { f in
             let w = try await world(f)
+            // The budgets count in fixed 60 s wall-clock windows: start well inside one, so the 31st request and the checks
+            // below cannot fall into a fresh window (that turned the expected 429 into 403).
+            let left = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+            if left < 15 { try await Task.sleep(nanoseconds: UInt64((left + 0.2) * 1_000_000_000)) }
             // Syntactically invalid requests create only the peer-invalid bucket.
             for _ in 0..<30 {
                 try await send(f, w.payload, origin: nil, expected: .forbidden)

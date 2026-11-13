@@ -43,7 +43,8 @@ enum PrivacyRoutes {
             try await perms.authorize(account: s.accountID!, "content.read", on: .form(customer: tenant, form: form), exists: try await formExists(tenant, form))
             struct R: Decodable { let d: Int? }
             let d = try await sql.raw("SELECT CAST(JSON_VALUE(safe_value_json, '$') AS UNSIGNED) AS d FROM settings WHERE scope_key = \(bind: scopeKey(form)) AND setting_key = 'retention.days'").first(decoding: R.self)?.d
-            return noStore(try FormAdmin.json(.ok, RetentionBody(days: d)))
+            // Every form has a period; without an entry the default applies (ingest and the upgrade fill it the same way).
+            return noStore(try FormAdmin.json(.ok, RetentionBody(days: d ?? Retention.defaultDays)))
         }
 
         // days = null switches the automatic deletion off. Existing, not held submissions get their due date recomputed.
@@ -55,30 +56,23 @@ enum PrivacyRoutes {
             try await perms.authorize(account: account, "privacy.manage", on: .customer(tenant), exists: try await formExists(tenant, form))
             try await guardian.requireFreshAuthentication(s, now: now())
             let obj = try MailRoutes.jsonObject(req, allowed: ["days"])
-            guard obj.keys.contains("days") else { throw ValidationFailed(detail: "days fehlt (Zahl 1–\(maxRetentionDays) oder null)") }
-            var days: Int? = nil
-            if !(obj["days"] is NSNull) {
-                guard let n = obj["days"] as? Int, (1...maxRetentionDays).contains(n) else { throw ValidationFailed(detail: "days: Zahl 1–\(maxRetentionDays) oder null") }
-                days = n
-            }
-            let ts = DB.time(now()), newDays = days
+            // The period is mandatory: missing, null and out-of-range values are rejected (no way to switch the deletion off).
+            guard let days = obj["days"] as? Int, (Retention.minDays...Retention.maxDays).contains(days) else { throw RetentionProblem.required }
+            let ts = DB.time(now())
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 try await PermissionService(sql: tx).authorize(account: account, "privacy.manage", on: .customer(tenant))
-                if let days = newDays {
-                    try await tx.raw("""
-                        INSERT INTO settings (scope_key, setting_key, safe_value_json, manageable, modified_at)
-                        VALUES (\(bind: scopeKey(form)), 'retention.days', \(bind: String(days)), 1, \(bind: ts))
-                        ON DUPLICATE KEY UPDATE safe_value_json = VALUES(safe_value_json), modified_at = VALUES(modified_at)
-                        """).run()
-                    try await tx.raw("""
-                        UPDATE submissions SET retention_due_at = DATE_ADD(received_at, INTERVAL \(literal: days) DAY)
-                        WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(form)) AND received_at IS NOT NULL
-                        """).run()
-                } else {
-                    try await tx.raw("DELETE FROM settings WHERE scope_key = \(bind: scopeKey(form)) AND setting_key = 'retention.days'").run()
-                    try await tx.raw("UPDATE submissions SET retention_due_at = NULL WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(form))").run()
-                }
+                // A resumable import compares target snapshots; rewriting the due dates of its rows would break the resume.
+                guard !(try await SubmissionEraser.importMayResume(tx, form: form)) else { throw RetentionProblem.importRunning }
+                try await tx.raw("""
+                    INSERT INTO settings (scope_key, setting_key, safe_value_json, manageable, modified_at)
+                    VALUES (\(bind: scopeKey(form)), \(bind: Retention.settingKey), \(bind: String(days)), 1, \(bind: ts))
+                    ON DUPLICATE KEY UPDATE safe_value_json = VALUES(safe_value_json), modified_at = VALUES(modified_at)
+                    """).run()
+                try await tx.raw("""
+                    UPDATE submissions SET retention_due_at = DATE_ADD(received_at, INTERVAL \(literal: days) DAY)
+                    WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(form)) AND received_at IS NOT NULL
+                    """).run()
                 try await ReleaseRoutes.audit(tx, tenant: tenant, form: form, actor: account, action: "privacy.retention.set", subject: form, at: ts, category: "privacy").run()
             }
             return noStore(try FormAdmin.json(.ok, RetentionBody(days: days)))

@@ -287,6 +287,16 @@ def main():
     reject('package', lambda x: x['flows'][0]['nodes']['validate']['config'].update(nested={'secret':'synthetisch'}))
     reject('package', lambda x: x['importPolicy'].update(mode='publish'))
     reject('script-artifact', lambda x: x.update(source='return null;'), True)
+    # ADR 0041 (changed 13.11.2026): full is the default; the template is optional in both modes (empty = standard field list), content only full|notification.
+    with_mail = copy.deepcopy(examples['form.json'])
+    with_mail['mail'] = {'from': {'address': 'formular@example.invalid'}, 'organisation': {'to': ['team@example.invalid']}}
+    for hidden in ({}, {'format': 'html'}, {'subject': '', 'body': 'B'}, {'body': 'B', 'content': 'notification'}, {'content': 'full'}, {'content': 'full', 'subject': '', 'body': ''}):
+        positive = copy.deepcopy(with_mail)
+        positive['mail']['organisation'].update(hidden)
+        validators['form.schema.json'].validate(positive)
+    examples['form-mail.json'], manifest['form-mail.json'] = with_mail, 'form.schema.json'
+    for strict in ({'content': 'alles'}, {'content': True}, {'subject': 7}, {'format': 'pdf'}):
+        reject('form-mail', lambda x, strict=strict: x['mail']['organisation'].update(strict))
     print(f'{len(schemas)} Draft-2020-12-Schemas gültig; alle lokalen $ref aufgelöst.')
     print(f'{len(examples)} Beispiele gültig; Referenz-/Hash-/Graph-/Zeitprüfungen erfolgreich.')
     print(f'{negative_count} Negativfälle wie erwartet abgelehnt. Keine Engine-/DB-/Sandbox-Integration geprüft.')

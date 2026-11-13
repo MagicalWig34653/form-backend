@@ -104,6 +104,8 @@ final class MigrationTests: XCTestCase {
             XCTAssertEqual(empty,"0")
             let runs = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_runs")
             XCTAssertEqual(runs,"0")
+            let dryPeriods = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM settings")
+            XCTAssertEqual(dryPeriods,"0","the dry run leaves no retention period behind")
             do { _ = try await importer.run(plan:plan,batchSize:1,stopAfter:1); XCTFail("Expected interruption") } catch ImportFailure.interrupted {}
             let first = try await importer.run(plan:plan,batchSize:1)
             let objects = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_objects")
@@ -121,10 +123,30 @@ final class MigrationTests: XCTestCase {
             XCTAssertEqual(state,"migration-review")
             let hold = try await importer.scalar(dst,"SELECT CAST(removable AS CHAR) AS v FROM submissions")
             XCTAssertEqual(hold,"0")
+            // ADR 0012 no. 2: the imported form gets the default period (3 days), the imported submission its due date from it
+            let period = try await importer.scalar(dst,"SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key='form:\(self.form)' AND setting_key='retention.days'")
+            XCTAssertEqual(period,"3")
+            let dueDays = try await importer.scalar(dst,"SELECT CAST(DATEDIFF(retention_due_at,received_at) AS CHAR) AS v FROM submissions")
+            XCTAssertEqual(dueDays,"3")
             let evidence = try await importer.scalar(dst,"SELECT digest_evidence AS v FROM ingest_idempotency")
             XCTAssertEqual(evidence,"legacy-missing")
             try await dst.raw("UPDATE forms SET name='tampered'").run()
             do { _ = try await importer.run(plan:plan); XCTFail("Expected target conflict") } catch ImportFailure.conflict {}
+        }
+    }
+    /// A period that already exists for the target form is kept; the imported submissions get exactly that one.
+    func testMigrationKeepsAnExistingRetentionPeriodForTheImportedSubmissions() async throws {
+        try await withDatabases { src,dst,secrets in
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"synthetic",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            try await dst.raw("INSERT INTO settings (scope_key,setting_key,safe_value_json,manageable,modified_at) VALUES (\(bind:"form:"+self.form),'retention.days','5',1,NOW(6))").run()
+            _ = try await importer.run(plan:plan,batchSize:1)
+            let period = try await importer.scalar(dst,"SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key='form:\(self.form)'")
+            XCTAssertEqual(period,"5")
+            let dueDays = try await importer.scalar(dst,"SELECT CAST(DATEDIFF(retention_due_at,received_at) AS CHAR) AS v FROM submissions")
+            XCTAssertEqual(dueDays,"5")
+            // resuming compares the snapshots (incl. the due date) and stays green
+            _ = try await importer.run(plan:plan,batchSize:2)
         }
     }
     func testMigrationIncludesNegativeIDsAcrossBatches() async throws {
@@ -353,4 +375,75 @@ extension MigrationTests {
             XCTAssertEqual(releases,"0")
         }
     }
+}
+
+extension MigrationTests {
+    /// Card A5F93B32 (7 CLI findings), findings 5 and 7: a statistics row without approval or without a key generation of the customer
+    /// is a NAMED review case; the rest of the import runs and nothing statistical is written (before: unknownKeyGeneration aborted the run).
+    func testStatisticsWithoutApprovalOrKnownKeyBecomeNamedReviewCasesAndRunContinues() async throws {
+        let key = Curve25519.KeyAgreement.PrivateKey(), foreign = Curve25519.KeyAgreement.PrivateKey()
+        let kid = try FormCrypto.keyID(key.publicKey.rawRepresentation)
+        // One fresh source/target pair per scenario (a form can be in the ledger of one namespace only).
+        func scenario(review: String?, publicKey: Curve25519.KeyAgreement.PrivateKey?) async throws -> (codes: String, report: ImportReport, written: String, open: Int) {
+            var result: (String, ImportReport, String, Int)?
+            try await withDatabases { src,dst,secrets in
+                try await src.raw(query("INSERT INTO datenschluessel (kid,publicKey,status,erstelltAm,erstelltVon) VALUES (\(val(kid)),\(bin(key.publicKey.rawRepresentation)),'aktiv',1700000000,\(val(self.customer)))")).run()
+                try await src.raw("INSERT INTO statistics (ID,UUID,formularUUID,status,gclid) VALUES (1,'55555555-5555-4555-8555-555555555551',\(bind:self.form),'SUCCESS','synthetic-ad')").run()
+                try await src.raw("INSERT INTO statistics (ID,UUID,formularUUID,status) VALUES (2,'55555555-5555-4555-8555-555555555552',\(bind:self.form),'SUCCESS')").run()
+                let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+                let keys = publicKey.map { [self.customer:$0.publicKey.rawRepresentation.base64EncodedString()] } ?? [:]
+                let plan = ImportPlan(namespace:"stat",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer],keyCustomers:[kid:self.customer],keyGenerationNumbers:[kid:1],statisticsReview:review,statisticsPublicKeys:keys)
+                let report = try await importer.run(plan:plan)
+                let codes = try await importer.scalar(dst,"SELECT COALESCE(GROUP_CONCAT(DISTINCT CONCAT(source_table,':',issue_code) ORDER BY issue_code),'') AS v FROM migration_issues WHERE source_table='statistics'") ?? ""
+                let written = try await importer.scalar(dst,"SELECT CONCAT((SELECT COUNT(*) FROM legacy_statistics),'/',(SELECT COUNT(*) FROM stored_objects WHERE object_role='statistics-metadata')) AS v") ?? ""
+                result = (codes,report,written,try await importer.openCases(namespace:"stat"))
+            }
+            return try XCTUnwrap(result)
+        }
+        // 7: no approval -> own code
+        let noReview = try await scenario(review:nil,publicKey:key)
+        XCTAssertEqual(noReview.codes,"statistics:statistics-review-missing"); XCTAssertEqual(noReview.written,"0/0")
+        // 5: approved, but the key is no generation of the customer -> own code, the run does not abort, the forms are imported
+        let unknown = try await scenario(review:"approved",publicKey:foreign)
+        XCTAssertEqual(unknown.codes,"statistics:statistics-key-unknown")
+        XCTAssertEqual(unknown.report.tables["statistics"]?.reviewCount,2)
+        XCTAssertEqual(unknown.report.tables["formulare"]?.importedCount,1)
+        XCTAssertEqual(unknown.written,"0/0")
+        XCTAssertGreaterThanOrEqual(unknown.open,2)
+        // approved, no key at all in the plan -> the same named case
+        let none = try await scenario(review:"approved",publicKey:nil)
+        XCTAssertEqual(none.codes,"statistics:statistics-key-unknown")
+        // control: approved with the customer's key -> imported, no case
+        let good = try await scenario(review:"approved",publicKey:key)
+        XCTAssertEqual(good.codes,""); XCTAssertEqual(good.written,"2/2")
+    }
+
+    /// Finding 4: a stop request (signal in the CLI) is honoured at an object boundary by the importer's checkpoint; the run ends
+    /// as `failed` (the schema has no paused state, same as the web pause), the lock is free and a repetition resumes to the same end state.
+    func testStopRequestAtObjectBoundaryReleasesLockAndResumes() async throws {
+        try await withDatabases { src,dst,secrets in
+            let importer = try LegacyImporter(source:src,target:dst,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+            let plan = ImportPlan(namespace:"stop",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            let stop = StopRequest()
+            let seen = Counter()
+            do { _ = try await importer.run(plan:plan,checkpoint:{ _,_ in if seen.next() == 3 { stop.request(SIGTERM) }; try stop.check() }); XCTFail("Expected interruption") } catch ImportFailure.interrupted {}
+            XCTAssertEqual(stop.signal,SIGTERM)
+            let free = try await importer.scalar(dst,"SELECT CAST(IS_FREE_LOCK('form_legacy_import') AS CHAR) AS v")
+            XCTAssertEqual(free,"1")
+            let state = try await importer.scalar(dst,"SELECT state AS v FROM migration_runs")
+            XCTAssertNotEqual(state,"running")
+            let partial = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_objects")
+            let report = try await importer.run(plan:plan)
+            XCTAssertFalse(report.dryRun)
+            let all = try await importer.scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_objects")
+            XCTAssertNotEqual(partial,all)
+            let after = try await importer.scalar(dst,"SELECT state AS v FROM migration_runs")
+            XCTAssertNotEqual(after,"running")
+        }
+    }
+}
+
+final class Counter: @unchecked Sendable {
+    private let lock = NSLock(); private var n = 0
+    func next() -> Int { lock.lock(); defer { lock.unlock() }; n += 1; return n }
 }

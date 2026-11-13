@@ -61,6 +61,29 @@ Ein Paket soll eine überprüfbare fachliche Änderung ergeben. Keine riesigen P
 
 Anforderung erfüllt, Vertrag und Dokumentation konsistent, passende Prüfungen erfolgreich oder klar als offen ausgewiesen, keine Secrets/Kundendaten, Fehler-/Rechtepfade berücksichtigt, Review nach Risiko, integrierbarer Stand und kurze Übergabe. Bestehende Funktionen bleiben durch eine fortgeschriebene Paritätsmatrix nachweisbar.
 
+Bei Änderungen, die in das Image eingehen (Backend, PWA, Dockerfile, Entrypoint, SDK): **Image bauen, Smoke-Test, Tag in `post_progress`.** Also `scripts/docker-build.sh` ausführen und die Zeile `IMAGE_TAG=form-backend:<hash>` mit dem Smoke-Ergebnis im Fortschritt der Aufgabe nennen.
+
+## E2E-Skripte: eindeutige Namen (Regel)
+
+Jedes `backend/e2e-*.sh`, `smoke-admin.sh`, `loadtest.sh`, `proxy-probe.sh` bindet `backend/e2e-common.sh` ein und nutzt **keine festen Container-/Netznamen**: Namen per `e2e_name <basis>` (`<basis>-<RUN_ID>`), Docker-Objekte mit `"${E2E_LABEL_ARGS[@]}"` (Label `e2e.run=<RUN_ID>`, `e2e.started=<epoch>`), Aufräumen nur per `e2e_cleanup` (Label), nie per Namensmuster oder `docker rm -f NAME` vor dem Start. `e2e_reap_stale` entfernt verwaiste Objekte fremder, toter Läufe nur über das Label und nur bei Alter > 6 h (`E2E_STALE_HOURS`). Ports bleiben per `P3B_PORT`/`E2E_PORT`/`LEGACY_PORT` usw. setzbar (CI tut das), ohne Angabe wählt `e2e_pick_port` einen freien 128er-Block (20480-32639, per Sperrverzeichnis reserviert). Die PWA wird je Lauf nach `$TMP/dist` gebaut, Playwright schreibt nach `$E2E_OUTPUT_DIR`, nicht in die gemeinsamen `pwa/dist`/`pwa/test-results`. Prüfung: `scripts/check-e2e-rc.sh` (Muster), `scripts/test-e2e-parallel.sh` (zwei Läufe gleichzeitig). Gleichzeitige Läufe teilen weiter `backend/.build` (SwiftPM serialisiert per Sperre).
+
+## Lokales Image (Build und Smoke-Test)
+
+```
+scripts/docker-build.sh              # PWA bauen (falls nötig), Image bauen, Smoke-Test, aufräumen
+scripts/docker-build.sh --no-smoke   # nur bauen
+scripts/docker-build.sh --keep       # Smoke-Container/-Netz zum Untersuchen behalten
+scripts/docker-build.sh --smoke-image form-backend:<hash>   # nur Smoke-Test eines vorhandenen Images
+scripts/test-docker-build.sh         # Selbsttest der Aufräumlogik und des Fehlerverhaltens (Dummy-Images, kein Voll-Build)
+```
+
+- Baut für die native Architektur aus dem aktuellen Checkout (`backend/Dockerfile`, Kontext Repo-Wurzel). `pwa/dist` wird mit `npm ci`/`npm run build` erzeugt, wenn es fehlt oder älter als die Quellen ist.
+- Tags: `form-backend:<12-stelliger Commit>` (bei ungesichertem Arbeitsbaum `…-dirty`) und `form-backend:latest`. Die letzte Zeile `IMAGE_TAG=…` gehört in `post_progress`.
+- Smoke-Test gegen echte MariaDB in einem privaten Docker-Netz (Zufallspasswort und -Schlüssel nur in einer 0600-Env-Datei): `migrate`, `serve`, `/healthz`, `/ready`, PWA-Index mit CSP, Kernpfad (Passkey-Login mit echter WebAuthn-Assertion, Kunde, Kundenschlüssel, Formular, Release, SDK-Zugang, signierte Einsendung über die öffentliche Ingest-Route, DB-Prüfung: Zeilen in `submissions`/`stored_objects`, kein Klartext in der DB, Idempotenz). Treiber: `scripts/docker-smoke-flow.py` (Python-Standardbibliothek + `openssl`); Voraussetzungen am Host: Docker, `curl`, `python3`, `openssl`, `php` mit sodium, bei Bedarf `npm`.
+- Nicht abgedeckt: die browserseitige Schlüsseleinrichtung (Kontoschlüssel per Passkey-PRF, Wiederherstellungscode, Zugriffsberechtigung auf den Datenschlüssel), Entschlüsseln im Browser, Mailversand, nginx/TLS (dafür `backend/proxy-probe.sh` in der CI). Das Konto und der Passkey werden synthetisch per SQL angelegt.
+- Aufräumen: Container und Netz immer (`trap EXIT`, auch bei Fehlern); alte `form-backend:<hash>`-Tags bis auf die neuesten 3 und `:latest`; dangling Schichten nur mit dem Build-Label dieses Skripts. Kein globales `docker prune`.
+- **Kein Push in eine Registry, kein Deploy.** Veröffentlichen übernimmt allein die CI auf `main`.
+
 ## Wissensablage
 
 Anforderungen in ANFORDERUNGEN; technische Struktur in ARCHITEKTUR; Entscheidungen in decisions; tatsächlicher Stand in STATUS; aktive Pakete in ARBEITSPLAN; abgeschlossene Ergebnisse in handoffs. Keine Voraussetzung an Chatgedächtnis. Desktop-Erstkopie nicht parallel unabhängig weiterpflegen.

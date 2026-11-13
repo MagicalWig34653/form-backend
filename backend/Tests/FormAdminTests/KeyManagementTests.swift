@@ -206,6 +206,61 @@ final class KeyManagementTests: XCTestCase {
         }
     }
 
+    /// Unlocking against the state the migration leaves (generation imported, access not yet created): the recovery route must
+    /// say WHY there is nothing to open. A missing recovery wrap of an existing generation is `recovery_missing` (404 with a code,
+    /// only for callers who hold key.manage); a caller without the right still gets the plain, code-less 404 (no existence leak).
+    func testImportedStateRecoveryNamesTheCause() async throws {
+        try await AdminFixture.with { f in
+            let root = try await f.account(), u = try await f.account(), outsider = try await f.account()
+            let tenant = try await f.customer()
+            for r in ["form.read", "key.manage"] { try await f.grant(u, r, customer: tenant, by: root) }
+            var cu = try await f.login(u)
+            let co = try await f.login(outsider)
+            let cred = try await passkey(f, u, 1)
+            try await cu.send(.PUT, "me/account-key", body: "{\"publicKey\":\"\(pub())\",\"wrap\":\(wrap(cred))}") { XCTAssertEqual($0.status, .created, text($0)) }
+            let older = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation, newer = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation
+            let kidOlder = try keyIDOf(older.base64URLString), kidNewer = try keyIDOf(newer.base64URLString)
+            for (n, pk, kid, state) in [(1, older, kidOlder, "retiring"), (2, newer, kidNewer, "active")] {
+                try await f.sql.raw("""
+                    INSERT INTO customer_key_generations (generation_id, customer_id, kid, generation_no, public_key, state, created_at)
+                    VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(tenant)), \(bind: kid), \(bind: n), \(bind: Blob(pk)), \(bind: state), '2023-11-14 22:13:20')
+                    """).run()
+            }
+            // only the older generation carries an imported recovery wrap (the importer skips rows it cannot place)
+            try await f.sql.raw("""
+                INSERT INTO data_key_recovery (customer_id, kid, kdf_name, salt, iterations, iv, wrapped_key, created_at)
+                VALUES (\(bind: DB.bin(tenant)), \(bind: kidOlder), 'pbkdf2-hmac-sha256', \(bind: Blob(Data(repeating: 1, count: 32))), 600000, \(bind: Blob(Data(repeating: 2, count: 12))), \(bind: Blob(Data(repeating: 3, count: 48))), '2023-11-14 22:13:20')
+                """).run()
+            // the active generation has none: 404 `recovery_missing` (the browser can then point to the legacy key instead)
+            try await cu.get("tenants/\(tenant)/key-recovery") { res async throws in
+                XCTAssertEqual(res.status, .notFound, text(res)); XCTAssertEqual(obj(res)["code"] as? String, "recovery_missing", text(res))
+            }
+            try await cu.get("tenants/\(tenant)/key-recovery?kid=0123456789abcdef") { res async throws in
+                XCTAssertEqual(res.status, .notFound); XCTAssertEqual(obj(res)["code"] as? String, "recovery_missing")
+            }
+            // the older one is served by kid
+            try await cu.get("tenants/\(tenant)/key-recovery?kid=\(kidOlder)") { res async throws in
+                XCTAssertEqual(res.status, .ok, text(res)); XCTAssertEqual(obj(res)["keyId"] as? String, kidOlder)
+            }
+            // no right in the customer: plain 404 without the cause (existence stays hidden)
+            try await co.get("tenants/\(tenant)/key-recovery") { res async throws in
+                XCTAssertEqual(res.status, .notFound); XCTAssertNotEqual(obj(res)["code"] as? String, "recovery_missing")
+            }
+            // stale login: the answer names the confirmation, it is not a silent 401/404
+            try await f.sql.raw("UPDATE sessions SET authenticated_at = '2000-01-01' WHERE account_id = \(bind: DB.bin(u))").run()
+            try await cu.get("tenants/\(tenant)/key-recovery") { res async throws in
+                XCTAssertEqual(res.status, .forbidden); XCTAssertEqual(obj(res)["code"] as? String, "reauthentication_required", text(res))
+            }
+            cu = try await f.login(u)
+            // no access row yet for either generation: the bundle lists none, the candidates say "no access"
+            try await cu.get("me/key-bundle") { res async throws in XCTAssertEqual((obj(res)["access"] as? [Any])?.count, 0) }
+            try await cu.get("tenants/\(tenant)/key-candidates") { res async throws in
+                let items = (obj(res)["items"] as? [[String: Any]]) ?? []
+                XCTAssertEqual(items.first { $0["isSelf"] as? Bool == true }?["hasAccess"] as? Bool, false, text(res))
+            }
+        }
+    }
+
     private func keyIDOf(_ publicB64: String) throws -> String {
         let pk = try XCTUnwrap(Data(base64URLString: publicB64))
         return SHA256.hash(data: pk).prefix(8).map { String(format: "%02x", $0) }.joined()

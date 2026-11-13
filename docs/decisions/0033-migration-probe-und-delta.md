@@ -38,6 +38,8 @@ Die PWA zeigt bestätigte Zustände auch nach Neuladen an.
 
 ## Delta und Idempotenz
 
+> **Ersetzt durch [ADR 0043](0043-einmal-snapshot-quiesce.md)** (13.11.2026): Die Aktion `delta` entfällt, es gibt einen Snapshot je Quelle mit Quellen-Fingerabdruck und Schreibpause-Prüfung im Code. Der Rest dieses Abschnitts (Ledgeridentität, Nachrechnen mit dem ursprünglichen Snapshot-Hash) gilt nur noch für die Wiederholung desselben Snapshots.
+
 `POST .../:jobId/delta` verlangt `{dumpSHA256}` eines neuen eingefrorenen Snapshots
 und einen abgeschlossenen echten Import im Zustand review. Der bestehende
 Quellzugang, Schema-Pin, Namespace und alle Zuordnungen bleiben erhalten. Der

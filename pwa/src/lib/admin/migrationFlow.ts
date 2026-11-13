@@ -452,10 +452,23 @@ export function countRows(counts: Record<string, number>): ReportRow[] {
  */
 export function describeJobError(
   code: string,
-  texts: { reasons: Record<string, string>; codes: Record<string, string>; column: string },
+  texts: {
+    reasons: Record<string, string>;
+    codes: Record<string, string>;
+    column: string;
+    errorNumber?: string;
+    errorObject?: string;
+  },
 ): string {
   const known = texts.codes[code];
   if (known) return known;
+  // "database@<server error number>[:<index/column/constraint name>]": never a value, only what finds the cause.
+  const db = /^database@(\d{1,5})(?::([A-Za-z0-9_]{1,30}))?$/.exec(code);
+  if (db) {
+    const base = texts.codes[`database@${db[1]}`] ?? texts.codes.database ?? code;
+    const detail = `${texts.errorNumber ?? 'Fehlernummer'} ${db[1]}${db[2] ? `, ${texts.errorObject ?? 'Name'} ${db[2]}` : ''}`;
+    return `${base} (${detail})`;
+  }
   const at = code.indexOf('@');
   if (at > 0) {
     const reason = code.slice(0, at);

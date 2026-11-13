@@ -180,7 +180,7 @@ it('beginnt dauerhaften Rotationsbedarf automatisch und führt den wiederaufgeno
   keyring.adopt(newKid, hex(fixture.newSecret));
   const refresh = vi.spyOn(keyring, 'refreshAccess').mockResolvedValue();
   const begin = vi.spyOn(keyring, 'rotateAutomatic').mockResolvedValue(true);
-  const repair = vi.spyOn(keyring, 'repairAutomatic').mockResolvedValue(true);
+  const repair = vi.spyOn(keyring, 'repairAutomatic').mockResolvedValue('ok');
   api.rotation
     .mockResolvedValueOnce({
       ok: true,
@@ -199,4 +199,56 @@ it('beginnt dauerhaften Rotationsbedarf automatisch und führt den wiederaufgeno
   begin.mockRestore();
   refresh.mockRestore();
   repair.mockRestore();
+});
+
+it('importierte Generation ohne Zugang: benennt die Ursache, wiederholt die Reparatur nicht und fragt nie nach dem Passkey', async () => {
+  keyring.unlocked = true;
+  api.rotation.mockResolvedValue({
+    ok: true,
+    data: { active: { kid: newKid, publicKey: 'x' }, retiring: { kid: oldKid } },
+  });
+  const refresh = vi.spyOn(keyring, 'refreshAccess').mockResolvedValue();
+  const repair = vi.spyOn(keyring, 'repairAutomatic').mockResolvedValue('missing');
+  worker.start(['tenant']);
+  await vi.waitFor(() => expect(worker.busy).toBe(false));
+  expect(worker.message).toContain('fehlt Ihr Zugang');
+  expect(repair).toHaveBeenCalledTimes(1);
+  await worker.run();
+  await worker.run();
+  expect(repair).toHaveBeenCalledTimes(1); // no repeated recovery reads (they are audited) every 30 seconds
+  expect(api.rewrapObject).not.toHaveBeenCalled();
+  // after the next lock the question is asked again
+  keyring.lock();
+  keyring.unlocked = true;
+  await worker.run();
+  expect(repair).toHaveBeenCalledTimes(2);
+  repair.mockResolvedValue('reauth');
+  keyring.lock();
+  keyring.unlocked = true;
+  await worker.run();
+  expect(worker.message).toContain('Passkey-Bestätigung');
+  refresh.mockRestore();
+  repair.mockRestore();
+});
+
+it('gesperrter Schlüsselbund (Konto hat Schlüssel): Entsperr-Hinweis statt einrichten', async () => {
+  api.customerKey.mockResolvedValue({ ok: false, error: { status: 404 } });
+  api.keyBundle.mockResolvedValue({
+    ok: true,
+    data: { accountPublicKey: 'pk', recovery: { revision: 'r' }, rpId: 'example.test' },
+  });
+  const error = await worker.ensureCustomer('tenant').catch((e: Error) => e);
+  expect((error as Error).message).toMatch(/gesperrt/);
+  expect((error as Error).message).toMatch(/Konto/);
+  expect((error as Error).message).not.toMatch(/einrichten/);
+});
+
+it('nie eingerichtet (kein Kontoschlüssel): weiterhin einrichten', async () => {
+  api.customerKey.mockResolvedValue({ ok: false, error: { status: 404 } });
+  api.keyBundle.mockResolvedValue({
+    ok: true,
+    data: { accountPublicKey: null, recovery: null, rpId: 'example.test' },
+  });
+  const error = await worker.ensureCustomer('tenant').catch((e: Error) => e);
+  expect((error as Error).message).toMatch(/einrichten/);
 });

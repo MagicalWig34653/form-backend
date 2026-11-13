@@ -100,6 +100,6 @@ außerhalb des Importers. MariaDB-, echte TLS-/PRF- und Browserabnahme stehen au
 
 ## Ergänzung P11-F Rest
 
-ADR 0033 ergänzt explizite Delta-Prüfläufe mit neuem Snapshot-Hash und lokale
+ADR 0033 ergänzte explizite Delta-Prüfläufe (ersetzt durch ADR 0043: Einmal-Snapshot, kein Delta) und lokale
 Browserstichproben. Vorhandene Pause/Quellentfernung/Settings-Deaktivierung bleiben
 maßgeblich. Kein automatischer Datenrollback oder Cutover.

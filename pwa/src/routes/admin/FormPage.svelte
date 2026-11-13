@@ -11,7 +11,7 @@
   import { createEditor } from '$lib/draft/editor.svelte';
   import { router } from '$lib/router.svelte';
   import { formPath, TABS, type Tab } from '$lib/routes';
-  import { describeError } from '$lib/admin/describe';
+  import { describeError, loadFailureText } from '$lib/admin/describe';
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import PageHeader from '$lib/components/admin/PageHeader.svelte';
@@ -233,7 +233,9 @@
         ? t.formWork.denied
         : editor.error?.status === 404
           ? t.formWork.unavailable
-          : t.formWork.loadError}
+          : editor.error
+            ? loadFailureText(editor.error, t.formWork.loadError)
+            : t.formWork.loadError}
       {#snippet action()}
         <Button variant="outline" onclick={() => void editor.load()}>{t.admin.retry}</Button>
       {/snippet}

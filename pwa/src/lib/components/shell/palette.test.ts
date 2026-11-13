@@ -66,7 +66,7 @@ it('nav model groups pages and only offers rights-based entries when allowed', (
   );
   // Operations may be visible without system administration; the rest of "System" stays hidden.
   const opsOnly = buildNav({ ...ctx({ name: 'tenants' }), opsVisible: true });
-  expect(opsOnly[2]?.items.map((i) => i.id)).toEqual(['ops']);
+  expect(opsOnly[2]?.items.map((i) => i.id)).toEqual(['ops', 'audit']);
 });
 
 const tenant = 'aaaaaaaa-1111-4111-8111-111111111111';

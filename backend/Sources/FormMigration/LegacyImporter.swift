@@ -6,6 +6,7 @@ import Fluent
 import FormAuth
 import FormCrypto
 import FormPersistence
+import MySQLNIO
 
 public struct ImportPlan: Codable {
     public var namespace: String
@@ -22,13 +23,81 @@ public struct ImportPlan: Codable {
         self.keyCustomers = keyCustomers; self.keyGenerationNumbers = keyGenerationNumbers; self.connectionCustomers = connectionCustomers; self.statisticsReview = statisticsReview; self.statisticsPublicKeys = statisticsPublicKeys
     }
 }
+extension ImportPlan {
+    /// Optional fields fall back to the initializer defaults (the plan of an older caller may lack them); namespace, hash and the customer/form
+    /// assignments stay mandatory. Encoding is untouched: the canonical JSON of a plan (part of the source HMAC and run identity, ADR 0014)
+    /// is identical whether a field was present or defaulted.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(namespace: try c.decode(String.self, forKey: .namespace), dumpSHA256: try c.decode(String.self, forKey: .dumpSHA256),
+                  customers: try c.decode([String:String].self, forKey: .customers), formCustomers: try c.decode([String:String].self, forKey: .formCustomers),
+                  connectionCustomers: try c.decodeIfPresent([String:[String]].self, forKey: .connectionCustomers) ?? [:],
+                  keyCustomers: try c.decodeIfPresent([String:String].self, forKey: .keyCustomers) ?? [:],
+                  keyGenerationNumbers: try c.decodeIfPresent([String:Int].self, forKey: .keyGenerationNumbers) ?? [:],
+                  statisticsReview: try c.decodeIfPresent(String.self, forKey: .statisticsReview),
+                  statisticsPublicKeys: try c.decodeIfPresent([String:String].self, forKey: .statisticsPublicKeys) ?? [:])
+    }
+    /// Decodes a plan file; a failure names only the top-level key (never a value, never "database").
+    public static func decode(_ data: Data) throws -> ImportPlan {
+        do { return try JSONDecoder().decode(ImportPlan.self, from: data) }
+        catch let error as DecodingError {
+            switch error {
+            case .keyNotFound(let key, _): throw CLIInputError.planUnreadable(field: safeIdentifier(key.stringValue))
+            case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+                if let first = context.codingPath.first { throw CLIInputError.planUnreadable(field: safeIdentifier(first.stringValue)) }
+                throw CLIInputError.planUnreadable(field: "kein gültiges JSON")
+            @unknown default: throw CLIInputError.planUnreadable(field: "kein gültiges JSON")
+            }
+        } catch { throw CLIInputError.planUnreadable(field: "kein gültiges JSON") }
+    }
+}
+/// Input problems of the command line (parameters, plan file): named cause, never a value.
+public enum CLIInputError: Error, CustomStringConvertible {
+    case missing(String), invalid(String, String), planUnreadable(field: String)
+    public var description: String {
+        switch self {
+        case let .missing(name): return "Parameter fehlt: \(name)"
+        case let .invalid(name, hint): return "Parameter ungültig: \(name) (\(hint))"
+        case let .planUnreadable(field): return "Plan nicht lesbar: \(field)"
+        }
+    }
+}
+/// Stop request set by the signal handlers of the CLI; the importer's checkpoint turns it into `interrupted` at an object boundary.
+public final class StopRequest: @unchecked Sendable {
+    private let lock = NSLock(); private var received: Int32 = 0
+    public init() {}
+    public func request(_ signal: Int32) { lock.lock(); if received == 0 { received = signal }; lock.unlock() }
+    public var signal: Int32 { lock.lock(); defer { lock.unlock() }; return received }
+    public func check() throws { if signal != 0 { throw ImportFailure.interrupted } }
+}
 public enum SourceFailureReason: String, Sendable {
     case missingColumn, missingValue, invalidHex, invalidUTF8, invalidUUID, invalidIdentifier, invalidCursor, invalidProjection, invalidInteger, invalidBoolean, invalidTimestamp, countMismatch, unknownKeyGeneration
 }
 
 public enum ImportFailure: Error, CustomStringConvertible {
     case invalidPlan, conflict, missingTarget, database, interrupted, lock, invalidSource
+    /// The namespace already holds an import of another snapshot (ADR 0043: one snapshot, no delta); nothing is written.
+    case snapshotChanged
+    /// The legacy data changed since the rehearsal (source fingerprint differs from the expected one); nothing is written.
+    case sourceChanged
+    /// The legacy data changed while the import was running (fingerprint at the end differs from the one at the start); the run is failed.
+    case sourceNotQuiesced
+    /// The plan contradicts itself or the run parameters; names the field (never a value).
+    case invalidPlanField(String)
+    /// Statistics row, plan without approval (statisticsReview): review case, nothing statistical is written.
+    case statisticsReviewMissing
+    /// Statistics row, public key of the plan is missing or no key generation of the customer: review case, nothing statistical is written.
+    case statisticsKeyUnknown
     case invalidSourceAt(table: String, column: String, reason: SourceFailureReason)
+    /// Driver error of the target with its safe metadata only (server error number, SQLSTATE, name of the index/column/constraint).
+    /// Never the message itself: it can contain the value that was written.
+    case databaseAt(table: String, code: Int, sqlState: String, object: String)
+    /// The target already holds key generations of the customer that contradict the plan (checked before anything is written).
+    case keyConflict(KeyConflict)
+    /// The target already holds active or released forms (ADR 0014): nothing is written. The ids (never names) go to the log only.
+    case targetFormsLive(ids: [String])
+    /// A customer of the plan exists in the target under another name: nothing is written. The ids go to the log only.
+    case customerNameMismatch(ids: [String])
 
     public var description: String {
         switch self {
@@ -36,13 +105,64 @@ public enum ImportFailure: Error, CustomStringConvertible {
             // Metadata is untrusted too: never print an arbitrary identifier or a source value.
             return "migration: invalidSource table=\(safeIdentifier(table)) column=\(safeIdentifier(column)) reason=\(reason.rawValue)"
         case .invalidPlan: return "migration: invalidPlan"
+        case let .invalidPlanField(field): return "migration: invalidPlan field=\(safeIdentifier(field))"
+        case .statisticsReviewMissing: return "migration: statisticsReviewMissing"
+        case .statisticsKeyUnknown: return "migration: statisticsKeyUnknown"
         case .conflict: return "migration: conflict"
         case .missingTarget: return "migration: missingTarget"
         case .database: return "migration: database"
+        case let .databaseAt(table, code, sqlState, object):
+            return "migration: database table=\(safeIdentifier(table)) code=\(code) sqlstate=\(sqlState) object=\(object.isEmpty ? "-" : safeIdentifier(object))"
+        case let .keyConflict(reason): return "migration: keyConflict reason=\(reason.rawValue)"
+        case let .targetFormsLive(ids): return "migration: targetFormsLive count=\(ids.count) forms=\(ids.prefix(10).joined(separator: ","))"
+        case let .customerNameMismatch(ids): return "migration: customerNameMismatch count=\(ids.count) customers=\(ids.prefix(10).joined(separator: ","))"
+        case .snapshotChanged: return "migration: snapshotChanged"
+        case .sourceChanged: return "migration: sourceChanged"
+        case .sourceNotQuiesced: return "migration: sourceNotQuiesced"
         case .interrupted: return "migration: interrupted"
         case .lock: return "migration: lock"
         case .invalidSource: return "migration: invalidSource"
         }
+    }
+}
+
+/// Why the key generations of the plan cannot be written next to what the target holds.
+public enum KeyConflict: String, Sendable {
+    /// The target customer already has an active generation of another key; the import would be the second active one.
+    case active
+    /// The target customer already uses this generation number for another key.
+    case number
+    /// The same key id exists in the target with a different public key.
+    case publicKey
+    /// The plan itself is contradictory: one generation number twice, or two active keys for one customer.
+    case plan
+}
+
+/// Reads the safe metadata out of a target driver error. The server message can contain the written value
+/// ("Duplicate entry '<value>' for key 'name'"), so only identifiers that pass `safeIdentifier` are taken from it.
+enum DatabaseDiagnostics {
+    static func classify(_ error: Error) -> (code: Int, sqlState: String, object: String)? {
+        // The driver reports unique-key violations as their own case (message only, no packet): number 1062, SQLSTATE 23000.
+        if let mysql = error as? MySQLError, case let .duplicateEntry(message) = mysql { return (1062, "23000", object(message: message)) }
+        guard let mysql = error as? MySQLError, case let .server(packet) = mysql else { return nil }
+        let state = (packet.sqlState ?? "").utf8.count == 5 && (packet.sqlState ?? "").utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) }) ? packet.sqlState! : ""
+        return (Int(packet.errorCode.rawValue), state, object(message: packet.errorMessage))
+    }
+    static func object(message: String) -> String {
+        func identifier(after marker: String, in text: String, backwards: Bool) -> String? {
+            guard let range = text.range(of: marker, options: backwards ? .backwards : []) else { return nil }
+            let rest = text[range.upperBound...]
+            guard let open = rest.first, "'`".contains(open), let close = rest.dropFirst().firstIndex(of: open) else { return nil }
+            let name = String(rest[rest.index(after: rest.startIndex)..<close]).split(separator: ".").last.map(String.init) ?? ""
+            return safeIdentifier(name) == name ? name : nil
+        }
+        // The value of a duplicate entry sits before " for key": take the last marker, which cannot be part of the value's tail.
+        if message.hasPrefix("Duplicate entry"), let name = identifier(after: " for key ", in: message, backwards: true), message.hasSuffix("'") { return name }
+        if message.hasPrefix("Column "), let name = identifier(after: "Column ", in: message, backwards: false) { return name }
+        if message.hasPrefix("Data too long"), let name = identifier(after: "for column ", in: message, backwards: false) { return name }
+        if message.contains("CONSTRAINT "), let name = identifier(after: "CONSTRAINT ", in: message, backwards: false) { return name }
+        if message.contains("for column "), let name = identifier(after: "for column ", in: message, backwards: true) { return name }
+        return ""
     }
 }
 
@@ -60,6 +180,8 @@ public struct ImportReport: Codable {
     public var inventory: [String:Int] = [:]
     public var schemaHMAC = ""
     public var dryRun: Bool
+    /// SHA-256 over table name, CHECKSUM TABLE and row count of every source table (no values). Set by the rehearsal and the real run.
+    public var sourceFingerprint = ""
     public var cutoverReady = false
 }
 // All values are encoded as hex SQL literals; identifiers are validated separately.
@@ -196,37 +318,82 @@ public struct LegacyImporter {
         for table in tables { manifest += try json([table.v: await columns(source, table.v)]) }
         return mac(manifest)
     }
-    public func run(plan: ImportPlan, dryRun: Bool = false, batchSize: Int = 100, stopAfter: Int? = nil, expectedSchema: String? = nil, checkpoint: ((String, Int) async throws -> Void)? = nil) async throws -> ImportReport {
-        guard !plan.namespace.isEmpty, plan.namespace.utf8.count <= 64, plan.namespace.utf8.allSatisfy({ $0 >= 33 && $0 < 127 }), (try? unhex(plan.dumpSHA256).count) == 32, batchSize > 0, batchSize <= 10000,
-              plan.customers.keys.allSatisfy({ UUID(uuidString:$0) != nil }), plan.formCustomers.values.allSatisfy({ plan.customers[$0] != nil }) else { throw ImportFailure.invalidPlan }
+    /// Fingerprint of the whole source schema: SHA-256 over `table:CHECKSUM TABLE:COUNT(*)` of every base table, sorted by name.
+    /// Read outside of any snapshot transaction (a fresh read), SELECT is enough. The output is the hash only, never a value.
+    public func sourceFingerprint() async throws -> String { try await fingerprint(source) }
+    func fingerprint(_ db: SQLDatabase) async throws -> String {
+        struct Sum: Decodable { let Checksum: String? }
+        do {
+            let tables = try await db.raw("SELECT table_name AS v FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE' ORDER BY table_name").all(decoding: TextRow.self)
+            var lines = ""
+            for table in tables {
+                let name = try ident(table.v)
+                let sum = try await db.raw(query("CHECKSUM TABLE \(name)")).first(decoding: Sum.self)?.Checksum ?? "null"
+                let count = try await scalar(db, "SELECT CAST(COUNT(*) AS CHAR) AS v FROM \(name)") ?? "null"
+                lines += "\(table.v):\(sum):\(count)\n"
+            }
+            return hex(Data(SHA256.hash(data: Data(lines.utf8))))
+        } catch let failure as ImportFailure { throw failure } catch { throw ImportFailure.invalidSource }
+    }
+    /// Open review cases of all runs of the namespace (one per table and key), as the admin report counts them.
+    public func openCases(namespace: String) async throws -> Int {
+        let n = try await scalar(target,"SELECT CAST(COUNT(DISTINCT i.source_table,i.source_key) AS CHAR) AS v FROM migration_issues i JOIN migration_runs r ON r.id=i.run_id WHERE r.source_namespace=\(val(namespace)) AND i.state='open'")
+        return Int(n ?? "0") ?? 0
+    }
+    public func run(plan: ImportPlan, dryRun: Bool = false, batchSize: Int = 100, stopAfter: Int? = nil, expectedSchema: String? = nil, expectedSourceFingerprint: String? = nil, checkpoint: ((String, Int) async throws -> Void)? = nil) async throws -> ImportReport {
+        // Named before the first write (ADR 0014: nothing is written for a plan that is wrong in itself).
+        guard !plan.namespace.isEmpty, plan.namespace.utf8.count <= 64, plan.namespace.utf8.allSatisfy({ $0 >= 33 && $0 < 127 }) else { throw ImportFailure.invalidPlanField("namespace") }
+        guard (try? unhex(plan.dumpSHA256).count) == 32 else { throw ImportFailure.invalidPlanField("dumpSHA256") }
+        guard batchSize > 0, batchSize <= 10000 else { throw ImportFailure.invalidPlanField("batchSize") }
+        guard plan.customers.keys.allSatisfy({ UUID(uuidString:$0) != nil }) else { throw ImportFailure.invalidPlanField("customers") }
+        guard plan.formCustomers.values.allSatisfy({ plan.customers[$0] != nil }) else { throw ImportFailure.invalidPlanField("formCustomers") }
         let identityQuery = "SELECT CONCAT(@@hostname,':',@@port,':',DATABASE()) AS v"
         let sourceIdentity = try await scalar(source,identityQuery), targetIdentity = try await scalar(target,identityQuery)
-        guard sourceIdentity != targetIdentity else { throw ImportFailure.invalidPlan }
+        guard sourceIdentity != targetIdentity else { throw ImportFailure.invalidPlanField("source=target") }
         return try await target.withSession { dst in
             guard try await scalar(dst,"SELECT CAST(GET_LOCK('form_legacy_import',0) AS CHAR) AS v") == "1" else { throw ImportFailure.lock }
             do {
                 if dryRun { try await exec(dst,"START TRANSACTION") }
                 let report = try await source.withSession { src in
                     try await exec(src,"SET time_zone='+00:00'")
+                    // Fresh read before the snapshot starts (a transaction would show its own frozen state).
+                    let startFingerprint = try await fingerprint(src)
                     try await exec(src,"START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")
-                    do { let r = try await perform(src,dst,plan,dryRun,batchSize,stopAfter,expectedSchema,checkpoint); try await exec(src,"ROLLBACK"); return r }
+                    do { let r = try await perform(src,dst,plan,dryRun,batchSize,stopAfter,expectedSchema,checkpoint,startFingerprint:startFingerprint,expectedFingerprint:expectedSourceFingerprint); try await exec(src,"ROLLBACK"); return r }
                     catch { try? await exec(src,"ROLLBACK"); throw error }
                 }
                 if dryRun { try await exec(dst,"ROLLBACK") }; try await exec(dst,"SELECT RELEASE_LOCK('form_legacy_import')"); return report
             } catch { try? await exec(dst,"ROLLBACK"); try? await exec(dst,"SELECT RELEASE_LOCK('form_legacy_import')"); throw error }
         }
     }
-    func perform(_ src: SQLDatabase, _ dst: SQLDatabase, _ p: ImportPlan, _ dry: Bool, _ batch: Int, _ stop: Int?, _ expectedSchema: String?, _ checkpoint: ((String, Int) async throws -> Void)?) async throws -> ImportReport {
-        guard try await scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM forms WHERE active=1 OR current_release_id IS NOT NULL") == "0" else { throw ImportFailure.invalidPlan }
+    func perform(_ src: SQLDatabase, _ dst: SQLDatabase, _ p: ImportPlan, _ dry: Bool, _ batch: Int, _ stop: Int?, _ expectedSchema: String?, _ checkpoint: ((String, Int) async throws -> Void)?, startFingerprint: String, expectedFingerprint: String?) async throws -> ImportReport {
+        // Target preconditions, named before anything is written (rehearsal included, no run row is created). Ids only, never names.
+        let live = try await dst.raw("SELECT LOWER(HEX(id)) AS v FROM forms WHERE active=1 OR current_release_id IS NOT NULL ORDER BY id LIMIT 50").all(decoding:TextRow.self)
+        guard live.isEmpty else { throw ImportFailure.targetFormsLive(ids:live.map(\.v)) }
+        // A customer that exists in the target under another name would end the real run as failed (the object is parked as review case
+        // while the rehearsal looks green): abort before writing instead. The name is never overwritten.
+        var renamed: [String] = []
+        for id in p.customers.keys.sorted() {
+            if let existing = try await scalar(dst,"SELECT name AS v FROM customers WHERE id=\(try uid(id))"), existing != p.customers[id] { renamed.append(id) }
+        }
+        guard renamed.isEmpty else { throw ImportFailure.customerNameMismatch(ids:renamed) }
         let mapping = hex(Data(SHA256.hash(data:Data(try json(p).utf8))))
         let runPredicate = "source_namespace=\(val(p.namespace)) AND dump_sha256=\(bin(try unhex(p.dumpSHA256))) AND mapping_sha256=\(bin(try unhex(mapping))) AND importer_version='p9-1'"
+        if !dry {
+            // One snapshot per namespace (ADR 0043): another snapshot hash means a delta, which does not exist. Resuming the same snapshot stays possible.
+            let other = try await scalar(dst,"SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_runs WHERE source_namespace=\(val(p.namespace)) AND dump_sha256<>\(bin(try unhex(p.dumpSHA256)))")
+            guard (Int(other ?? "0") ?? 0) == 0 else { throw ImportFailure.snapshotChanged }
+            // The rehearsal's fingerprint must still be the source's: otherwise the legacy system was written after the check.
+            if let expectedFingerprint, expectedFingerprint != startFingerprint { throw ImportFailure.sourceChanged }
+        }
         let existing = try await scalar(dst,"SELECT HEX(id) AS v FROM migration_runs WHERE \(runPredicate)")
         let run = try existing.map(unhex) ?? DB.bin(UUID()).data
         let runID = bin(run)
         if !dry && existing == nil {
             _ = try await insert(dst,"migration_runs",["id":runID,"source_namespace":val(p.namespace),"dump_sha256":bin(try unhex(p.dumpSHA256)),"mapping_sha256":bin(try unhex(mapping)),"importer_version":"'p9-1'","state":"'running'","started_at":"UTC_TIMESTAMP(6)","report_json":"'{}'"],key:["id":runID])
         }
-        var report = ImportReport(dryRun:dry); var processed = 0
+        var report = ImportReport(dryRun:dry); report.sourceFingerprint = startFingerprint; var processed = 0
+        do { try await keyPreflight(src,dst,p) } catch { if !dry { try? await exec(dst,"UPDATE migration_runs SET state='failed' WHERE id=\(runID)") }; throw error }
         let inventory = try await src.raw("SELECT table_name AS v FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY table_name").all(decoding:TextRow.self)
         var manifest = ""
         for item in inventory {
@@ -292,6 +459,9 @@ public struct LegacyImporter {
                 parity.sourceHMAC = hex(Data(sourceHashes.finalize())); parity.targetHMAC = hex(Data(targetHashes.finalize())); report.tables[table] = parity
             }
             if !dry {
+                // Quiesce check: the snapshot transaction ends first, so the read is a fresh one (it sees writes after the snapshot).
+                try await exec(src,"ROLLBACK")
+                guard try await fingerprint(src) == startFingerprint else { throw ImportFailure.sourceNotQuiesced }
                 for (table,count) in report.inventory where count > 0 && !tables.contains(table) {
                     try await reviewIssue(dst,p,table,"@table","unmapped-table")
                 }
@@ -304,6 +474,15 @@ public struct LegacyImporter {
         } catch {
             if !dry { try? await exec(dst,"UPDATE migration_runs SET state='failed' WHERE id=\(runID)") }
             throw error
+        }
+    }
+    /// Issue code of a parked object: named for the statistics cases, otherwise the general one.
+    static func reviewCode(for error: Error) -> String {
+        guard let failure = error as? ImportFailure else { return "migration-review" }
+        switch failure {
+        case .statisticsReviewMissing: return "statistics-review-missing"
+        case .statisticsKeyUnknown: return "statistics-key-unknown"
+        default: return "migration-review"
         }
     }
     func object(_ db: SQLDatabase, _ p: ImportPlan, _ run: String, _ table: String, _ key: String, _ row: LegacyRow, _ dry: Bool,
@@ -344,13 +523,15 @@ public struct LegacyImporter {
         } catch {
             try? await exec(db,dry ? "ROLLBACK TO SAVEPOINT migration_object" : "ROLLBACK")
             if let failure = error as? ImportFailure, case .invalidSourceAt = failure { throw failure }
+            if let failure = error as? ImportFailure, case .keyConflict = failure { throw failure }
             if error is ImportFailure || error is SecretStore.Failure {
                 if !dry {
-                    try await exec(db,"INSERT INTO migration_issues (id,run_id,source_table,source_key,issue_code,state,reported_at) VALUES (\(bin(DB.bin(UUID()).data)),\(run),\(val(table)),\(bin(Data(key.utf8))),'migration-review','open',UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE issue_code=issue_code")
+                    try await exec(db,"INSERT INTO migration_issues (id,run_id,source_table,source_key,issue_code,state,reported_at) VALUES (\(bin(DB.bin(UUID()).data)),\(run),\(val(table)),\(bin(Data(key.utf8))),\(val(Self.reviewCode(for:error))),'open',UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE issue_code=issue_code")
                 }
                 return nil
             }
-            // Never propagate a driver error: it may contain SQL values.
+            // Never propagate a driver error: it may contain SQL values. Number, SQLSTATE and index/column name are safe and make the cause findable.
+            if let detail = DatabaseDiagnostics.classify(error) { throw ImportFailure.databaseAt(table:table,code:detail.code,sqlState:detail.sqlState,object:detail.object) }
             throw ImportFailure.database
         }
     }

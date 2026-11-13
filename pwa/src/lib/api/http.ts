@@ -11,6 +11,8 @@ export interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** Background call: a demanded fresh confirmation is NOT asked for (no passkey dialog); the 403 is returned as is. */
+  quiet?: boolean;
 }
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -63,7 +65,7 @@ export function createHttp(options: HttpOptions = {}): Http {
     opts: RequestOptions = {},
   ): Promise<ApiResult<T>> {
     const first = await send<T>(method, path, opts);
-    if (!first.ok && needsConfirmation(first.error) && reauthHandler) {
+    if (!first.ok && !opts.quiet && needsConfirmation(first.error) && reauthHandler) {
       const confirmed = await reauthHandler().catch(() => false);
       if (confirmed) return send<T>(method, path, opts);
     }

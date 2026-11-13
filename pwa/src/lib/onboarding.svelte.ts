@@ -13,6 +13,7 @@ import {
   type EntryFacts,
   type Facts,
   type FormFacts,
+  type MigrationStatus,
   type StepId,
 } from './onboarding';
 
@@ -35,6 +36,18 @@ const REFERENCE_OFFSET = 978307200;
 interface TokenRow {
   expires_at: number;
   revoked_at: number | null;
+}
+interface RunRow {
+  state?: string;
+  dryRun?: boolean;
+}
+/** Only a real run that finished its import counts; a dry run proves nothing was written. */
+function migrationStatus(items: readonly RunRow[]): MigrationStatus {
+  if (items.some((j) => !j.dryRun && ['review', 'verified', 'closed'].includes(j.state ?? '')))
+    return 'imported';
+  if (items.some((j) => ['queued', 'running', 'paused'].includes(j.state ?? ''))) return 'running';
+  if (items.some((j) => j.dryRun && j.state === 'review')) return 'dryRun';
+  return 'none';
 }
 const CONTEXT_KEY = 'setup.context';
 const skippedKey = (owner: string) => `setup.skipped.${owner}`;
@@ -117,13 +130,15 @@ export async function loadFacts(
     );
   if (want('migration')) {
     const available = state.migrationAllowed === true && state.migrationEnabled === true;
-    facts.migration = { available, jobs: null };
+    facts.migration = { available, jobs: null, status: null };
     if (available)
       jobs.push(
-        deps.http.request<{ items: unknown[] }>('GET', '/migration/jobs').then((r) => {
+        deps.http.request<{ items: RunRow[] }>('GET', '/migration/jobs').then((r) => {
+          const ok = r.ok && Array.isArray(r.data.items);
           facts.migration = {
             available,
-            jobs: r.ok && Array.isArray(r.data.items) ? r.data.items.length : null,
+            jobs: ok ? r.data.items.length : null,
+            status: ok ? migrationStatus(r.data.items) : null,
           };
         }),
       );

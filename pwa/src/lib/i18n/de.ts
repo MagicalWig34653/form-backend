@@ -455,6 +455,7 @@ try {
     setup: 'Einrichtung',
     migration: 'Umstieg',
     ops: 'Betrieb',
+    audit: 'Protokoll',
     settings: 'Einstellungen',
     account: 'Mein Konto',
     logout: 'Abmelden',
@@ -501,8 +502,8 @@ try {
   retention: {
     title: 'Aufbewahrung',
     description: 'Wie lange Einsendungen dieses Formulars gespeichert bleiben.',
-    autoDelete: 'Einsendungen automatisch löschen',
-    autoDeleteOff: 'Aus: Einsendungen bleiben unbegrenzt gespeichert.',
+    standardHint:
+      'Standard: 72 Stunden (3 Tage). Die Frist ist Pflicht und kann nicht abgeschaltet werden; sie lässt sich ändern.',
     days: 'Aufbewahrung in Tagen',
     daysHint: 'Zwischen 1 und 3650 Tagen.',
     presets: 'Vorgaben',
@@ -516,7 +517,6 @@ try {
       'Vorhandene Einsendungen, die älter als {n} Tage sind, werden gelöscht. Geschützte Einsendungen bleiben erhalten.',
     confirmLabel: 'Speichern und löschen',
     current: 'Aktuell: Löschung nach {n} Tagen',
-    currentOff: 'Aktuell: keine automatische Löschung',
     toEntries: 'Einsendungen verwalten',
     loadFailed: 'Die Aufbewahrung konnte nicht geladen werden.',
     invalid: 'Bitte eine ganze Zahl zwischen 1 und 3650 eingeben.',
@@ -574,7 +574,7 @@ try {
   reauth: {
     title: 'Bestätigung erforderlich',
     description:
-      'Bitte bestätigen Sie mit Ihrem Passkey. Die letzte Anmeldung ist länger als 5 Minuten her; Ihre Eingaben auf dieser Seite bleiben erhalten.',
+      'Bitte bestätigen Sie mit Ihrem Passkey. Die letzte Anmeldung ist schon länger her; Ihre Eingaben auf dieser Seite bleiben erhalten.',
     confirm: 'Mit Passkey bestätigen',
     retry: 'Erneut versuchen',
     cancel: 'Abbrechen',
@@ -883,6 +883,7 @@ try {
       stale: 'Der Entwurf wurde zwischenzeitlich geändert. Bitte neu laden.',
       invalid: 'Die Eingabe ist ungültig.',
       tooMany: 'Zu viele Anfragen. Bitte kurz warten.',
+      tooManyWait: 'Zu viele Anfragen. Bitte in {seconds} Sekunden erneut versuchen.',
       generic: 'Die Aktion ist fehlgeschlagen.',
     },
     tenants: {
@@ -986,6 +987,13 @@ try {
       fromAddress: 'Absenderadresse',
       fromName: 'Absendername',
       orgEnabled: 'Mail an das Team senden',
+      contentLabel: 'Inhalt der Mail an das Team',
+      contentNotification: 'Nur Benachrichtigung mit Link',
+      contentFull: 'Mit allen Angaben',
+      contentNotificationHint:
+        'Die Mail enthält nur Formularname, Zeitpunkt, Kennung und einen Link in diese Anwendung. Die Angaben der Einsendung bleiben verschlüsselt und sind nach der Anmeldung einsehbar. Betreff und Text werden vom System gesetzt, eine Antwortadresse entfällt.',
+      contentFullHint:
+        'Die Mail enthält alle Angaben der Einsendung. Ohne eigenen Betreff und Text erzeugt das System sie als Liste „Beschriftung: Wert“; mit eigener Vorlage gilt die Vorlage.',
       orgTo: 'Empfänger (eine Adresse pro Zeile)',
       orgBcc: 'Blindkopie',
       replyTo: 'Antwort an Feld',
@@ -1224,9 +1232,18 @@ try {
       grant: 'Zugang erteilen',
       hasAccess: 'hat Zugang',
       granted: 'Zugang erteilt.',
-      failed: 'Das hat nicht geklappt.',
+      failed:
+        'Das hat nicht geklappt. Bitte erneut versuchen; besteht das Problem, prüfen Sie, ob Sie das Recht zur Schlüsselverwaltung für diesen Kunden haben.',
       mismatch: 'Der Schlüssel passt nicht.',
       noAccountKey: 'Für dieses Konto gibt es noch keinen Kontoschlüssel.',
+      noPasskey:
+        'Dieser Passkey kann den Kontoschlüssel nicht entsperren (keine Schlüsselableitung/PRF). Geben Sie oben im Abschnitt „Wiederherstellungscode“ den Code Ihres Kontos ein.',
+      noRecovery:
+        'Für diesen Kunden ist keine Wiederherstellung hinterlegt. Übernehmen Sie stattdessen den Altschlüssel (siehe unten) oder bitten Sie ein Konto mit Zugang um Freigabe.',
+      wrongCode:
+        'Der Wiederherstellungscode passt nicht zu diesem Kunden. Prüfen Sie die Eingabe (Groß-/Kleinschreibung, Bindestriche und Leerzeichen spielen keine Rolle).',
+      reauth:
+        'Die Bestätigung mit dem Passkey fehlt. Bitte erneut versuchen und die Passkey-Abfrage bestätigen.',
     },
     legacyKey: {
       title: 'Altschlüssel aus dem Umstieg übernehmen',
@@ -1294,7 +1311,7 @@ try {
         'Der Export enthält Datenpakete und die Anhanganzahl. Anhänge laden Sie separat im Einsendungsdetail herunter.',
       exportProgress: '{n} Einsendungen vorbereitet. Der Export läuft …',
       retentionHint:
-        'Aufbewahrung: 1–3650 Tage. Leer lassen: Automatische Löschung aus. Geschützte Einsendungen bleiben erhalten. Änderungen betreffen auch den Bestand.',
+        'Aufbewahrung: 1–3650 Tage, Standard 72 Stunden (3 Tage). Die Frist ist Pflicht. Geschützte Einsendungen bleiben erhalten. Änderungen betreffen auch den Bestand.',
     },
     statisticsPage: {
       sparse:
@@ -1382,7 +1399,7 @@ try {
       removed: 'Die Einsendung wurde gelöscht.',
       retentionTitle: 'Aufbewahrung',
       retentionHint:
-        'Einsendungen werden nach dieser Zahl von Tagen automatisch gelöscht, außer sie sind gehalten. Leer lassen schaltet die automatische Löschung aus. Eine Änderung gilt auch für vorhandene Einsendungen.',
+        'Einsendungen werden nach dieser Zahl von Tagen automatisch gelöscht, außer sie sind gehalten. Standard sind 72 Stunden (3 Tage); die Frist ist Pflicht und kann geändert, aber nicht abgeschaltet werden. Eine Änderung gilt auch für vorhandene Einsendungen.',
       retentionDays: 'Aufbewahrung in Tagen (1–3650)',
       retentionSave: 'Aufbewahrung speichern',
       retentionSaved: 'Aufbewahrung gespeichert.',
@@ -1585,10 +1602,16 @@ try {
     checkFailed: 'Der Zugriff auf Einsendungen konnte nicht geprüft werden.',
     setupNeeded:
       'Bitte zuerst unter Konto den Zugriff auf Einsendungen einrichten und den Wiederherstellungscode sichern.',
+    lockedNeeded:
+      'Der Schlüssel ist gesperrt (zum Beispiel nach dem Neuladen). Öffnen Sie Konto und geben Sie den Zugriff mit Ihrem Passkey frei („Mit Passkey entsperren“). Geht das nicht, weil der Passkey keine Schlüsselableitung (PRF) kann, geben Sie dort den Wiederherstellungscode ein. Kehren Sie danach zur Einrichtung zurück.',
     setupFailed:
       'Der Zugriff auf Einsendungen konnte nicht eingerichtet werden. Bitte erneut versuchen.',
     retry:
       'Der Zugriff auf ältere Einsendungen wird später erneut aktualisiert. Bei wiederholten Fehlern wenden Sie sich bitte an die Administration.',
+    missingGeneration:
+      'Für eine ältere (importierte) Schlüsselgeneration fehlt Ihr Zugang, daher bleiben deren Einsendungen gesperrt. Öffnen Sie Konto → Sicherheit → Erweitert und geben Sie dort den Recovery-Code ein oder übernehmen Sie den Altschlüssel.',
+    needsConfirmation:
+      'Der Zugriff auf ältere Einsendungen wird aktualisiert, sobald Sie eine Aktion mit Passkey-Bestätigung ausführen.',
     title: 'Wiederherstellungscode sichern',
     warning:
       'Diesen Code sicher außerhalb dieses Browsers aufbewahren. Er wird nur jetzt angezeigt und ermöglicht die Wiederherstellung des Zugriffs auf Einsendungen dieses Kunden.',
@@ -1596,9 +1619,9 @@ try {
     confirm: 'Code gesichert',
     wrong: 'Die Eingabe stimmt nicht mit dem angezeigten Code überein.',
     locked:
-      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben. Unterstützt dieses Gerät das nicht, öffnen Sie Konto → Sicherheit → Erweitert.',
+      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben und muss nach jedem Neuladen der Seite erneut freigegeben werden. Unterstützt Ihr Passkey das nicht, geben Sie unten den Wiederherstellungscode ein; je Kunde finden Sie „Mit Passkey entsperren“ unter Erweitert.',
     lockedShort:
-      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben.',
+      'Der Zugriff auf Einsendungen ist gesperrt. Er wird bei der Anmeldung mit Ihrem Passkey freigegeben und muss nach jedem Neuladen der Seite erneut freigegeben werden.',
     release: 'Zugriff freigeben',
     openAdvanced: 'Erweitert öffnen',
     updating: 'Zugriff auf Einsendungen wird aktualisiert …',
@@ -1749,6 +1772,8 @@ try {
         creating: 'Wird angelegt …',
         created: 'Kunde „{name}“ ist angelegt.',
         manage: 'Kunden ansehen',
+        imported:
+          'Kunde aus dem Umstieg importiert, wird beim Live-Gang aktiviert. Bis dahin erscheint er hier nicht in der Kundenliste; einen weiteren Kunden können Sie trotzdem anlegen.',
       },
       form: {
         title: 'Erstes Formular anlegen und veröffentlichen',
@@ -1793,9 +1818,12 @@ try {
         title: 'Daten aus dem alten System übernehmen',
         purpose:
           'Optional: Der Umstieg importiert Kunden, Formulare und Einsendungen aus einem Datenbank-Snapshot des Altsystems. Überspringen Sie ihn, wenn Sie neu beginnen.',
-        doneNote: 'Es gibt mindestens einen Importlauf.',
+        doneNote: 'Der Import ist durchgeführt (Prüfbericht liegt vor).',
         action: 'Umstieg öffnen',
         actionDone: 'Importläufe ansehen',
+        running: 'Ein Lauf ist noch in Arbeit.',
+        dryRun:
+          'Der Prüflauf ist erledigt, es wurde noch nichts importiert. Starten Sie danach den Import.',
       },
     },
     summary: {
@@ -1858,6 +1886,35 @@ try {
     deleteNotAllowed: 'Das Löschen ist mit Ihren Rechten nicht möglich.',
     selectionBar: 'Auswahl',
     exportTitle: 'Export',
+  },
+  audit: {
+    title: 'Protokoll',
+    description:
+      'Wer hat wann was geändert? Nur Metadaten, keine Inhalte. Sichtbar ist, was Ihr Recht „Protokoll lesen“ abdeckt. Zeiten in UTC.',
+    filter: 'Protokoll filtern',
+    action: 'Aktion',
+    actionHint: 'Genauer Aktionscode, z. B. key.rotate',
+    actor: 'Akteur (Konto-ID)',
+    from: 'Von (UTC)',
+    to: 'Bis (UTC)',
+    apply: 'Anwenden',
+    reset: 'Zurücksetzen',
+    next: 'Weitere laden',
+    loading: 'Protokoll wird geladen …',
+    entriesTitle: 'Einträge ({n})',
+    time: 'Zeitpunkt (UTC)',
+    actionColumn: 'Aktion',
+    actorColumn: 'Akteur',
+    scope: 'Kunde / Formular',
+    subject: 'Betroffenes Objekt',
+    empty: 'Keine passenden Einträge.',
+    emptyHint:
+      'Für die gewählten Filter liegen keine Protokolleinträge vor. Lockern Sie die Filter oder wählen Sie einen anderen Zeitraum.',
+    denied: 'Dafür fehlt Ihnen die Berechtigung „Protokoll lesen“.',
+    invalidActor: 'Bitte eine gültige Konto-ID (UUID) eingeben.',
+    invalidAction: 'Nur Buchstaben, Ziffern sowie . - _ : sind erlaubt.',
+    actors: { human: 'Mensch', service: 'Dienst', migration: 'Umstieg', legacy: 'Altsystem' },
+    system: 'System',
   },
   ops: {
     title: 'Betrieb',
@@ -2255,6 +2312,8 @@ try {
         busy: 'Es läuft bereits eine Quellprüfung. Bitte kurz warten und erneut versuchen.',
         connection:
           'Die Verbindung wurde unterbrochen oder die Prüfung ist fehlgeschlagen. Der bestätigte Fortschritt bleibt erhalten. Bitte Phase prüfen und erneut versuchen.',
+        conflict:
+          'Das ist im aktuellen Zustand des Laufs nicht möglich. Die Ansicht wird aktualisiert, bitte Zustand prüfen.',
         planInvalid: 'Bitte Zuordnung und zusätzliche Planangaben prüfen.',
         source: {
           title: 'Quelle prüfen',
@@ -2335,7 +2394,7 @@ try {
             'Schlüssel {list} wird von Formularen eines anderen Kunden verwendet. Ein Schlüssel gehört genau einem Kunden; die Einsendungen des anderen Kunden brechen den Lauf ab. Ordnen Sie diese Formulare demselben Kunden zu.',
           namespace: 'Quellnamespace',
           namespaceHint:
-            'Vorschlag aus dem Datenbanknamen der Quelle. Bei Wiederholung und Delta muss er gleich bleiben; er wird im Plan des Laufs festgehalten.',
+            'Vorschlag aus dem Datenbanknamen der Quelle. Bei Wiederholung muss er gleich bleiben; er wird im Plan des Laufs festgehalten.',
           advanced: 'Erweitert',
           customerId: 'Kunden-UUIDs (automatisch)',
           newId: 'Neue Kundenkennung',
@@ -2419,15 +2478,42 @@ try {
             'migration-review':
               'Zeilen, die nicht übernommen wurden (z. B. Statistik ohne Schlüssel)',
             'source-deletion-review': 'Tabellen mit weniger Zeilen als beim früheren Lauf',
+            'statistics-review-missing':
+              'Statistikzeilen, deren Übernahme nicht freigegeben ist (Statistik-Freigabe im Plan fehlt)',
+            'statistics-key-unknown':
+              'Statistikzeilen ohne passenden Kundenschlüssel (der öffentliche Schlüssel im Plan ist keine Schlüsselgeneration des Kunden)',
           } as Record<string, string>,
           errorCodes: {
             migration_failed:
               'Unbekannter Fehler (Details stehen im Server-Log unter „migration job failed“)',
             invalid_source: 'Ein Wert der Quelle konnte nicht übernommen werden',
             invalid_plan: 'Der Plan passt nicht zu den Quelldaten (Zuordnung prüfen)',
+            target_forms_live:
+              'Im Ziel gibt es aktive oder veröffentlichte Formulare; der Import schreibt dann nichts. Der Import ist nur vor dem Live-Gang möglich: In einem frischen Ziel importieren oder das Ziel aus der Sicherung vor der Veröffentlichung wiederherstellen. Pausieren genügt nicht, ein Zurücknehmen der Veröffentlichung gibt es nicht. Die betroffenen Formular-IDs stehen im Server-Log unter „migration job failed“.',
+            customer_name_mismatch:
+              'Ein Kunde der Zuordnung heißt im Ziel anders als im Plan; der Import schreibt nichts. Den Namen in der Zuordnung auf den Namen im Ziel setzen (oder den vorhandenen Kunden dort wählen) und den Lauf wiederholen.',
             conflict: 'Das Ziel enthält schon abweichende Daten für diese Quelle',
+            snapshot_changed:
+              'Für diese Quelle gibt es schon einen Import mit anderem Snapshot. Ein Nachimport (Delta) ist nicht vorgesehen: Ziel aus der Sicherung wiederherstellen und einmalig neu importieren.',
+            source_changed:
+              'Die Altdaten wurden seit dem Prüflauf verändert. Altsystem in Schreibpause versetzen und den Prüflauf wiederholen.',
+            source_not_quiesced:
+              'Das Altsystem wurde während des Imports beschrieben. Ziel aus der Sicherung wiederherstellen, Schreibpause herstellen und neu importieren.',
             missing_target: 'Ein Ziel der Zuordnung existiert nicht',
             database: 'Datenbankfehler beim Schreiben ins Ziel',
+            'database@1062':
+              'Doppelter Eintrag im Ziel: Die Daten oder der Schlüssel sind dort schon vorhanden',
+            'database@1048': 'Ein Pflichtfeld hatte in der Quelle keinen Wert',
+            'database@1452': 'Ein verknüpftes Objekt fehlt im Ziel',
+            'database@1406': 'Ein Wert der Quelle ist für die Zielspalte zu lang',
+            key_conflict_active:
+              'Der Kunde hat im Ziel schon einen aktiven Schlüssel. Der Altschlüssel würde ein zweiter aktiver Schlüssel. Anderen oder neuen Kunden zuordnen, oder den Schlüssel im Ziel zuerst zurückbauen.',
+            key_conflict_number:
+              'Der Kunde hat im Ziel schon eine Schlüsselgeneration mit derselben Nummer. Anderen oder neuen Kunden zuordnen, oder die Nummern im Plan (Erweitert: keyGenerationNumbers) anpassen.',
+            key_conflict_publickey:
+              'Dieselbe Schlüsselkennung ist im Ziel mit einem anderen öffentlichen Schlüssel vorhanden. Der Lauf schreibt nichts, bis das geklärt ist.',
+            key_conflict_plan:
+              'Der Plan widerspricht sich: eine Generationsnummer doppelt oder zwei aktive Schlüssel für einen Kunden. Zuordnung der Schlüssel prüfen.',
             lock: 'Ein anderer Import läuft bereits',
             interrupted: 'Pausiert',
             source_auth: 'Anmeldung an der Quelle abgelehnt: Benutzer oder Passwort prüfen',
@@ -2439,8 +2525,15 @@ try {
             source_no_tls: 'Die Quelle bietet kein TLS an: TLS an der Quelle aktivieren',
             source_not_allowed:
               'Quelladresse nicht freigegeben oder nicht auflösbar: Einstellung „migration.allowedNets“ prüfen',
+            source_cert_hostname:
+              'Das Zertifikat der Quelle passt nicht zum Hostnamen: Die Adresse muss dem Namen im Zertifikat entsprechen',
+            source_cert_untrusted:
+              'Das Zertifikat der Quelle stammt von einer unbekannten Stelle: Die Quell-CA muss im Vertrauensspeicher des Servers liegen (es gibt kein CA-Feld)',
+            source_cert_expired: 'Das Zertifikat der Quelle ist abgelaufen',
             source_failed: 'Die Quelle konnte nicht sicher geprüft werden',
           },
+          errorNumber: 'Fehlernummer',
+          errorObject: 'Name',
           errorReasons: {
             missingColumn: 'Spalte fehlt in der Quelle',
             missingValue: 'Pflichtwert fehlt',
@@ -2460,8 +2553,9 @@ try {
           pause: 'Sicher pausieren',
           resume: 'Fortsetzen',
           import: 'Import starten',
+          rehearse: 'Prüflauf wiederholen',
           dryDone:
-            'Der Prüflauf ist abgeschlossen. Sehen Sie den Bericht durch und starten Sie dann den Import.',
+            'Der Prüflauf ist abgeschlossen. Sehen Sie den Bericht durch. Das Altsystem muss jetzt bis zum Ende des Imports in Schreibpause bleiben: Der Import prüft, dass die Altdaten seit dem Prüflauf unverändert sind. Wurde es doch beschrieben, wiederholen Sie den Prüflauf.',
           report: 'Probleme ansehen und bestätigte Zähler',
           download: 'Bericht herunterladen',
           noReport: 'Der Lauf hat noch keinen Bericht geliefert.',
@@ -2469,7 +2563,7 @@ try {
         review: {
           title: 'Prüfung',
           description:
-            'Prüfen Sie den Import, bevor Sie umschalten: Bericht lesen, Entschlüsselung lokal testen, bei Bedarf Delta prüfen und Entwürfe erzeugen.',
+            'Prüfen Sie den Import, bevor Sie umschalten: Bericht lesen, Entschlüsselung lokal testen, Entwürfe erzeugen.',
           emptyTitle: 'Noch kein Import zur Prüfung',
           emptyBody:
             'Sobald ein Import abgeschlossen ist und auf Prüfung wartet, erscheint er hier.',
@@ -2482,11 +2576,7 @@ try {
           probeHint:
             'Nur migrierte :2-HPKE-Proben. Geben Sie den alten privaten X25519-Datenschlüssel als Base64url ein. Er bleibt flüchtig im Browser; RSA/CBC wird nicht unterstützt.',
           probeKey: 'Privater Altschlüssel',
-          deltaTitle: 'Delta-Prüflauf',
-          deltaHash: 'Neuer Snapshot-SHA256 für Delta-Prüflauf',
-          deltaStart: 'Delta-Prüflauf starten',
-          deltaHint:
-            'Delta benötigt eine neue eingefrorene Quelle gleicher Struktur und Zuordnung. Bestehende Quell-IDs und Zielnachweise werden geprüft; nur neue Quell-IDs werden angelegt. Änderungen sind Konflikte, Löschungen Prüfbedarf. Keine Freigabe für eine laufend veränderte Quelle.',
+          probeKid: 'Benötigte Schlüssel-ID der Probe: {kid}',
           draftTitle: 'Entwürfe',
           draftHint:
             'Erzeugt inaktive Entwurfsvorschläge aus den Altformularen samt Konverterbericht.',
@@ -2503,7 +2593,7 @@ try {
           checklistTitle: 'Vor der Umschaltung prüfen',
           checklist: [
             'SDK vor dem DNS-Wechsel prüfen.',
-            'Finalen Delta- und Löschabgleich durchführen.',
+            'Altsystem bis zur Umschaltung in Schreibpause lassen; der Import hat geprüft, dass es während des Imports unverändert war.',
             'Altschlüssel im Konto übernehmen, damit importierte Einsendungen lesbar sind.',
             'Stichproben der importierten Einsendungen prüfen.',
             'Rückkehrplan bereithalten.',
@@ -2516,6 +2606,16 @@ try {
           removeHint: 'Löscht die Zugangsdaten zur Quelle, keine importierten Einsendungen.',
           remove: 'Altzugriff entfernen',
           closed: 'Der Altzugriff wurde entfernt. Der Umstieg ist abgeschlossen.',
+          closedTitle: 'Umstieg abgeschlossen',
+          closedImport: 'Import abgeschlossen.',
+          closedProbe: 'Entschlüsselungsprobe lokal bestätigt.',
+          closedTest: 'Testnachricht lokal bestätigt.',
+          closedRemoved: 'Die Zugangsdaten zur Quelle sind entfernt.',
+          closedNote:
+            'Importierte Einsendungen bleiben erhalten. Hier sind keine Aktionen mehr nötig.',
+          missing: 'Noch offen: {items}.',
+          missingProbe: 'Probe',
+          missingTest: 'Testnachricht',
           disable: 'Danach migration.enabled in den Einstellungen deaktivieren',
           emptyTitle: 'Umschaltung noch nicht erreicht',
           emptyBody: 'Schließen Sie zuerst Import und Prüfung ab.',
@@ -2525,7 +2625,6 @@ try {
             'Lokale Entschlüsselung bestätigt und neue Testnachricht lokal verschlüsselt und geprüft. Nur Chiffrat-Hashes wurden übertragen.',
           probeFailed:
             'Probe fehlgeschlagen oder abgebrochen. Schlüssel und Paketformat prüfen. Es wurde kein Klartext übertragen.',
-          deltaHash: 'Neuen Snapshot-SHA256 angeben.',
           formUuid: 'Formular-UUID prüfen.',
           drafts:
             'Inaktive Entwurfsvorschläge erstellt. Feld-, Mail-, Domain- und Berechtigungsprüfung bleiben erforderlich.',

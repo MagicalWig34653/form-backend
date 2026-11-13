@@ -14,10 +14,14 @@ public struct FTPConfig: Sendable, Equatable {
     public var username: String
     public var password: String
     public var verifyCertificate: Bool
+    /// Per reply / per data transfer.
     public var timeout: TimeInterval
-    public init(host: String, port: Int, security: Security, username: String, password: String, verifyCertificate: Bool = true, timeout: TimeInterval = 30) {
+    /// Absolute limit for the whole session from `connect()` on (review Astra 2 M6): a slow but steady server cannot hold the deployment lock.
+    public var totalTimeout: TimeInterval
+    public init(host: String, port: Int, security: Security, username: String, password: String, verifyCertificate: Bool = true, timeout: TimeInterval = 30,
+                totalTimeout: TimeInterval = 600) {
         self.host = host; self.port = port; self.security = security; self.username = username; self.password = password
-        self.verifyCertificate = verifyCertificate; self.timeout = timeout
+        self.verifyCertificate = verifyCertificate; self.timeout = timeout; self.totalTimeout = totalTimeout
     }
 }
 
@@ -29,16 +33,33 @@ public struct FTPError: Error, Equatable, CustomStringConvertible {
 
 struct FTPReply: Sendable { let code: Int; let text: String }
 
+/// Counts replies that were received but not yet read (review Astra 2 M6): the reply stream stays bounded.
+final class ReplyBacklog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    private var over = false
+    let limit: Int
+    init(limit: Int) { self.limit = limit }
+    /// false = over the limit; the session is then unusable (`overflowed`)
+    func received() -> Bool { lock.lock(); defer { lock.unlock() }; guard n < limit else { over = true; return false }; n += 1; return true }
+    func consumed() { lock.lock(); n = max(0, n - 1); lock.unlock() }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return n }
+    var overflowed: Bool { lock.lock(); defer { lock.unlock() }; return over }
+}
+
 /// Control-channel reader: complete (possibly multi-line) replies, bounded.
 final class FTPReplyHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
     private var pending: [UInt8] = []
     private var lines: [String] = []
     private var first = 0
+    private var failed = false
     let continuation: AsyncStream<Result<FTPReply, FTPError>>.Continuation
-    init(_ c: AsyncStream<Result<FTPReply, FTPError>>.Continuation) { continuation = c }
+    let backlog: ReplyBacklog
+    init(_ c: AsyncStream<Result<FTPReply, FTPError>>.Continuation, backlog: ReplyBacklog) { continuation = c; self.backlog = backlog }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard !failed else { return }
         var buf = unwrapInboundIn(data)
         pending.append(contentsOf: buf.readBytes(length: buf.readableBytes) ?? [])
         while let nl = pending.firstIndex(of: 0x0A) {
@@ -52,12 +73,17 @@ final class FTPReplyHandler: ChannelInboundHandler, @unchecked Sendable {
             if lines.count > 200 { fail(context); return }
             if lines.count == 1 && sep == "-" { continue }
             if lines.count > 1 && !(text.hasPrefix("\(first) ")) { continue }   // continuation lines until "<code> "
+            guard backlog.received() else { fail(context, "reply_overflow"); return }   // more unread replies than any command sequence produces
             continuation.yield(.success(FTPReply(code: first, text: lines.joined(separator: "\n"))))
             lines = []
         }
         if pending.count > 4096 { fail(context) }
     }
-    private func fail(_ ctx: ChannelHandlerContext) { continuation.yield(.failure(FTPError("bad_reply"))); ctx.close(promise: nil) }
+    private func fail(_ ctx: ChannelHandlerContext, _ code: String = "bad_reply") {
+        guard !failed else { return }
+        failed = true
+        continuation.yield(.failure(FTPError(code))); continuation.finish(); ctx.close(promise: nil)
+    }
     func channelInactive(context: ChannelHandlerContext) { continuation.finish() }
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         continuation.yield(.failure(FTPError(error is NIOSSLError ? "tls_failed" : "connection_error")))
@@ -101,6 +127,24 @@ public final class FTPClient: @unchecked Sendable {
     private var address = ""
     private var context: NIOSSLContext?
     private var dataTLS = false
+    private var deadline: Date?
+    private var backlog = ReplyBacklog(limit: FTPClient.maxQueuedReplies)
+    static let maxQueuedReplies = 8
+    var queuedReplies: Int { backlog.count }
+
+    /// Remaining time for one step: at most `timeout`, never beyond the session deadline. `session` tells which one binds.
+    private func budget(_ timeout: TimeInterval) throws -> (seconds: TimeInterval, session: Bool) {
+        let step = Date().addingTimeInterval(timeout)
+        guard let deadline, deadline < step else { return (timeout, false) }
+        let left = deadline.timeIntervalSinceNow
+        guard left > 0 else { throw FTPError("deadline_exceeded") }
+        return (left, true)
+    }
+
+    /// Nothing is sent once the session deadline has passed.
+    func checkDeadline() throws {
+        if let deadline, deadline <= Date() { throw FTPError("deadline_exceeded") }
+    }
 
     public init(config: FTPConfig, allowedNets: [CIDR] = [], allowInsecure: Bool = false, group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton) {
         self.config = config; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.group = group
@@ -118,6 +162,8 @@ public final class FTPClient: @unchecked Sendable {
     // MARK: session
 
     public func connect() async throws {
+        deadline = Date().addingTimeInterval(config.totalTimeout)
+        backlog = ReplyBacklog(limit: Self.maxQueuedReplies)
         if config.security == .plain && !allowInsecure { throw FTPError("insecure_not_allowed") }
         let addrs: [String]
         do { addrs = try await HostGuard.resolve(host: config.host, allowedNets: allowedNets) }
@@ -129,20 +175,21 @@ public final class FTPClient: @unchecked Sendable {
         context = ctx
         let hostname: String? = IPAddr(config.host) == nil ? config.host : nil
         var cont: AsyncStream<Result<FTPReply, FTPError>>.Continuation!
-        let replies = AsyncStream<Result<FTPReply, FTPError>>(bufferingPolicy: .unbounded) { cont = $0 }
-        let c = cont!
+        let replies = AsyncStream<Result<FTPReply, FTPError>>(bufferingPolicy: .unbounded) { cont = $0 }   // bounded by ReplyBacklog
+        let c = cont!, bl = backlog
         let implicit = config.security == .implicitTLS
+        let connectLimit = try budget(10).seconds
         do {
-            channel = try await ClientBootstrap(group: group).connectTimeout(.seconds(10)).channelInitializer { ch in
+            channel = try await ClientBootstrap(group: group).connectTimeout(.milliseconds(Int64(connectLimit * 1000))).channelInitializer { ch in
                 do {
                     if implicit { try ch.pipeline.syncOperations.addHandler(NIOSSLClientHandler(context: ctx, serverHostname: hostname)) }
-                    try ch.pipeline.syncOperations.addHandler(FTPReplyHandler(c))
+                    try ch.pipeline.syncOperations.addHandler(FTPReplyHandler(c, backlog: bl))
                     return ch.eventLoop.makeSucceededFuture(())
                 } catch { return ch.eventLoop.makeFailedFuture(error) }
             }.connect(host: address, port: config.port).get()
         } catch { throw FTPError("connect_failed") }
         iterator = replies.makeAsyncIterator()
-        _ = try await expect([220], phase: "greeting")
+        _ = try await expect([220], phase: "greeting")   // NB: the greeting counts against the backlog like any reply
         if config.security == .explicitTLS {
             _ = try await command("AUTH TLS", [234])
             do { try await channel!.pipeline.addHandler(NIOSSLClientHandler(context: ctx, serverHostname: hostname), position: .first).get() }
@@ -172,22 +219,33 @@ public final class FTPClient: @unchecked Sendable {
         return s
     }
 
-    private func read(_ phase: String) async throws -> FTPReply {
-        guard var it = iterator else { throw FTPError("not_connected") }
+    /// One reply, at the latest at `until` (and never after the session deadline).
+    private func read(_ phase: String, until: Date) async throws -> FTPReply {
+        guard var it = iterator, let ch = channel else { throw FTPError("not_connected") }
+        guard !backlog.overflowed else { throw FTPError("reply_overflow") }
+        let left = until.timeIntervalSinceNow
+        guard left > 0 else { throw FTPError("timeout") }
+        let (seconds, session) = try budget(left)
         let timedOut = Flag()
-        let ch = channel!
-        let t = ch.eventLoop.scheduleTask(in: .milliseconds(Int64(config.timeout * 1000))) { timedOut.set(); ch.close(promise: nil) }
+        let t = ch.eventLoop.scheduleTask(in: .milliseconds(max(1, Int64(seconds * 1000)))) { timedOut.set(); ch.close(promise: nil) }
         defer { t.cancel() }
         let next = await it.next()
         iterator = it
-        guard let n = next else { throw FTPError(timedOut.value ? "timeout" : "connection_closed") }
-        switch n { case .success(let r): return r; case .failure(let e): throw e }
+        guard let n = next else { throw FTPError(timedOut.value ? (session ? "deadline_exceeded" : "timeout") : "connection_closed") }
+        switch n { case .success(let r): backlog.consumed(); return r; case .failure(let e): throw e }
     }
     private final class Flag: @unchecked Sendable { private var v = false; private let l = NSLock(); func set() { l.lock(); v = true; l.unlock() }; var value: Bool { l.lock(); defer { l.unlock() }; return v } }
 
+    /// One deadline for the final reply: preliminary 1xx replies do not restart it (review Astra 2 M6), and there are at most a few.
     private func expect(_ ok: Set<Int>, phase: String) async throws -> FTPReply {
-        var r = try await read(phase)
-        while r.code / 100 == 1, !ok.contains(r.code) { r = try await read(phase) }   // preliminary replies
+        let until = Date().addingTimeInterval(config.timeout)
+        var r = try await read(phase, until: until)
+        var preliminary = 0
+        while r.code / 100 == 1, !ok.contains(r.code) {
+            preliminary += 1
+            guard preliminary <= 16 else { throw FTPError("bad_reply") }
+            r = try await read(phase, until: until)
+        }
         guard ok.contains(r.code) else { throw FTPError("ftp_\(r.code)_\(phase)") }
         return r
     }
@@ -195,6 +253,10 @@ public final class FTPClient: @unchecked Sendable {
     @discardableResult
     func command(_ line: String, _ ok: Set<Int>, secret: Bool = false) async throws -> FTPReply {
         guard let ch = channel else { throw FTPError("not_connected") }
+        guard !backlog.overflowed else { throw FTPError("reply_overflow") }
+        // the session deadline is checked BEFORE the command leaves (gegenlesen Astra 2): a command written after the deadline may run
+        // on the server while the client only sees an error, which turns an RNFR/RNTO into an unclear remote state
+        try checkDeadline()
         do { try await ch.writeAndFlush(ByteBuffer(string: line + "\r\n")).get() } catch { throw FTPError("connection_closed") }
         return try await expect(ok, phase: String(line.prefix(4)).trimmingCharacters(in: .whitespaces).lowercased())
     }
@@ -219,7 +281,8 @@ public final class FTPClient: @unchecked Sendable {
     }
 
     private func dataDeadline(_ ch: Channel) -> Scheduled<Void> {
-        ch.eventLoop.scheduleTask(in: .milliseconds(Int64(config.timeout * 1000))) {
+        let seconds = (try? budget(config.timeout).seconds) ?? 0.001
+        return ch.eventLoop.scheduleTask(in: .milliseconds(max(1, Int64(seconds * 1000)))) {
             ch.pipeline.fireErrorCaught(FTPError("timeout"))
             ch.close(promise: nil)
         }
@@ -230,8 +293,9 @@ public final class FTPClient: @unchecked Sendable {
         let ctx = context!
         let hostname: String? = IPAddr(config.host) == nil ? config.host : nil
         let tls = dataTLS
+        let limit = try budget(10).seconds
         do {
-            return try await ClientBootstrap(group: group).connectTimeout(.seconds(10)).channelInitializer { ch in
+            return try await ClientBootstrap(group: group).connectTimeout(.milliseconds(Int64(limit * 1000))).channelInitializer { ch in
                 do {
                     if tls { try ch.pipeline.syncOperations.addHandler(NIOSSLClientHandler(context: ctx, serverHostname: hostname)) }
                     try ch.pipeline.syncOperations.addHandler(handler())
@@ -259,8 +323,9 @@ public final class FTPClient: @unchecked Sendable {
         defer { deadline.cancel(); ch.close(promise: nil) }
         // 150 comes first, the data follows, closing the data channel ends the transfer, then 226
         guard let channel = channel else { throw FTPError("not_connected") }
+        try checkDeadline()
         try await channel.writeAndFlush(ByteBuffer(string: "STOR \(try clean(path))\r\n")).get()
-        let pre = try await read("stor")
+        let pre = try await read("stor", until: Date().addingTimeInterval(config.timeout))
         guard pre.code == 150 || pre.code == 125 else { try? await ch.close(); throw FTPError("ftp_\(pre.code)_stor") }
         var buf = ch.allocator.buffer(capacity: bytes.count); buf.writeBytes(bytes)
         do { try await ch.writeAndFlush(buf).get() } catch { throw FTPError("data_error") }

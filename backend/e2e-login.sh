@@ -6,15 +6,16 @@
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
 DOCKER=${DOCKER:-docker}; command -v "$DOCKER" >/dev/null 2>&1 || DOCKER=/opt/homebrew/bin/docker
-IMAGE=${MARIADB_IMAGE:-mariadb:lts}; NAME=p4a-mariadb; PORT=${P3B_PORT:-33417}; WPORT=${E2E_PORT:-4180}; BPORT=$WPORT
+. backend/e2e-common.sh
+IMAGE=${MARIADB_IMAGE:-mariadb:lts}; NAME=$(e2e_name p4a-mariadb); PORT=${P3B_PORT:-$(e2e_pick_port)}; WPORT=${E2E_PORT:-$(e2e_pick_port)}; BPORT=$WPORT
 PW=$(openssl rand -hex 16); TMP=$(mktemp -d); APP_PID=""
 savelogs() { [ -n "${E2E_LOG_DIR:-}" ] || return 0; mkdir -p "$E2E_LOG_DIR"; for l in "$TMP"/*.log; do [ -f "$l" ] && cp "$l" "$E2E_LOG_DIR/$(basename "$0" .sh)-$(basename "$l")"; done; return 0; }  # CI: keep logs as artifact
-cleanup() { savelogs; [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; rm -rf "$TMP"; echo "cleanup done"; }
+cleanup() { savelogs; [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; e2e_cleanup; rm -rf "$TMP"; echo "cleanup done"; }
 trap cleanup EXIT
+e2e_reap_stale
 umask 077; openssl rand -hex 32 > "$TMP/server.key"
 "$DOCKER" info >/dev/null 2>&1 || { echo "ENV: docker daemon not reachable"; exit 2; }
-"$DOCKER" rm -f "$NAME" >/dev/null 2>&1
-"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "$IMAGE" >/dev/null || { echo "ENV: container start failed"; exit 2; }
+"$DOCKER" run -d "${E2E_LABEL_ARGS[@]}" --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "$IMAGE" >/dev/null || { echo "ENV: container start failed"; exit 2; }
 up=0
 for _ in $(seq 90); do
   if "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' e2e >/dev/null 2>&1 && sleep 2 \
@@ -24,10 +25,10 @@ done
 [ $up = 1 ] || { echo "ENV: server did not become ready"; exit 2; }
 export CLANG_MODULE_CACHE_PATH="$PWD/backend/.build/ModuleCache" SWIFTPM_MODULECACHE_OVERRIDE="$PWD/backend/.build/ModuleCache"
 swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App >>"$TMP/build.log" 2>&1 || { sleep 2; swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App >>"$TMP/build.log" 2>&1; } || { echo "ENV: build failed"; exit 2; }  # retry: the Swift frontend crashes sporadically
-(cd pwa && npm run build >/dev/null 2>&1) || { echo "ENV: pwa build failed"; exit 2; }
+e2e_pwa_build "$TMP/dist" || { echo "ENV: pwa build failed"; exit 2; }
 BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=e2e FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
-export FORM_INTERNAL_PORT=$BPORT FORM_INTERNAL_SECOND_FACTOR=1 FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
+export FORM_INTERNAL_PORT=$BPORT FORM_INTERNAL_SECOND_FACTOR=1 FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$TMP/dist"
 export FORM_SERVER_KEY_FILE="$TMP/server.key" FORM_ADMIN_ORIGIN=http://localhost:$WPORT FORM_RP_ID=localhost
 "$BIN" migrate >/dev/null 2>&1 || { echo "FAIL migrate"; exit 1; }
 
@@ -57,7 +58,8 @@ SQL
 
 "$BIN" serve >"$TMP/app.log" 2>&1 & APP_PID=$!
 for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
-(cd pwa && npx playwright test -c e2e-real/playwright.config.ts 2>&1 | tail -25); rc=${PIPESTATUS[0]}
+(cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; rc=$?  # own status: a pipe into tail would hide a failed run (PIPESTATUS after a subshell is the status of tail)
+tail -25 "$TMP/playwright.log"
 COUNT=$("$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -N e2e -e 'SELECT sign_count FROM passkeys' 2>/dev/null)
 echo "passkey sign_count in database after the run: $COUNT"
 grep -q "$PASSWORD" "$TMP/app.log" && { echo "FAIL password found in app log"; rc=1; } || echo "ok   password not in app log"

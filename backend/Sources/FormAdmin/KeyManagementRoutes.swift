@@ -232,7 +232,7 @@ enum KeyManagementRoutes {
                 SELECT r.kid AS kid, r.salt AS salt, r.iterations AS iterations, r.iv AS iv, r.wrapped_key AS wrapped_key FROM data_key_recovery r
                 JOIN customer_key_generations g ON g.customer_id = r.customer_id AND g.kid = r.kid AND g.state IN ('active', 'retiring')
                 WHERE r.customer_id = \(bind: DB.bin(tenant)) AND ((\(bind: requestedKid) IS NULL AND g.state = 'active') OR g.kid = \(bind: requestedKid))
-                """).first(decoding: R.self) else { throw Abort(.notFound) }
+                """).first(decoding: R.self) else { throw KeyRecoveryMissing() }   // after authorize: names the cause, leaks nothing
             try await ReleaseRoutes.audit(sql, tenant: tenant, form: nil, actor: account, action: "key.recovery.read", subject: tenant, at: DB.time(now()), category: "key").run()
             let res = try MailRoutes.anyJSON(["keyId": r.kid, "salt": r.salt.data.base64URLString, "iterations": Int(r.iterations), "iv": r.iv.data.base64URLString, "wrap": r.wrapped_key.data.base64URLString] as [String: Any])
             res.headers.replaceOrAdd(name: .cacheControl, value: "no-store")

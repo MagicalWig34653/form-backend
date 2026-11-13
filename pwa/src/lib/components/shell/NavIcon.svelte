@@ -36,6 +36,7 @@
   import Play from '@lucide/svelte/icons/play';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Plug from '@lucide/svelte/icons/plug';
+  import ScrollText from '@lucide/svelte/icons/scroll-text';
   import Search from '@lucide/svelte/icons/search';
   import Send from '@lucide/svelte/icons/send';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -63,6 +64,7 @@
     connections: Plug,
     webhook: Webhook,
     ops: Activity,
+    audit: ScrollText,
     setup: Hammer,
     migration: ArrowLeftRight,
     search: Search,

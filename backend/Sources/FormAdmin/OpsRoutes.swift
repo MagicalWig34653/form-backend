@@ -64,6 +64,9 @@ enum OpsRoutes {
             let alarmFilter: String? = req.query["alarms"]
             let from = try date("from", fallback: now().addingTimeInterval(alarmFilter == "1" ? -365 * 86400 : -86400)), to = try date("to", fallback: now())
             guard from <= to, to.timeIntervalSince(from) <= 366 * 86400 else { throw Abort(.badRequest) }
+            // Triggers stamp events with the database clock; without an explicit "to" a database clock running ahead of the
+            // app clock must not hide the newest events, so the default window has no upper bound.
+            let upper: String? = (req.query["to"] as String?) == nil ? nil : DB.time(to)
             let subRaw: String? = req.query["submission"]
             let submission = subRaw.flatMap(UUID.init(uuidString:))
             if subRaw != nil && submission == nil { throw Abort(.badRequest) }
@@ -75,7 +78,7 @@ enum OpsRoutes {
                 SELECT e.id, LOWER(CONCAT(SUBSTR(HEX(e.customer_id),1,8),'-',SUBSTR(HEX(e.customer_id),9,4),'-',SUBSTR(HEX(e.customer_id),13,4),'-',SUBSTR(HEX(e.customer_id),17,4),'-',SUBSTR(HEX(e.customer_id),21))) AS customer,
                   e.form_id,e.submission_id,e.target_id,e.event,e.operation,e.priority,DATE_FORMAT(e.occurred_at,'%Y-%m-%dT%H:%i:%sZ') AS occurredAt
                 FROM ops_events e WHERE e.customer_id=\(bind: DB.bin(customer)) AND e.form_id=\(bind: DB.bin(form))
-                  AND e.id < \(bind: before) AND e.occurred_at >= \(bind: DB.time(from)) AND e.occurred_at <= \(bind: DB.time(to))
+                  AND e.id < \(bind: before) AND e.occurred_at >= \(bind: DB.time(from)) AND (\(bind: upper) IS NULL OR e.occurred_at <= \(bind: upper))
                   AND (\(bind: event) IS NULL OR e.event=\(bind: event)) AND (\(bind: operation) IS NULL OR e.operation=\(bind: operation))
                   AND (\(bind: submission.map(DB.bin)) IS NULL OR e.submission_id=\(bind: submission.map(DB.bin)))
                   AND (\(bind: alarms) IS NULL OR (e.priority > 0 AND NOT EXISTS (SELECT 1 FROM ops_events n WHERE n.source_id=e.source_id AND n.operation=e.operation AND n.id>e.id)))

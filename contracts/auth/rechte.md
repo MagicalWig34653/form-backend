@@ -81,7 +81,7 @@ ein Schlüssel- oder Klartextrecht. Alle Rechte gelten zusätzlich zum Objektber
 | Schlüsselzugänge/Generationen/Recovery verwalten (`key.manage`) | J H | – | – |
 | Eigene Kontoeinstellungen/Sitzungen (`account.manage`) | J H | J H | J H |
 | Eigene MCP-Tokens/Grants bei MCP-Erlaubnis (`token.manage`) | J H | J H | J H |
-| Globale Anmelde-/MCP-/Änderungsaudits (`audit.read`) | J | – | – |
+| Anmelde-/MCP-/Änderungsaudits, nur Metadaten (`audit.read`; Zeilen je Grant-Bereich, Systemgrant zusätzlich Zeilen ohne Kunde) | J | J | J |
 
 `key.manage` verleiht keine Entschlüsselung: Erteilen eines Zugangs braucht die
 kryptografischen Voraussetzungen des Krypto-Vertrags. Adminstatus ist weder

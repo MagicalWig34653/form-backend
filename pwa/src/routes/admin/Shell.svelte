@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { loadFailureText } from '$lib/admin/describe';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
   import { router } from '$lib/router.svelte';
@@ -17,6 +18,7 @@
   import ApiTokens from './ApiTokens.svelte';
   import Settings from './Settings.svelte';
   import Ops from './Ops.svelte';
+  import Audit from './Audit.svelte';
   import Installation from './Installation.svelte';
   import Migration from './Migration.svelte';
   import { onboarding } from '$lib/onboarding.svelte';
@@ -85,7 +87,7 @@
 {:else if session.status === 'error'}
   <div class="mx-auto flex max-w-5xl flex-col items-start gap-3 p-4 sm:p-7">
     <Banner tone="danger" class="w-full">
-      {session.error?.message}
+      {session.error ? loadFailureText(session.error, session.error.message) : ''}
       {#snippet action()}
         <Button type="button" onclick={() => void session.load()}>{t.admin.retry}</Button>
       {/snippet}
@@ -140,6 +142,8 @@
         <ApiTokens />
       {:else if route.name === 'ops'}
         <Ops />
+      {:else if route.name === 'audit'}
+        <Audit />
       {:else if route.name === 'installation'}
         <Installation />
       {:else if route.name === 'migration'}

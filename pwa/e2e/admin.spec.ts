@@ -572,7 +572,9 @@ test('retention is set on the Aufbewahrung tab with a sticky save bar', async ({
   await page.goto(`/login?next=${encodeURIComponent(`/t/${T}/f/${F}/storage`)}`);
   await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
   await expect(page).toHaveURL(`/t/${T}/f/${F}/storage`);
-  await expect(page.getByLabel('Einsendungen automatisch löschen')).toBeChecked();
+  // The period is mandatory: no switch to turn the automatic deletion off.
+  await expect(page.getByLabel('Einsendungen automatisch löschen')).toHaveCount(0);
+  await expect(page.getByText(/Standard: 72 Stunden \(3 Tage\)/)).toBeVisible();
   await expect(page.getByLabel('Aufbewahrung in Tagen')).toHaveValue('90');
   await expect(page.getByRole('region', { name: 'Änderungen speichern' })).toHaveCount(0);
   await page.getByRole('button', { name: '30 Tage' }).click();

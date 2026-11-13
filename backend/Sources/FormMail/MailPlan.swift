@@ -9,12 +9,29 @@ public struct MailPlan: Sendable, Equatable {
     }
     public struct Organisation: Sendable, Equatable {
         public var to: [String], bcc: [String], replyToField: String?, template: Template
+        /// ADR 0041 (decision 13.11.2026): what the organisation mail carries. Absent in the stored form = `.full`: the practice team has no
+        /// access to the backend, so everything must be in the mail (as with the legacy backend).
+        public var content: Content = .full
+    }
+    public enum Content: String, Sendable, Equatable {
+        /// Form name, time, reference and a link into the PWA. No submitted value, no template text. Only by explicit choice.
+        case notification
+        /// All submitted values: the template rendered with them or, without subject/body, the standard (subject + list `label: value`).
+        case full
+    }
+    /// A form field as the standard mail lists it (`label: value`), in the order of `MailPlan.fields`.
+    public struct Field: Sendable, Equatable {
+        public var name: String, label: String
     }
     public struct Confirmation: Sendable, Equatable {
         public var toField: String, template: Template
     }
     public var fromAddress: String
     public var fromName: String?
+    /// Title of the form (not submitted data); used by the notification mail. Set from the form definition, not by `parse`.
+    public var formTitle: String = ""
+    /// Fields of the form definition (ids sorted numerically) for the standard mail's field list. Set from the form definition, not by `parse`.
+    public var fields: [Field] = []
     public var organisation: Organisation?
     public var confirmation: Confirmation?
     /// Template-only derived values (ADR 0035): name -> rule, evaluated per message from the in-memory fields.
@@ -93,7 +110,17 @@ public struct MailPlan: Sendable, Equatable {
               Set(from.keys).isSubset(of: ["address", "name"]), let faddr = (from["address"] as? String).flatMap(MailAddress.parse) else { return bad("from") }
         var fname: String? = nil
         if let n = from["name"] { guard let s = n as? String, s.count <= 100, !MailMessage.hasControl(s) else { return bad("from.name") }; fname = s.isEmpty ? nil : s }
-        func template(_ o: [String: Any], _ path: String) -> (Template?, String?) {
+        func template(_ o: [String: Any], _ path: String, optional: Bool = false) -> (Template?, String?) {
+            if optional {
+                // Organisation mail (ADR 0041): the template may be absent, partial or empty (e.g. `format` alone from the legacy importer): the
+                // standard mail then fills the gap (full) or it is never rendered (notification). Only type, size and header safety are checked.
+                let subject = o["subject"] ?? "", body = o["body"] ?? ""
+                guard let s = subject as? String, s.count <= maxSubject, !MailMessage.hasControl(s),
+                      let b = body as? String, b.utf8.count <= maxBody, !b.contains("\0") else { return (nil, path + ".subject/body") }
+                let fmt = (o["format"] ?? "text") as? String
+                guard fmt == "text" || fmt == "html" else { return (nil, path + ".format") }
+                return (Template(subject: s, body: b, isHTML: fmt == "html"), nil)
+            }
             guard let subject = o["subject"] as? String, (1...maxSubject).contains(subject.count), let body = o["body"] as? String, (1...maxBody).contains(body.utf8.count),
                   !body.contains("\0"), !MailMessage.hasControl(subject) else { return (nil, path + ".subject/body") }
             let fmt = (o["format"] as? String) ?? "text"
@@ -109,14 +136,20 @@ public struct MailPlan: Sendable, Equatable {
         guard let derived = parseDerived(mail["derived"], fieldNames: fieldNames) else { return bad("derived") }
         var org: Organisation? = nil, conf: Confirmation? = nil
         if let o = mail["organisation"] {
-            guard let od = o as? [String: Any], Set(od.keys).isSubset(of: ["to", "bcc", "subject", "body", "format", "replyToField"]) else { return bad("organisation") }
+            guard let od = o as? [String: Any], Set(od.keys).isSubset(of: ["to", "bcc", "subject", "body", "format", "replyToField", "content"]) else { return bad("organisation") }
             let (to, e1) = addresses(od["to"], "organisation.to"); if let e1 { return bad(e1) }
             let (bcc, e2) = od["bcc"] == nil ? ([], nil) : addresses(od["bcc"], "organisation.bcc"); if let e2 { return bad(e2) }
             guard !(to!.isEmpty && bcc!.isEmpty) else { return bad("organisation.to") }
-            let (t, e3) = template(od, "organisation"); if let e3 { return bad(e3) }
+            var content = Content.full
+            if let c = od["content"] { guard let s = c as? String, let v = Content(rawValue: s) else { return bad("organisation.content") }; content = v }
+            let (t, e3) = template(od, "organisation", optional: true); if let e3 { return bad(e3) }
             var rf: String? = nil
-            if let r = od["replyToField"] { guard let s = r as? String, fieldNames.contains(s) else { return bad("organisation.replyToField") }; rf = s }
-            org = Organisation(to: to!, bcc: bcc!, replyToField: rf, template: t!)
+            if let r = od["replyToField"] {
+                guard let s = r as? String else { return bad("organisation.replyToField") }
+                // Notification mode never sets a reply-to (it would be a submitted value), so a stale field name there is ignored, not an error.
+                if fieldNames.contains(s) { rf = s } else if content == .full { return bad("organisation.replyToField") }
+            }
+            org = Organisation(to: to!, bcc: bcc!, replyToField: rf, template: t!, content: content)
         }
         if let c = mail["confirmation"] {
             guard let cd = c as? [String: Any], Set(cd.keys).isSubset(of: ["toField", "subject", "body", "format"]), let tf = cd["toField"] as? String, fieldNames.contains(tf) else { return bad("confirmation.toField") }

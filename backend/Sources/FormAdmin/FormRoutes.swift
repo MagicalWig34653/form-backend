@@ -79,6 +79,11 @@ public enum FormAdmin {
                 // Standard draft (ADR 0009 F2): the form can be reviewed and published right away.
                 let doc = DraftStore.standardDocument(tenant: tenant, form: id, name: name)
                 _ = try await DraftStore.insert(tx, tenant: tenant, form: id, account: account, document: doc, base: nil, now: t)
+                // Retention period is mandatory (ADR 0012 no. 2): every new form starts with the default (72 h = 3 days).
+                try await tx.raw("""
+                    INSERT INTO settings (scope_key, setting_key, safe_value_json, manageable, modified_at)
+                    VALUES (\(bind: Retention.scopeKey(id)), \(bind: Retention.settingKey), \(bind: String(Retention.defaultDays)), 1, \(bind: t))
+                    """).run()
                 try await tx.raw("""
                     INSERT INTO audit_events (id, customer_id, form_id, actor_id, actor_kind, category, action_code, subject_id, occurred_at, safe_details_json)
                     VALUES (\(bind: DB.bin(UUID())), \(bind: DB.bin(tenant)), \(bind: DB.bin(id)), \(bind: DB.bin(account)), 'human', 'form', 'form.create',
@@ -133,6 +138,7 @@ public enum FormAdmin {
                 mailConnectionId: mailConnection.flatMap { DB.uuid($0.connection_id.data) }?.uuidString.lowercased()))
         }
         OpsRoutes.register(app, guardian: guardian, db: db, now: now)
+        AuditRoutes.register(app, guardian: guardian, db: db, now: now)
         app.lifecycle.use(OpsScheduler(db: db, secrets: secrets, allowedNets: mailAllowedNets, allowInsecure: allowInsecure, now: now))
         AbuseRoutes.register(tenants, guardian: guardian, db: db, secrets: secrets, now: now)
         if guardian.config.listener == "internal" { LegacyConversionRoutes.register(app, guardian: guardian, db: db, now: now) }

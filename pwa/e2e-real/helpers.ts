@@ -18,7 +18,8 @@ export async function addAuthenticator(page: Page, context: BrowserContext) {
       hasUserVerification: true,
       isUserVerified: true,
       automaticPresenceSimulation: true,
-      hasPrf: true,
+      // E2E_NO_PRF=1: a passkey that cannot derive key material (older browsers, some password managers)
+      hasPrf: process.env.E2E_NO_PRF !== '1',
     },
   });
 }
@@ -34,7 +35,7 @@ export async function registerPasskey(page: Page, link: string) {
 }
 
 /** Passkey login and recovery code; the setup assistant is shown afterwards. */
-export async function loginAndSecure(page: Page) {
+export async function loginAndSecure(page: Page): Promise<string> {
   await page.goto('/login');
   await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
   // First login: the account is asked to secure its recovery code before anything else (ADR 0024).
@@ -45,13 +46,12 @@ export async function loginAndSecure(page: Page) {
   const code = (await shown.innerText()).trim();
   await page.getByLabel('Code zur Bestätigung erneut eingeben').fill(code);
   await page.getByRole('button', { name: 'Code gesichert' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Ihr Administrationskonto einrichten' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Einrichtung', exact: true })).toBeVisible();
+  return code;
 }
 
 export async function toOverview(page: Page) {
-  await page.getByRole('button', { name: 'Zum Überblick' }).click();
+  await page.getByRole('link', { name: 'Übersicht', exact: true }).first().click();
 }
 
 /** Creates a customer from the overview and opens it. Returns its UUID. */
@@ -85,9 +85,9 @@ export async function addField(page: Page, name: string, label: string, kind: st
 
 /** Opens the configuration of the open form, adds the fields and publishes. */
 export async function configureAndPublish(page: Page, fields: [string, string, string][]) {
-  await page.getByRole('link', { name: 'Konfiguration', exact: true }).click();
+  await page.getByRole('link', { name: 'Felder', exact: true }).click();
   for (const [name, label, kind] of fields) await addField(page, name, label, kind);
-  await page.getByRole('link', { name: 'Prüfen & veröffentlichen' }).click();
+  await page.getByRole('link', { name: 'Veröffentlichen', exact: true }).click();
   await page.getByLabel('Ich habe die Änderungen geprüft.').check();
   await page.getByRole('button', { name: 'Jetzt veröffentlichen' }).click();
   await expect(page.getByText(/Veröffentlicht/).first()).toBeVisible();

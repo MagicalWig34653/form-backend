@@ -60,7 +60,8 @@ final class OpsDatabaseTests: XCTestCase {
             try await user.get("ops?form=\(f)&limit=1") { res in
                 XCTAssertEqual(res.status, .ok)
                 let page = try JSONDecoder().decode(TestPage.self, from: Data(buffer: res.body))
-                XCTAssertEqual(page.items.count, 1); XCTAssertEqual(page.items.first?.event, "accepted"); cursor = page.next!
+                XCTAssertEqual(page.items.count, 1); XCTAssertEqual(page.items.first?.event, "accepted")
+                cursor = try XCTUnwrap(page.next, "second event missing from the first page")
             }
             try await user.get("ops?form=\(f)&before=\(cursor)") { res in
                 let page = try JSONDecoder().decode(TestPage.self, from: Data(buffer: res.body))
@@ -86,6 +87,31 @@ final class OpsDatabaseTests: XCTestCase {
             XCTAssertEqual(audits, 1)
             try await fx.sql.raw("UPDATE permission_assignments SET revoked_at=UTC_TIMESTAMP(6) WHERE account_id=\(bind: DB.bin(a)) AND permission='audit.read'").run()
             try await user.get("ops?form=\(f)") { XCTAssertEqual($0.status, .forbidden) }
+        }
+    }
+    /// Events are stamped by the database clock (trigger UTC_TIMESTAMP), the default window by the app clock. A database
+    /// clock that runs ahead (Docker VM drift, separate DB host) must not hide the newest events from the default list.
+    func testDefaultWindowShowsEventsStampedAheadOfTheAppClock() async throws {
+        try await AdminFixture.with { fx in
+            let a = try await fx.account(), c = try await fx.customer(), f = try await fx.form(customer: c)
+            let user = try await fx.login(a)
+            try await fx.grant(a, "audit.read", customer: c, form: f, by: a)
+            let sub = UUID(), delivery = UUID()
+            try await fx.sql.raw("INSERT INTO submissions (id,customer_id,form_id,release_evidence,environment,state,removable,malware_scan_status) VALUES (\(bind: DB.bin(sub)),\(bind: DB.bin(c)),\(bind: DB.bin(f)),'legacy-unknown','production','accepted',1,'none')").run()
+            try await fx.sql.raw("INSERT INTO mail_deliveries (id,customer_id,form_id,submission_id,environment,mail_kind,identity_scope,transport_kind,state,attempts,created_at,updated_at) VALUES (\(bind: DB.bin(delivery)),\(bind: DB.bin(c)),\(bind: DB.bin(f)),\(bind: DB.bin(sub)),'production','organisation','form-mail','smtp','waiting-manual',0,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))").run()
+            // Simulate a database clock two seconds ahead of the app for this event.
+            try await fx.sql.raw("UPDATE ops_events SET occurred_at=UTC_TIMESTAMP(6) + INTERVAL 2 SECOND WHERE form_id=\(bind: DB.bin(f))").run()
+            try await user.get("ops?form=\(f)") { res in
+                XCTAssertEqual(res.status, .ok)
+                let page = try JSONDecoder().decode(TestPage.self, from: Data(buffer: res.body))
+                XCTAssertEqual(page.items.map(\.event), ["failed"])
+            }
+            // An explicit upper bound still applies.
+            let to = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-60))
+            try await user.get("ops?form=\(f)&to=\(to)") { res in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try JSONDecoder().decode(TestPage.self, from: Data(buffer: res.body)).items.count, 0)
+            }
         }
     }
     func testPersistentAlarmThrottleSuppressionAndFailureBarrier() async throws {

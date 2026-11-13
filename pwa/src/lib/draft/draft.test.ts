@@ -254,6 +254,7 @@ describe('mail form', () => {
     f.fromName = 'Praxis';
     f.organisation = {
       enabled: true,
+      content: 'full',
       to: 'a@example.org, b@example.org\nc@example.org',
       bcc: '',
       replyToField: 'email',
@@ -268,6 +269,7 @@ describe('mail form', () => {
       organisation: {
         to: ['a@example.org', 'b@example.org', 'c@example.org'],
         replyToField: 'email',
+        content: 'full',
         subject: 'S',
         body: 'B',
         format: 'html',
@@ -310,6 +312,7 @@ describe('mail form', () => {
     f.fromAddress = 'info@example.org';
     f.organisation = {
       enabled: true,
+      content: 'full',
       to: 'a@example.org',
       bcc: '',
       replyToField: '',
@@ -320,14 +323,13 @@ describe('mail form', () => {
     expect(validateMailForm(f, ['email'])).toEqual({});
     f.organisation.to = 'a@example.org, nope';
     f.organisation.subject = 'a\nb';
-    f.organisation.body = ' ';
+    f.organisation.body = ' '; // an empty organisation body is valid (standard field list)
     f.confirmation = { enabled: true, toField: 'fehlt', subject: '', body: 'x', format: 'text' };
     f.fromAddress = 'x';
     expect(validateMailForm(f, ['email'])).toEqual({
       fromAddress: 'address',
       orgTo: 'recipients',
       orgSubject: 'subject',
-      orgBody: 'body',
       confToField: 'field',
       confSubject: 'subject',
     });

@@ -170,7 +170,7 @@ public enum SetupMigrationRoutes {
         root.post("jobs", ":jobId", ":action") { req async throws -> Response in
             let actor = try await authorize(req, mutation: true, fresh: true)
             let id = try FormAdmin.uuidParam(req, "jobId"), action = req.parameters.get("action") ?? ""
-            guard ["pause", "resume", "import", "delta", "remove-source"].contains(action) else { throw Abort(.notFound) }
+            guard ["pause", "resume", "import", "rehearse", "remove-source"].contains(action) else { throw Abort(.notFound) }
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 guard let job = try await tx.raw("SELECT * FROM migration_jobs WHERE id=\(bind: DB.bin(id)) FOR UPDATE").first(decoding: MigrationJob.self) else { throw Abort(.notFound) }
@@ -180,18 +180,18 @@ public enum SetupMigrationRoutes {
                     try await tx.raw("UPDATE migration_jobs SET cancel_requested=1,state=IF(state='queued','paused',state) WHERE id=\(bind: DB.bin(id))").run()
                 case "resume":
                     guard ["paused", "failed"].contains(job.state) else { throw Abort(.conflict) }
+                    // Resuming cannot help after a changed source or another snapshot (ADR 0043): rehearse or restore the target instead.
+                    if job.state == "failed", let code = job.error_code, MigrationActionRefused.notResumable.contains(code) { throw MigrationActionRefused.resumeNotPossible }
                     try await tx.raw("UPDATE migration_jobs SET state='queued',actor_id=\(bind: DB.bin(actor)),cancel_requested=0,error_code=NULL WHERE id=\(bind: DB.bin(id))").run()
-                case "delta":
-                    guard job.state == "review", job.dry_run == 0 else { throw Abort(.conflict) }
-                    struct Delta: Decodable { let dumpSHA256: String }
-                    let input: Delta = try decode(req, allowed: ["dumpSHA256"])
-                    guard input.dumpSHA256.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else { throw Abort(.unprocessableEntity) }
-                    var plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
-                    guard plan.dumpSHA256 != input.dumpSHA256 else { throw Abort(.conflict) }
-                    plan.dumpSHA256 = input.dumpSHA256
-                    try await tx.raw("UPDATE migration_jobs SET plan_json=\(bind: MigrationService.encode(plan)),state='queued',dry_run=1,actor_id=\(bind: DB.bin(actor)),cancel_requested=0,probe_hash=NULL,test_hash=NULL WHERE id=\(bind: DB.bin(id))").run()
+                case "rehearse":
+                    // Same plan and snapshot hash again as a rehearsal (ADR 0043): a new fingerprint of the quiet legacy system is taken.
+                    guard (job.state == "review" && job.dry_run == 1) || (job.state == "failed" && job.error_code == "source_changed") else { throw MigrationActionRefused.rehearseNotAllowed }
+                    try await tx.raw("UPDATE migration_jobs SET state='queued',dry_run=1,actor_id=\(bind: DB.bin(actor)),cancel_requested=0,error_code=NULL,probe_hash=NULL,test_hash=NULL WHERE id=\(bind: DB.bin(id))").run()
                 case "import":
-                    guard job.state == "review", job.dry_run == 1 else { throw Abort(.conflict) }
+                    guard job.state == "review", job.dry_run == 1 else { throw MigrationActionRefused.importNeedsRehearsal }
+                    // The import compares the legacy data with the fingerprint of the rehearsal; jobs from before that have none.
+                    let rehearsal = try? JSONSerialization.jsonObject(with: Data(job.report_json.utf8)) as? [String: Any]
+                    guard let fingerprint = rehearsal?["sourceFingerprint"] as? String, !fingerprint.isEmpty else { throw MigrationActionRefused.fingerprintMissing }
                     try await tx.raw("UPDATE migration_jobs SET state='queued',dry_run=0,actor_id=\(bind: DB.bin(actor)),cancel_requested=0 WHERE id=\(bind: DB.bin(id))").run()
                 default:
                     guard ["review", "paused", "failed"].contains(job.state) else { throw Abort(.conflict) }

@@ -322,6 +322,9 @@ und Anwendung abstimmen, keine abgeschnittene Annahme. Werte müssen für
 bestehende Feldschemas vor Freigabe geprüft werden. DB/S3/SFTP-Zielausfall
 lehnt Annahme mit 503 ab, kein stiller Puffer (ADR 0003 Nr. 11).
 
+Multipart: Die Summe aller Textfelder (Namen und Werte, ohne Dateien) ist auf 2 MiB = 2.097.152 Byte begrenzt;
+überschritten → 413 `payload_too_large` (wie Datei- und Anzahlgrenzen, nicht 400). Die Grenze gilt während des Parsens (ADR 0042).
+
 ## Abnahme und Fortsetzung
 
 Synthetische Beispiele liegen in `examples/`; Platzhalter sind absichtlich

@@ -20,7 +20,6 @@
     canAdvance,
     countRows,
     describeJobError,
-    isSha256,
     keyImportable,
     keyWarnings,
     mappingIssues,
@@ -86,11 +85,12 @@
     updated = $state(''),
     loaded = $state(false);
   let activeSecret: Uint8Array | undefined;
-  let privateKey = $state(''),
-    deltaHash = $state('');
+  let privateKey = $state('');
   let probe = $state<{ wire: string; hash: string; jobId: string }>();
   let step = $state(0);
   let prevReached = -1;
+  // The legacy data changed (before or during the import): a plain resume would fail again, only a new rehearsal or a restore helps.
+  const quiesceErrors = ['source_changed', 'source_not_quiesced', 'snapshot_changed'];
   const ui = t.formKit.migration;
   const f = ui.flow;
   const stepList = [
@@ -183,7 +183,16 @@
       : customers[index]!.name.trim() || f.mapping.customerN.replace('{n}', String(index + 1));
   };
   const label = (name: string | null) => name ?? f.mapping.unnamed;
+  const closedJob = $derived(jobs[0]?.state === 'closed' ? jobs[0] : undefined);
+  /** Key id of the probe sample (`KUBUS-AEAD:2|<kid>|hpke|...`); a public identifier, not a secret. */
+  const probeKid = $derived(probe?.wire.split('|')[1] ?? '');
   const importJob = $derived(jobs.find((job) => job.state === 'review' && !job.dryRun));
+  const removeMissing = $derived(
+    [
+      importJob?.probeConfirmed ? '' : f.done.missingProbe,
+      importJob?.testConfirmed ? '' : f.done.missingTest,
+    ].filter(Boolean),
+  );
   const goBack = () => (step = Math.max(0, step - 1));
   const goNext = () => {
     if (canAdvance(step, reached)) step += 1;
@@ -205,11 +214,13 @@
         ? f.noRight
         : r.error.status === 429
           ? f.busy
-          : r.error.status === 422 && r.error.detail
-            ? r.error.detail
-            : r.error.status === 422 && unprocessable
-              ? unprocessable
-              : f.connection;
+          : r.error.status === 409
+            ? f.conflict
+            : r.error.status === 422 && r.error.detail
+              ? r.error.detail
+              : r.error.status === 422 && unprocessable
+                ? unprocessable
+                : f.connection;
   }
   async function load() {
     if (!tenants.length) {
@@ -350,15 +361,6 @@
       privateKey = '';
       busy = false;
     }
-  }
-  async function delta(job: Job) {
-    if (!isSha256(deltaHash)) {
-      error = f.msg.deltaHash;
-      return;
-    }
-    await request('POST', `/migration/jobs/${job.id}/delta`, { dumpSHA256: deltaHash });
-    deltaHash = '';
-    await load();
   }
   async function convert(job: Job) {
     error = '';
@@ -1009,6 +1011,8 @@
                       reasons: f.run.errorReasons,
                       codes: f.run.errorCodes,
                       column: f.run.errorColumn,
+                      errorNumber: f.run.errorNumber,
+                      errorObject: f.run.errorObject,
                     }),
                   )}
                 </p>{/if}
@@ -1019,11 +1023,15 @@
                     variant="outline"
                     onclick={() => action(job.id, 'pause')}>{f.run.pause}</Button
                   >{/if}
-                {#if ['paused', 'failed'].includes(job.state)}<Button
+                {#if ['paused', 'failed'].includes(job.state) && !quiesceErrors.includes(job.error)}<Button
                     onclick={() => action(job.id, 'resume')}>{f.run.resume}</Button
                   >{/if}
                 {#if job.state === 'review' && job.dryRun}<Button
                     onclick={() => action(job.id, 'import')}>{f.run.import}</Button
+                  >{/if}
+                {#if (job.state === 'review' && job.dryRun) || (job.state === 'failed' && job.error === 'source_changed')}<Button
+                    variant="outline"
+                    onclick={() => action(job.id, 'rehearse')}>{f.run.rehearse}</Button
                   >{/if}
                 {#if ['paused', 'failed'].includes(job.state) || (job.state === 'review' && job.dryRun)}<Button
                     variant="outline"
@@ -1081,6 +1089,9 @@
                 }}
               >
                 <p class="m-0 text-sm">{f.review.probeHint}</p>
+                {#if probeKid}<p class="m-0 text-sm" data-testid="migration-probe-kid">
+                    {f.review.probeKid.replace('{kid}', probeKid)}
+                  </p>{/if}
                 <fieldset disabled={busy} class="m-0 grid min-w-0 gap-4 border-0 p-0">
                   <Row id="mig-private" label={f.review.probeKey}>
                     <Input
@@ -1123,23 +1134,6 @@
             </div>
           </section>
           <section class="flex flex-col gap-3 rounded-lg border p-4">
-            <h3 class="m-0 text-base font-semibold">{f.review.deltaTitle}</h3>
-            <Row id="mig-delta" label={f.review.deltaHash}>
-              <Input
-                id="mig-delta"
-                bind:value={deltaHash}
-                pattern={'[0-9a-f]{64}'}
-                class="font-mono"
-              />
-            </Row>
-            <p class="text-muted-foreground m-0 text-sm">{f.review.deltaHint}</p>
-            <div>
-              <Button variant="outline" disabled={busy} onclick={() => delta(importJob)}
-                >{f.review.deltaStart}</Button
-              >
-            </div>
-          </section>
-          <section class="flex flex-col gap-3 rounded-lg border p-4">
             <h3 class="m-0 text-base font-semibold">{f.review.draftTitle}</h3>
             <p class="text-muted-foreground m-0 text-sm">{f.review.draftHint}</p>
             <div>
@@ -1175,33 +1169,57 @@
         </EmptyState>
       {:else}
         <div class="flex flex-col gap-4">
-          {#if jobs[0]?.state === 'closed'}<Banner tone="ok">{f.done.closed}</Banner>{/if}
-          <section class="flex flex-col gap-2 rounded-lg border p-4">
-            <h3 class="m-0 text-base font-semibold">{f.done.checklistTitle}</h3>
-            <ul class="m-0 list-disc pl-5 text-sm">
-              {#each f.done.checklist as item (item)}<li>{item}</li>{/each}
-            </ul>
-            <p class="text-muted-foreground m-0 text-sm">{f.done.noteLead}</p>
-            <div>
-              <Button variant="outline" onclick={() => router.navigate('/account?legacy=1')}
-                >{f.review.adoptLink}</Button
-              >
-            </div>
-          </section>
-          <section class="flex flex-col gap-2 rounded-lg border p-4">
-            <h3 class="m-0 text-base font-semibold">{f.done.rollbackTitle}</h3>
-            <p class="m-0 text-sm">{f.done.rollback}</p>
-          </section>
-          {#if importJob}
+          {#if closedJob}
+            <section
+              class="flex flex-col gap-3 rounded-lg border p-4"
+              data-testid="migration-closed"
+            >
+              <h3 class="m-0 text-base font-semibold">{f.done.closedTitle}</h3>
+              <Banner tone="ok">{f.done.closed}</Banner>
+              <ul class="m-0 list-disc pl-5 text-sm">
+                <li>{f.done.closedImport}</li>
+                {#if closedJob.probeConfirmed}<li>{f.done.closedProbe}</li>{/if}
+                {#if closedJob.testConfirmed}<li>{f.done.closedTest}</li>{/if}
+                <li>{f.done.closedRemoved}</li>
+              </ul>
+              <p class="text-muted-foreground m-0 text-sm">{f.done.closedNote}</p>
+            </section>
+          {:else}
             <section class="flex flex-col gap-2 rounded-lg border p-4">
-              <h3 class="m-0 text-base font-semibold">{f.done.removeTitle}</h3>
-              <p class="text-muted-foreground m-0 text-sm">{f.done.removeHint}</p>
+              <h3 class="m-0 text-base font-semibold">{f.done.checklistTitle}</h3>
+              <ul class="m-0 list-disc pl-5 text-sm">
+                {#each f.done.checklist as item (item)}<li>{item}</li>{/each}
+              </ul>
+              <p class="text-muted-foreground m-0 text-sm">{f.done.noteLead}</p>
               <div>
-                <Button variant="outline" onclick={() => action(importJob.id, 'remove-source')}
-                  >{f.done.remove}</Button
+                <Button variant="outline" onclick={() => router.navigate('/account?legacy=1')}
+                  >{f.review.adoptLink}</Button
                 >
               </div>
             </section>
+            <section class="flex flex-col gap-2 rounded-lg border p-4">
+              <h3 class="m-0 text-base font-semibold">{f.done.rollbackTitle}</h3>
+              <p class="m-0 text-sm">{f.done.rollback}</p>
+            </section>
+            {#if importJob}
+              <section class="flex flex-col gap-2 rounded-lg border p-4">
+                <h3 class="m-0 text-base font-semibold">{f.done.removeTitle}</h3>
+                <p class="text-muted-foreground m-0 text-sm">{f.done.removeHint}</p>
+                <div>
+                  <Button
+                    variant="outline"
+                    disabled={removeMissing.length > 0}
+                    onclick={() => action(importJob.id, 'remove-source')}>{f.done.remove}</Button
+                  >
+                </div>
+                {#if removeMissing.length}<p
+                    class="text-muted-foreground m-0 text-sm"
+                    role="status"
+                  >
+                    {f.done.missing.replace('{items}', removeMissing.join(', '))}
+                  </p>{/if}
+              </section>
+            {/if}
           {/if}
           <a
             href="/settings"

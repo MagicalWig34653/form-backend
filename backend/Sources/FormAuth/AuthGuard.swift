@@ -26,7 +26,8 @@ public struct AuthConfig: Sendable {
     /// Client address used for throttles. Default: the TCP peer. `X-Forwarded-For` is deliberately NOT read
     /// unless the explicit trusted-proxy initializer is used.
     public var clientIP: @Sendable (Request) -> String
-    public var requestBudget: (limit: Int, window: TimeInterval) = (120, 60)
+    public var requestBudget: (limit: Int, window: TimeInterval) = (600, 60)
+    public var accountRequestBudget: (limit: Int, window: TimeInterval) = (300, 60)
     public var oauthIssuer: String?
     public var oauthAuthorizeBaseURL: String?
     public var issuer: String { oauthIssuer ?? adminOrigin }
@@ -70,15 +71,33 @@ public struct AuthGuard: Sendable {
 
     public func setCookie(_ res: Response, token: String) { res.headers.replaceOrAdd(name: .setCookie, value: Self.cookieHeader(token: token)) }
 
-    /// Counts the request once per applicable budget (general; login endpoints additionally).
+    private struct ResolvedSessionKey: StorageKey { typealias Value = SessionRecord? }
+
+    /// Counts the request once per applicable budget: the IP budget for every request (anonymous ones included, order and cost
+    /// unchanged), then, for a signed-in session, the account budget `acct|<accountID>`; login endpoints additionally their own.
+    /// Why both: behind a proxy/NAT many users share one IP, so the IP limit alone throttles normal SPA use (about 12 calls per
+    /// page load) and is therefore generous; the tighter per-account limit bounds a single signed-in client. The IP limit stays the
+    /// only brake for anonymous traffic. The session is resolved at most once per request (cached on the request), so counting
+    /// per account costs no second lookup. Only fully authenticated sessions use the account budget; password/second-factor
+    /// failure limits and the login budget are separate and untouched.
     public func budget(_ req: Request, login: Bool = false) async throws {
         let ip = config.clientIP(req)
         try await throttles.consume(.adminRoute, "ip|\(ip)", limit: config.requestBudget.limit, window: config.requestBudget.window)
+        if let s = try await currentSession(req), s.state == .authenticated, let account = s.accountID {
+            try await throttles.consume(.adminRoute, "acct|\(account.uuidString)", limit: config.accountRequestBudget.limit, window: config.accountRequestBudget.window)
+        }
         if login { try await throttles.consume(.adminRoute, "login|\(ip)", limit: config.loginBudget.limit, window: config.loginBudget.window) }
     }
 
-    /// The session of the request cookie, if valid.
+    /// The session of the request cookie, if valid (resolved once per request).
     public func currentSession(_ req: Request) async throws -> SessionRecord? {
+        if let cached = req.storage[ResolvedSessionKey.self] { return cached }
+        let session = try await resolveSession(req)
+        req.storage[ResolvedSessionKey.self] = .some(session)
+        return session
+    }
+
+    private func resolveSession(_ req: Request) async throws -> SessionRecord? {
         guard let token = req.cookies[SessionService.cookieName]?.string else { return nil }
         guard let session = try await sessions.resolve(token: token) else { return nil }
         guard session.state != .authenticated || !config.secondFactorRequired || (session.authMethod == "passkey+password" || (config.listener == "public" && ["passkey+totp", "password+totp"].contains(session.authMethod ?? ""))) else { return nil }

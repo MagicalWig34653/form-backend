@@ -165,7 +165,8 @@ it('fehlendes PRF öffnet weder neue noch bestehende Konten und verlangt ausdrü
   expect(keyring.unlocked).toBe(false);
   const code = await setup();
   keyring.lock();
-  expect(await keyring.afterLogin()).toBe('no-account-key');
+  // the account key exists, but no passkey can open it: the message must point to the recovery code, not to a missing key
+  expect(await keyring.afterLogin()).toBe('no-passkey');
   expect(keyring.unlocked).toBe(false);
   expect(await keyring.recoverAccount(code)).toBeNull();
 });
@@ -191,11 +192,48 @@ it('repariert einen fehlenden Eigenzugang aus der abgeleiteten Recovery ohne All
   expect(await keyring.recoverAccount(code)).toBeNull();
   api.keyRecovery.mockResolvedValue({ ok: true, data: { keyId: created.kid, ...body.recovery } });
   api.grantKeyAccess.mockResolvedValue({ ok: true });
-  expect(await keyring.repairAutomatic('t', created.kid)).toBe(true);
+  expect(await keyring.repairAutomatic('t', created.kid)).toBe('ok');
   expect(keyring.dataKey(created.kid)).toEqual(secret);
   expect(api.grantKeyAccess).toHaveBeenCalledWith(
     't',
     'self',
     expect.objectContaining({ kid: created.kid }),
+    true, // background repair: never opens the passkey dialog
   );
+  expect(api.keyRecovery).toHaveBeenCalledWith('t', created.kid, true);
+});
+
+it('benennt die Ursache beim Öffnen mit dem Recovery-Code', async () => {
+  const code = await setup();
+  const http = (status: number, errorCode?: string) => ({
+    ok: false,
+    error: { kind: 'http', status, ...(errorCode ? { code: errorCode } : {}), message: 'x' },
+  });
+  // authorised, but the generation has no recovery wrap (migration left none)
+  api.keyRecovery.mockResolvedValue(http(404, 'recovery_missing'));
+  expect(await keyring.recover('t', code, '0123456789abcdef')).toBe('no-recovery');
+  // no right (plain 404) stays a generic failure: the cause must not be guessed
+  api.keyRecovery.mockResolvedValue(http(404));
+  expect(await keyring.recover('t', code, '0123456789abcdef')).toBe('server');
+  // fresh confirmation demanded and not given
+  api.keyRecovery.mockResolvedValue(http(403, 'reauthentication_required'));
+  expect(await keyring.recover('t', code, '0123456789abcdef')).toBe('reauth');
+  // wrap of the expected kid, but the wrong code
+  const data = await generateKeyPair();
+  const wrapped = await (await import('./keys')).wrapRecovery(data.secret, code, data.kid);
+  api.keyRecovery.mockResolvedValue({
+    ok: true,
+    data: {
+      keyId: data.kid,
+      salt: toBase64Url(wrapped.salt),
+      iterations: wrapped.iterations,
+      iv: toBase64Url(wrapped.iv),
+      wrap: toBase64Url(wrapped.wrap),
+    },
+  });
+  expect(await keyring.recover('t', 'AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH', data.kid)).toBe(
+    'wrong-code',
+  );
+  // normalisation: lower case and blanks instead of hyphens open it
+  expect(await keyring.recover('t', code.toLowerCase().replace(/-/g, ' '), data.kid)).toBeNull();
 });

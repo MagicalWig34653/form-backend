@@ -8,6 +8,7 @@ const pages: [string, string][] = [
   ['Einsendungen', `/t/${T}/f/${F}/entries`],
   ['Kunden', '/t'],
   ['Betrieb', '/ops'],
+  ['Protokoll', '/audit'],
   ['Mail', `/t/${T}/f/${F}/mail`],
   ['Umstieg', '/migration'],
   ['Einstellungen', '/settings'],
@@ -76,7 +77,8 @@ test.describe('UI-Feinschliff', () => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(`/t/${T}/f/${F}/mail`);
     await expect(page.getByTestId('org-missing')).toContainText('Es fehlen:');
-    await expect(page.getByTestId('org-missing')).toContainText('Betreff');
+    await expect(page.getByTestId('org-missing')).toContainText('Empfänger');
+    await expect(page.getByTestId('org-missing')).not.toContainText('Betreff');
     const assign = page.getByRole('button', { name: 'Versandweg zuweisen' });
     await expect(assign).toBeDisabled();
     await expect(page.getByText('Wählen Sie zuerst eine Versandverbindung aus.')).toBeVisible();

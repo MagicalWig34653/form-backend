@@ -205,7 +205,7 @@ final class ImportRehearsalTests: XCTestCase {
         XCTAssertGreaterThan(opened, 30)
         // Recovery envelope bytes unchanged; generation numbers as planned.
         let wrapped = try await h.blob("SELECT wrapped_key AS v FROM data_key_recovery WHERE kid='\(RehearsalSource.kid(RehearsalSource.alphaActive))'")
-        XCTAssertEqual(wrapped, Data((0..<48).map { UInt8(($0 &* 5 &+ 1) & 0xff) }))
+        XCTAssertEqual(wrapped, RehearsalSource.recoveryWrap)
         let numbers = try await h.scalar("SELECT GROUP_CONCAT(CONCAT(generation_no,state) ORDER BY generation_no SEPARATOR ',') AS v FROM customer_key_generations WHERE customer_id=\(unhexUUID(RehearsalSource.alpha))")
         XCTAssertEqual(numbers, "1retiring,2active")
         // Review cases: issues reported by kind, mapped to the job report.

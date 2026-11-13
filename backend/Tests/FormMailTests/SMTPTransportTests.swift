@@ -2,6 +2,7 @@
 import FormCore
 import TestSupport
 import Foundation
+import NIOSSL
 import XCTest
 @testable import FormMail
 
@@ -76,7 +77,8 @@ final class SMTPTransportTests: XCTestCase {
         var o = FakeSMTPServer.Options(); o.implicitTLS = true
         try await withServer(o) { s in
             await expectError("tls_failed") { try await transport(s, .tls, verify: true).send(try msg()) }
-            try await transport(s, .tls, verify: false, insecure: false).send(try msg())
+            await expectError("insecure_not_allowed") { try await transport(s, .tls, verify: false, insecure: false).send(try msg()) }   // production: refused
+            try await transport(s, .tls, verify: false, insecure: true).send(try msg())
             XCTAssertEqual(s.mails.count, 1)
         }
     }
@@ -168,6 +170,57 @@ final class SMTPTransportTests: XCTestCase {
         do { _ = try await HostGuard.resolve(host: "bad host!", allowedNets: []); XCTFail() } catch { XCTAssertEqual(error as? HostGuard.Failure, .unresolvable) }
         do { _ = try await HostGuard.resolve(host: "this-name-does-not-exist.invalid", allowedNets: []); XCTFail() } catch { XCTAssertEqual(error as? HostGuard.Failure, .unresolvable) }
         let lit = try await HostGuard.resolve(host: "8.8.8.8", allowedNets: []); XCTAssertEqual(lit, ["8.8.8.8"])
+    }
+
+    // MARK: certificate verification switch and IP literals
+
+    private func smtpJSON(verify: Bool?) -> [String: Any] {
+        var j: [String: Any] = ["host": "smtp.example.org", "port": 587, "security": "starttls"]
+        if let v = verify { j["verifyCertificate"] = v }
+        return j
+    }
+
+    func testProductionRefusesVerifyCertificateOffOnCreateAndOnTransportBuild() throws {
+        XCTAssertThrowsError(try MailConnection.smtpConfig(smtpJSON(verify: false), password: nil, allowInsecure: false)) { XCTAssertEqual($0 as? MailConnection.Invalid, .init(reason: "verifyCertificate off is not allowed")) }
+        // A stored connection with `false` must not build a transport in production either.
+        XCTAssertThrowsError(try MailConnection.transport(kind: "smtp", safeConfig: smtpJSON(verify: false), secret: nil, allowedNets: [], allowInsecure: false))
+        // Default and explicit true stay fine; the development switch permits false.
+        XCTAssertTrue(try MailConnection.smtpConfig(smtpJSON(verify: nil), password: nil, allowInsecure: false).verifyCertificate)
+        XCTAssertTrue(try MailConnection.smtpConfig(smtpJSON(verify: true), password: nil, allowInsecure: false).verifyCertificate)
+        XCTAssertFalse(try MailConnection.smtpConfig(smtpJSON(verify: false), password: nil, allowInsecure: true).verifyCertificate)
+        XCTAssertNoThrow(try MailConnection.transport(kind: "smtp", safeConfig: smtpJSON(verify: false), secret: nil, allowedNets: [], allowInsecure: true))
+    }
+
+    func testTransportItselfRefusesUnverifiedTLSWithoutTheDevelopmentSwitch() async throws {
+        var o = FakeSMTPServer.Options(); o.startTLS = true
+        try await withServer(o) { s in
+            await expectError("insecure_not_allowed", transient: false) { try await transport(s, .starttls, verify: false, insecure: false).send(try msg()) }
+            XCTAssertTrue(s.mails.isEmpty)
+            try await transport(s, .starttls, verify: false, insecure: true).send(try msg())   // test mode permits it
+            XCTAssertEqual(s.mails.count, 1)
+        }
+    }
+
+    private func trusting(_ s: FakeSMTPServer, certificate: String, host: String = "127.0.0.1") throws -> SMTPTransport {
+        var t = transport(s, .tls, verify: true, insecure: false, host: host)
+        t.trustRoots = [try FakeSMTPServer.fixtureCertificate(certificate)]
+        return t
+    }
+
+    func testIPLiteralIsVerifiedAgainstTheCertificatesIPSAN() async throws {
+        // Chain is trusted in all three cases; only the IP identity differs.
+        var o = FakeSMTPServer.Options(); o.implicitTLS = true
+        try await withServer(o) { s in
+            try await trusting(s, certificate: "test-cert.pem").send(try msg())   // SAN IP:127.0.0.1 matches
+            XCTAssertEqual(s.mails.count, 1)
+        }
+        for bad in ["test-cert-otherip.pem", "test-cert-noip.pem"] {   // wrong IP SAN / no IP SAN (CN=127.0.0.1 must not count)
+            var b = FakeSMTPServer.Options(); b.implicitTLS = true; b.certificate = bad
+            try await withServer(b) { s in
+                await expectError("tls_failed", transient: true) { try await trusting(s, certificate: bad).send(try msg()) }
+                XCTAssertTrue(s.mails.isEmpty, bad)
+            }
+        }
     }
 
     func testHostnameConnectionsAreVerifiedAgainstTheNameNotTheAddress() async throws {

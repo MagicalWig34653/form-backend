@@ -23,6 +23,7 @@ export type Route =
   | { name: 'accounts' }
   | { name: 'settings' }
   | { name: 'ops' }
+  | { name: 'audit' }
   | { name: 'installation' }
   | { name: 'migration' }
   | { name: 'account' }
@@ -44,6 +45,7 @@ export function matchRoute(path: string): Route {
   if (seg.length === 1 && seg[0] === 'accounts') return { name: 'accounts' };
   if (seg.length === 1 && seg[0] === 'api-tokens') return { name: 'apiTokens' };
   if (seg.length === 1 && seg[0] === 'ops') return { name: 'ops' };
+  if (seg.length === 1 && seg[0] === 'audit') return { name: 'audit' };
   if (seg.length === 1 && seg[0] === 'installation') return { name: 'installation' };
   if (seg.length === 1 && seg[0] === 'migration') return { name: 'migration' };
   if (seg.length === 1 && seg[0] === 'settings') return { name: 'settings' };

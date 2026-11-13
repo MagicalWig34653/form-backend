@@ -26,6 +26,7 @@ const routes: [string, string][] = [
   ['einrichtung', '/installation'],
   ['umstieg', '/migration'],
   ['betrieb', '/ops'],
+  ['protokoll', '/audit'],
 ];
 test.describe('screenshots', () => {
   test.skip(!out, 'set SHOTS');

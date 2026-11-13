@@ -43,8 +43,10 @@ struct MigrateCommand: AsyncCommand {
         context.console.print("migration: \(outcome)")
         let missing = try await MigrationRunner(db: Persistence.sql(context.application)).missingTables(schemaFile: schemaFile)
         if !missing.isEmpty { throw MigrationError.missingTables(missing) }
-        let upgrade = URL(fileURLWithPath: schemaFile).deletingLastPathComponent().appendingPathComponent("upgrades/0027-account-recovery.sql").path
-        _ = try await MigrationRunner(db: Persistence.sql(context.application)).run(schemaFile: upgrade, name: "0027-account-recovery")
+        for name in MigrationRunner.upgrades {
+            let r = try await MigrationRunner(db: Persistence.sql(context.application)).run(schemaFile: MigrationRunner.upgradeFile(name, schemaFile: schemaFile), name: name)
+            context.console.print("upgrade \(name): \(r)")
+        }
     }
 }
 
@@ -132,13 +134,15 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             }
         }
         internalAuth.secondFactorRequired = config.internalSecondFactor
+        internalAuth.requestBudget = (config.adminRequestLimitIP, 60)
+        internalAuth.accountRequestBudget = (config.adminRequestLimitAccount, 60)
         let guardian = FormAuth.register(app, config: internalAuth, keys: keys)
         let secrets = SecretStore(db: app.db(.mysql), keys: keys)
         let storage = StorageService(db: app.db(.mysql), secrets: secrets, allowedNets: config.mailAllowedNets)
         app.storage[StorageServiceKey.self] = storage
         app.lifecycle.use(StorageScheduler(service: storage))
         let mail = MailDispatcher(db: app.db(.mysql), secrets: StoreMailSecrets(store: secrets), allowedNets: config.mailAllowedNets,
-                                  allowInsecure: config.allowInsecureDev, logger: app.logger)
+                                  allowInsecure: config.allowInsecureDev, logger: app.logger, adminOrigin: guardian.config.adminOrigin)
         // The SDK shipped with this server (ADR 0011): FORM_SDK_DIR, default /app/sdk.
         let sdkDir = URL(fileURLWithPath: effectiveEnvironment["FORM_SDK_DIR"] ?? "/app/sdk")
         let deploy = DeployService(db: app.db(.mysql), secrets: StoreDeploySecrets(store: secrets), bundle: { try SDKBundle.load(from: sdkDir) },
@@ -152,6 +156,8 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             authConfig.oauthAuthorizeBaseURL = guardian.config.oauthAuthorizeBaseURL
             authConfig.listener = "public"
             authConfig.secondFactorRequired = true
+            authConfig.requestBudget = (config.adminRequestLimitIP, 60)
+            authConfig.accountRequestBudget = (config.adminRequestLimitAccount, 60)
             authConfig.csrfHosts = Set(config.publicDashboardHosts)
             let dashboardGuard = FormAuth.register(app, config: authConfig, keys: keys)
             FormAdmin.register(app, guardian: dashboardGuard, secrets: secrets, mailAllowedNets: config.mailAllowedNets,
@@ -166,6 +172,8 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             var publicAuth = AuthConfig(relyingParty: guardian.config.relyingParty, trustedProxies: config.publicTrustedProxies)
             publicAuth.oauthIssuer = guardian.config.oauthIssuer
             publicAuth.oauthAuthorizeBaseURL = guardian.config.oauthAuthorizeBaseURL
+            publicAuth.requestBudget = (config.adminRequestLimitIP, 60)
+            publicAuth.accountRequestBudget = (config.adminRequestLimitAccount, 60)
             let publicGuardian = AuthGuard(sessions: guardian.sessions, throttles: guardian.throttles,
                 config: publicAuth)
             try FormAdmin.registerPublic(app, guardian: publicGuardian, trustedProxies: config.publicTrustedProxies, adminResponder: app.responder.current)
@@ -199,7 +207,11 @@ app.asyncCommands.use(MigrateLegacyCommand(), as: "migrate-legacy")
 app.asyncCommands.use(MigrateCommand(schemaFile: config.schemaFile), as: "migrate")
 app.asyncCommands.use(BootstrapAdminCommand(origin: ProcessInfo.processInfo.environment["FORM_ADMIN_ORIGIN"], requiresPassword: config.publicDashboard || config.internalSecondFactor), as: "bootstrap-admin")
 app.asyncCommands.use(EnrollPasskeyCommand(origin: ProcessInfo.processInfo.environment["FORM_ADMIN_ORIGIN"]), as: "enroll-passkey")
-do { try await app.execute() } catch {
+do { try await app.execute() } catch let end as MigrateLegacyExit {
+    // migrate-legacy already printed its message; the exit code separates input errors, failures, open review cases and signals.
+    try? await app.asyncShutdown()
+    exit(end.code)
+} catch {
     app.logger.critical("fatal", metadata: ["type": "\(type(of: error))"])
     try? await app.asyncShutdown()
     exit(1)

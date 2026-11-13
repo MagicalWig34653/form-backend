@@ -21,6 +21,8 @@ COPY backend/db/schema-p3.sql /app/db/schema-p3.sql
 COPY backend/db/upgrades /app/db/upgrades
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY pwa/dist /app/public
+# The build context keeps the modes of the checkout (a dist built under umask 077 is 0600/0700 and unreadable for uid 10001): make it readable.
+RUN chmod -R a+rX /app/public
 COPY sdk/php/VERSION sdk/php/composer.json sdk/php/README.md /app/sdk/
 COPY sdk/php/src /app/sdk/src
 COPY sdk/php/bin /app/sdk/bin

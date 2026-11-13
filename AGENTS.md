@@ -26,6 +26,10 @@ Bestätigte Nutzeranforderungen haben Vorrang vor Entwurfsvorschlägen. Neue Arc
 
 Dokumentation und Nutzerkommunikation deutsch. Vorschlag für Codekonventionen: technische Bezeichner und Codekommentare englisch, Nutzertexte deutsch und lokalisierbar; vor Implementierung als Projektentscheidung bestätigen.
 
+## Image-Nachweis
+
+Änderungen, die ins Image eingehen, gelten erst nach `scripts/docker-build.sh` (Build plus Smoke-Test gegen echte MariaDB) als fertig; `IMAGE_TAG=form-backend:<hash>` und das Ergebnis gehören in `post_progress`. Kein Push, kein Deploy. Details: `docs/ENTWICKLUNG.md`, Abschnitt „Lokales Image“.
+
 ## Grenzen des jetzigen Gerüsts
 
 Es existiert noch kein Build oder Testbefehl. Keine erfolgreiche Prüfung oder Produktionsreife behaupten. Nicht eigenständig veröffentlichen, deployen oder produktive Migrationen ausführen.

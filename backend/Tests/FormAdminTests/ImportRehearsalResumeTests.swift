@@ -120,21 +120,15 @@ extension ImportRehearsalTests {
             XCTAssertEqual(done["dryRun"] as? Bool, false)
             let after = try await fingerprint(h)
             XCTAssertEqual(after, reference, "interrupted and resumed run differs from an uninterrupted one: \(after.filter { reference[$0.key] != $0.value }) vs \(reference.filter { after[$0.key] != $0.value })")
-            // 4. Repetition: a delta run (new snapshot id) and a second import change nothing and duplicate nothing.
-            let delta = try await h.action(job.id, "delta", body: "{\"dumpSHA256\":\"\(String(repeating: "cd", count: 32))\"}"); XCTAssertEqual(delta, .ok)
-            try await h.service.tick()
-            let deltaState = try await stateOf(h, job.id)
-            XCTAssertEqual(deltaState["state"] as? String, "review", "error=\(deltaState["error"] ?? "-")")
-            _ = try await h.action(job.id, "import")
-            try await h.service.tick()
-            let again = try await stateOf(h, job.id)
-            XCTAssertEqual(again["state"] as? String, "review", "error=\(again["error"] ?? "-")")
+            // 4. Repetition with the same snapshot (second import of the same run) changes nothing and duplicates nothing; a delta does not exist (ADR 0043).
+            let delta = try await h.action(job.id, "delta", body: "{\"dumpSHA256\":\"\(String(repeating: "cd", count: 32))\"}"); XCTAssertEqual(delta, .notFound)
+            let again = try await repeatImport(h, job.id)
             let repeated = try await fingerprint(h)
-            // Issues belong to a run (the delta run has its own snapshot id and reports the same open cases again); data rows must not change.
+            // Issues belong to a run (the repeated run reports the same open cases again); data rows must not change.
             var withoutIssues = repeated; withoutIssues["migration_issues"] = nil
             var referenceWithoutIssues = reference; referenceWithoutIssues["migration_issues"] = nil
             XCTAssertEqual(withoutIssues, referenceWithoutIssues, "repetition changed or duplicated rows: \(repeated.filter { reference[$0.key] != $0.value })")
-            // The job report lists the same open cases after the repetition (the delta run resumes ledger entries and does not
+            // The job report lists the same open cases after the repetition (the repeated run resumes ledger entries and does not
             // report them again, the summary must not forget them).
             func issueSummary(_ job: [String: Any]) -> [String: Int] {
                 let items = (job["report"] as? [String: Any])?["issues"] as? [[String: Any]] ?? []

@@ -68,6 +68,22 @@ public struct MigrationRunner {
         return s.utf8.elementsEqual(data) ? s : nil
     }
 
+    /// Upgrade scripts `migrate` applies after the schema, in this order, from `upgrades/<name>.sql` next to the schema file. Each
+    /// is recorded under its own name and checksum; a schema change after a release is a NEW upgrade here, never an edit of
+    /// schema-p3.sql (that would break the checksum of every existing database). Every upgrade must be idempotent.
+    public static let upgrades = ["0027-account-recovery", "0033-sdk-deploy-recovery", "0034-retention-default"]
+
+    public static func upgradeFile(_ name: String, schemaFile: String) -> String {
+        URL(fileURLWithPath: schemaFile).deletingLastPathComponent().appendingPathComponent("upgrades/\(name).sql").path
+    }
+
+    /// Schema, then every upgrade of `upgrades`.
+    public func runWithUpgrades(schemaFile: String) async throws -> MigrationOutcome {
+        let outcome = try await run(schemaFile: schemaFile)
+        for name in Self.upgrades { try await run(schemaFile: Self.upgradeFile(name, schemaFile: schemaFile), name: name) }
+        return outcome
+    }
+
     @discardableResult
     public func run(schemaFile: String, name: String = MigrationRunner.schemaName, lockTimeoutSeconds: Int = 30) async throws -> MigrationOutcome {
         guard let data = FileManager.default.contents(atPath: schemaFile), var script = Self.decodeUTF8(data) else {

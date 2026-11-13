@@ -37,7 +37,9 @@ Jeder abgeschlossene Import aktualisiert Status und Abschlusszeit unabhängig da
 
 Der bedingungslose Abschluss-UPDATE im `LegacyImporter` bleibt maßgeblich. Der DB-Lauf `/tmp/seq3-migration.log` zeigte dennoch `failed`: Beim Abgleich von `formularFelder` erzeugte der Bytevergleich zwischen `JSONSerialization.sortedKeys` und `JSONEncoder.sortedKeys` wegen unterschiedlicher Sortierung gemischter Groß-/Kleinschreibung (z. B. `ID`) einen falschen Konflikt samt offenem `migration-review`-Issue. Feldprojektionen werden deshalb als `[String: String?]` inhaltlich verglichen; NULL, fehlende Schlüssel und geänderte Werte bleiben unterscheidbar. Offene Issues verhindern weiterhin `verified`. Der Retry-Test prüft zusätzlich den issuefreien, verifizierten Erstlauf. Keine automatische Auflösung bereits gespeicherter Issues; DB-Nachprüfung mit frischen synthetischen Testdaten ausstehend.
 
-### Additive Snapshot-Deltas (P11-F, ADR 0033)
+### Additive Snapshot-Deltas (P11-F, ADR 0033) — ersetzt durch ADR 0043
+
+Hinweis: ADR 0043 nimmt das Delta zurück. Ein anderer Snapshot-Hash auf einem bestehenden Namespace ist ein Fehler (`snapshot_changed`), die Schreibpause der Quelle wird im Code geprüft. Der folgende Text ist der frühere Stand.
 
 Die frühere Beschränkung auf denselben Snapshot-Hash wird für additive neue
 Snapshots gemäß ADR 0033 ergänzt. Bestehende Quell- und Zielobjekte bleiben gegen

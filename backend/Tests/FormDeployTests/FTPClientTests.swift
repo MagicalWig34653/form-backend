@@ -98,6 +98,66 @@ final class FTPClientTests: XCTestCase {
         }
     }
 
+    // Review Astra 2 M6: preliminary replies do not restart the reply deadline.
+    func testPreliminaryRepliesDoNotExtendTheReplyDeadline() async throws {
+        var o = FakeFTPServer.Options(); o.preliminaryFlood = true
+        try await withServer(o) { s in
+            let c = FTPClient(config: FTPConfig(host: "127.0.0.1", port: s.port, security: .explicitTLS, username: "ftpuser", password: "ftppass",
+                verifyCertificate: false, timeout: 1), allowedNets: loopback, allowInsecure: true)
+            try await c.connect()
+            let t0 = Date()
+            await expectError("timeout") { _ = try await c.size("/x") }
+            XCTAssertLessThan(Date().timeIntervalSince(t0), 2.5, "one deadline for the whole reply, not one per preliminary line")
+            await c.close()
+        }
+    }
+
+    // Review Astra 2 M6: a server that answers faster than the client reads cannot fill memory; the session ends instead.
+    func testReplyFloodEndsTheSessionInsteadOfBuffering() async throws {
+        var o = FakeFTPServer.Options(); o.replyFlood = 5000
+        try await withServer(o) { s in
+            s.seedFile("/x", Data("1".utf8))
+            let c = client(s, .explicitTLS)
+            var codes: [String] = []
+            do { try await c.connect() } catch let e as FTPError { codes.append(e.code) }
+            for _ in 0..<12 where !codes.contains("reply_overflow") {
+                do { _ = try await c.size("/x") } catch let e as FTPError { codes.append(e.code) }
+            }
+            XCTAssertTrue(codes.contains("reply_overflow"), "\(codes)")
+            XCTAssertLessThanOrEqual(c.queuedReplies, FTPClient.maxQueuedReplies)
+            await c.close()
+        }
+    }
+
+    // Review Astra 2 M6: an absolute deadline per session, independent of how fast single replies arrive.
+    func testSessionDeadlineBoundsSlowButSteadyServers() async throws {
+        var o = FakeFTPServer.Options(); o.replyDelay = 0.3
+        try await withServer(o) { s in
+            let c = FTPClient(config: FTPConfig(host: "127.0.0.1", port: s.port, security: .explicitTLS, username: "ftpuser", password: "ftppass",
+                verifyCertificate: false, timeout: 1, totalTimeout: 1.2), allowedNets: loopback, allowInsecure: true)
+            let t0 = Date()
+            await expectError("deadline_exceeded") { try await c.connect(); for _ in 0..<20 { _ = await c.exists("/") }; _ = try await c.size("/missing") }
+            XCTAssertLessThan(Date().timeIntervalSince(t0), 3)
+            await c.close()
+        }
+    }
+
+    // Gegenlesen Astra 2: after the session deadline no command leaves the client, so no rename can happen unseen on the server.
+    func testNothingIsSentAfterTheSessionDeadline() async throws {
+        try await withServer { s in
+            s.seedDir("/web"); s.seedDir("/web/a")
+            let c = FTPClient(config: FTPConfig(host: "127.0.0.1", port: s.port, security: .explicitTLS, username: "ftpuser", password: "ftppass",
+                verifyCertificate: false, timeout: 5, totalTimeout: 0.8), allowedNets: loopback, allowInsecure: true)
+            try await c.connect()
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            await expectError("deadline_exceeded") { try await c.rename("/web/a", "/web/b") }
+            await expectError("deadline_exceeded") { try await c.upload("/web/x", Data("x".utf8)) }
+            XCTAssertFalse(s.log.contains { $0.hasPrefix("RNFR") || $0.hasPrefix("STOR") || $0.hasPrefix("EPSV") || $0.hasPrefix("PASV") }, "\(s.log)")
+            XCTAssertTrue(s.dirs.contains("/web/a"))
+            await c.close()
+        }
+    }
+
     func testRepeatedUploadThenDownloadDoesNotUseClosedDataChannel() async throws {
         try await withServer { s in
             let c = client(s, .explicitTLS)

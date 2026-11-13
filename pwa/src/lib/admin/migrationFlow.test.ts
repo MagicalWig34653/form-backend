@@ -352,6 +352,19 @@ describe('describeJobError', () => {
     );
     expect(describeJobError('unknownKeyGeneration@kid', texts)).toContain('Spalte kid');
   });
+  it('nennt Fehlernummer und Indexnamen bei Datenbankfehlern, nie einen Wert', () => {
+    const t = {
+      ...texts,
+      codes: { ...texts.codes, database: 'Datenbankfehler', 'database@1062': 'Doppelter Eintrag' },
+      errorNumber: 'Fehlernummer',
+      errorObject: 'Name',
+    };
+    expect(describeJobError('database@1062:uq_customer_active_key', t)).toBe(
+      'Doppelter Eintrag (Fehlernummer 1062, Name uq_customer_active_key)',
+    );
+    expect(describeJobError('database@1644', t)).toBe('Datenbankfehler (Fehlernummer 1644)');
+    expect(describeJobError('database@1062:evil value', t)).toBe('database@1062:evil value');
+  });
   it('zeigt unbekannte Codes unverändert', () => {
     expect(describeJobError('etwas_neues', texts)).toBe('etwas_neues');
     expect(describeJobError('unbekannt@x', texts)).toBe('unbekannt@x');

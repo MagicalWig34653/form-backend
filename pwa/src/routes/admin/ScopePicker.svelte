@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { loadFailureText } from '$lib/admin/describe';
   import { adminApi } from '$lib/api';
   import { t } from '$lib/i18n';
   import { session } from '$lib/session.svelte';
@@ -14,19 +15,19 @@
   const text = t.admin.tokens;
 
   let forms = $state<{ id: string; name: string }[]>([]);
-  let formsFailed = $state(false);
+  let formsFailed = $state<string | undefined>();
 
   // Customers and forms are picked by name; the ids stay internal.
   $effect(() => {
     const tenant = tenantId;
     forms = [];
-    formsFailed = false;
+    formsFailed = undefined;
     if (!tenant || session.tenants.length === 0) return;
     let active = true;
     void adminApi.forms(tenant).then((r) => {
       if (!active) return;
       if (r.ok) forms = r.data.items.map((f) => ({ id: f.id, name: f.name }));
-      else formsFailed = true;
+      else formsFailed = loadFailureText(r.error, text.formsFailed);
     });
     return () => {
       active = false;
@@ -41,12 +42,7 @@
       {#each session.tenants as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
     </Select>
   </Row>
-  <Row
-    id={`${idPrefix}-form`}
-    optional
-    label={text.formPick}
-    error={formsFailed ? text.formsFailed : undefined}
-  >
+  <Row id={`${idPrefix}-form`} optional label={text.formPick} error={formsFailed}>
     <Select id={`${idPrefix}-form`} bind:value={formId} disabled={!tenantId}>
       <option value="">{text.allForms}</option>
       {#each forms as f (f.id)}<option value={f.id}>{f.name}</option>{/each}

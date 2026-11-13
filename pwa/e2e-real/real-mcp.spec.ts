@@ -51,29 +51,39 @@ async function tokenRequest(params: Record<string, string>) {
   return { status: res.status, body: (await res.json()) as Record<string, string> };
 }
 
+/**
+ * The admin API budgets 120 requests per minute and IP in fixed one-minute windows (FormAuth AuthGuard.requestBudget), and every
+ * full page load of the SPA costs about a dozen of them. After the UI steps so far the window is nearly used up, so wait for the
+ * next window before a page load whose follow-up requests (customer/form pickers) must not run into 429.
+ */
+async function freshRequestWindow(page: Page) {
+  await page.waitForTimeout(60_000 - (Date.now() % 60_000) + 1_000);
+}
+
 async function authorize(
   page: Page,
   query: Record<string, string>,
   tenantId: string,
   formId: string,
 ): Promise<URL> {
+  await freshRequestWindow(page);
   await page.route('http://127.0.0.1:9/**', (r) => r.fulfill({ status: 200, body: 'callback' }));
   await page.goto('/oauth/authorize?' + new URLSearchParams(query).toString());
   await expect(page.getByRole('heading', { name: 'Zugriff erlauben?' })).toBeVisible();
-  const box = page.locator('div.border', {
-    has: page.getByRole('heading', { name: 'Zugriff erlauben?' }),
-  });
+  // The consent panel is part of the API & MCP page (/api-tokens?oauth_request=...); the page has no other consent UI.
+  const box = page.getByRole('main');
   await expect(box).toContainText('E2E MCP-Client');
   await expect(box).toContainText('127.0.0.1');
-  await box.getByLabel('Kunden-ID (UUID)').fill(tenantId);
-  await box.getByLabel('Formular-ID', { exact: false }).fill(formId);
+  await box.locator('#consent-tenant').selectOption(tenantId);
+  await expect(box.locator('#consent-form')).toBeEnabled();
+  await box.locator('#consent-form').selectOption(formId);
   await box.getByRole('button', { name: 'Zugriff erlauben' }).click();
   await page.waitForURL(/127\.0\.0\.1:9\/cb/);
   return new URL(page.url());
 }
 
 test('MCP: personal token and OAuth against the public listener', async ({ page, context }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(420_000);
   await addAuthenticator(page, context);
   await registerPasskey(page, env('E2E_SETUP_LINK'));
   await loginAndSecure(page);
@@ -86,15 +96,26 @@ test('MCP: personal token and OAuth against the public listener', async ({ page,
   expect(tenantB).not.toBe(tenantA);
 
   // MCP is off by default for every account (bootstrap admin included); allow it in the member administration.
-  await page.getByRole('link', { name: 'Mitglieder', exact: true }).click();
-  await page.getByRole('button', { name: 'MCP erlauben' }).click();
-  await expect(page.getByRole('button', { name: 'MCP sperren' })).toBeVisible();
+  await page.goto('/accounts');
+  await page
+    .getByRole('button', { name: /^Aktionen für / })
+    .first()
+    .click();
+  await page.getByRole('menuitem', { name: 'MCP erlauben' }).click();
+  await page
+    .getByRole('button', { name: /^Aktionen für / })
+    .first()
+    .click();
+  await expect(page.getByRole('menuitem', { name: 'MCP sperren' })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // (1) Personal API token created in the UI.
-  await page.getByRole('link', { name: 'Tokens / MCP', exact: true }).click();
-  await page.getByLabel('Bezeichnung').fill('E2E-Token');
-  await page.getByLabel('Kunden-ID (UUID)').fill(tenantA);
-  await page.getByRole('button', { name: 'Token anlegen' }).click();
+  await page.goto('/api-tokens');
+  await page.getByRole('button', { name: 'Token anlegen', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Bezeichnung').fill('E2E-Token');
+  await dialog.locator('#token-tenant').selectOption(tenantA);
+  await dialog.getByRole('button', { name: 'Token anlegen', exact: true }).click();
   const shown = page.getByText(/^kfm_[0-9a-f]{64}$/);
   await expect(shown).toBeVisible();
   const kfm = (await shown.innerText()).trim();
@@ -265,6 +286,7 @@ test('MCP: personal token and OAuth against the public listener', async ({ page,
   expect((await rpc(kfm, 'tools/list')).status).toBe(200);
 
   // Revoking the personal token in the UI takes effect immediately.
+  await freshRequestWindow(page);
   await page.goto('/api-tokens');
   await page.getByRole('button', { name: 'Widerrufen' }).first().click();
   await expect(page.getByText('Widerrufen', { exact: true }).first()).toBeVisible();

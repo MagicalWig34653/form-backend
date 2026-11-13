@@ -20,6 +20,9 @@ public enum MailConnection {
         if (user == nil) != (password == nil) { throw Invalid(reason: "username and password belong together") }
         let verify = (json["verifyCertificate"] as? Bool) ?? true
         if !verify && sec == .plain { throw Invalid(reason: "verifyCertificate") }
+        // Switching certificate checks off is only possible together with the development release (same switch as `plain`); stored
+        // connections with `false` therefore also fail when the transport is built in production.
+        if !verify && !allowInsecure { throw Invalid(reason: "verifyCertificate off is not allowed") }
         let name = (json["clientName"] as? String) ?? "localhost"
         guard name.range(of: "^[A-Za-z0-9.-]{1,253}$", options: .regularExpression) != nil else { throw Invalid(reason: "clientName") }
         return SMTPConfig(host: host, port: port, security: sec, username: user, password: password, verifyCertificate: verify, clientName: name)

@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
-// Whole administration path in a real browser against the real backend + MariaDB (backend/e2e-admin.sh seeds the account):
+// Whole administration path in a real browser against the real backend + MariaDB (skipped; backend/e2e-admin.sh was removed, superseded by real-setup.spec.ts via backend/e2e-setup.sh):
 // login → customer → form → draft fields → customer key → publish (client-side hash must equal the server's) →
 // second revision + version bump → SDK credentials → connection → mail configuration.
 const env = (k: string) => {

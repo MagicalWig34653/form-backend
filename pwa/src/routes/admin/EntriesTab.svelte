@@ -8,6 +8,7 @@
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
   import { leaves, safeFileName } from '$lib/entries/files';
+  import { normalizePayload, type PayloadField } from '$lib/entries/payload';
   import type { EntryItem, MailDelivery } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
   import { describeError, needsFreshLogin } from '$lib/admin/describe';
@@ -78,7 +79,7 @@
   const when = (iso: string | null): string => (iso ? formatDateTime(iso) : ui.unknownDate);
 
   let openId = $state('');
-  let shown = $state<{ fields: [string, string][]; files: [string, string][] } | null>(null);
+  let shown = $state<{ fields: PayloadField[] } | null>(null);
   let openMessage = $state('');
   let attachments = $state<{ name: string; size: number; sha256: string }[]>([]);
   let openWire = '';
@@ -149,13 +150,6 @@
     openId = '';
   }
 
-  function flatten(value: unknown, prefix = ''): [string, string][] {
-    if (value === null || typeof value !== 'object') return [[prefix, String(value)]];
-    return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) =>
-      flatten(v, prefix ? `${prefix}[${k}]` : k),
-    );
-  }
-
   async function download(entryId: string, n: number): Promise<void> {
     const key = openKey;
     const meta = attachments[n];
@@ -216,12 +210,9 @@
     try {
       const plain = await openPackage(r.data.package, key);
       if (mine !== epoch) return void (busy = false);
-      const doc = JSON.parse(new TextDecoder().decode(plain)) as {
-        fields?: unknown;
-        files?: unknown;
-      };
-      shown = { fields: flatten(doc.fields ?? {}), files: flatten(doc.files ?? {}) };
-      attachments = leaves(doc.files ?? {});
+      const doc = normalizePayload(JSON.parse(new TextDecoder().decode(plain)));
+      shown = { fields: doc.fields };
+      attachments = leaves(doc.files);
       openWire = r.data.package;
       openKey = key;
       const d = await adminApi.deliveries(tenant, form);
@@ -611,9 +602,9 @@
                       <dl
                         class="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1 text-sm"
                       >
-                        {#each shown.fields as [k, v], i (i)}
-                          <dt class="text-muted-foreground break-all">{k}</dt>
-                          <dd class="break-words whitespace-pre-wrap">{v}</dd>
+                        {#each shown.fields as field, i (i)}
+                          <dt class="text-muted-foreground break-all">{field.label}</dt>
+                          <dd class="break-words whitespace-pre-wrap">{field.value}</dd>
                         {/each}
                         {#each attachments as a, n (n)}
                           <dt class="text-muted-foreground break-all">{t.admin.entries.files}</dt>

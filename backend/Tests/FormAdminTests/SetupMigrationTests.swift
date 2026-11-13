@@ -185,6 +185,9 @@ final class SetupMigrationTests: XCTestCase {
         XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.conflict), "conflict")
         XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidPlan), "invalid_plan")
         XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.invalidSource), "invalid_source")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.snapshotChanged), "snapshot_changed")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.sourceChanged), "source_changed")
+        XCTAssertEqual(MigrationService.errorCode(for: ImportFailure.sourceNotQuiesced), "source_not_quiesced")
         // An unknown error (may carry SQL values) is never described, only generic.
         struct Foreign: Error, CustomStringConvertible { let description = "SELECT secret FROM x" }
         XCTAssertEqual(MigrationService.errorCode(for: Foreign()), "migration_failed")

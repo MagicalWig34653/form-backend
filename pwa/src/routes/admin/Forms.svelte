@@ -12,7 +12,7 @@
   import type { FormListItem } from '$lib/api/admin';
   import { router } from '$lib/router.svelte';
   import { formPath } from '$lib/routes';
-  import { describeError } from '$lib/admin/describe';
+  import { describeError, loadFailureText } from '$lib/admin/describe';
   import { handleSessionError } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -116,7 +116,7 @@
           ? t.lists.forbidden
           : r.error.status === 404
             ? t.lists.notFound
-            : t.lists.failed;
+            : loadFailureText(r.error, t.lists.failed);
     }
   }
 

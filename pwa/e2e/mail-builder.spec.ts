@@ -44,7 +44,13 @@ function documentWith(body: string, format: 'html' | 'text' = 'html') {
       },
       mail: {
         from: { address: 'formular@example.org' },
-        organisation: { to: ['team@example.org'], subject: 'Neue Anfrage', body, format },
+        organisation: {
+          to: ['team@example.org'],
+          subject: 'Neue Anfrage',
+          body,
+          format,
+          content: 'full',
+        },
       },
     },
     views: [
@@ -380,4 +386,25 @@ test('Vollbild für den Design-Modus und zurück', async ({ page }) => {
   expect((await axe(page).analyze()).violations).toEqual([]);
   await page.getByRole('button', { name: 'Vollbild beenden' }).click();
   await expect(page.getByRole('button', { name: 'Vollbild', exact: true })).toBeVisible();
+});
+
+test('Standard ist die Mail mit allen Angaben, Benachrichtigung nur als Wahl, kein Warnhinweis (ADR 0041)', async ({
+  page,
+}) => {
+  const w = await mock(page, '<p>Hallo #=[nachricht]=#</p>');
+  delete (w.document.form.mail.organisation as Record<string, unknown>).content;
+  await page.goto(`/t/${T}/f/${F}/mail`);
+  await expect(page.locator('#org-content')).toHaveValue('full');
+  await expect(page.locator('#org-content option:checked')).toHaveText('Mit allen Angaben');
+  await expect(page.getByTestId('org-full-hint')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Art. 9' })).toHaveCount(0);
+  await expect(page.locator('#org-reply')).toBeVisible();
+  await expect(page.getByTestId('org-body-preview')).toBeVisible();
+  await page.locator('#org-content').selectOption('notification');
+  await expect(page.locator('#org-content option:checked')).toHaveText(
+    'Nur Benachrichtigung mit Link',
+  );
+  await expect(page.getByTestId('org-notification-hint')).toBeVisible();
+  await expect(page.locator('#org-body')).toHaveCount(0);
+  await expect(page.locator('#org-reply')).toHaveCount(0);
 });

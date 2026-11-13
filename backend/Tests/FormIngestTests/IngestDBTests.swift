@@ -460,6 +460,18 @@ final class IngestDBTests: XCTestCase {
         }
     }
 
+    /// Review Astra 2 M5: a stale timestamp is refused before the body is parsed (a malformed body would otherwise be a 400 after parsing).
+    func testStaleTimestampIsRefusedBeforeParsing() async throws {
+        try await withFixture { fx in
+            let stale = try signedHeaders(pairs, ts: Int64(now.timeIntervalSince1970) - 3600)
+            try await eq(try await send(fx.app, headers: stale, body: "a=1&a=2").status, .forbidden)
+            var mp = stale; mp["Content-Type"] = "multipart/form-data; boundary=x"
+            try await eq(try await send(fx.app, headers: mp, body: "--x\r\nbroken", contentType: nil).status, .forbidden)
+            try await eq(try await send(fx.app, headers: try signedHeaders(pairs), body: "a=1&a=2").status, .badRequest, "a fresh timestamp still reaches the parser")
+            try await eq(try await count(fx.sql, "submissions"), 0)
+        }
+    }
+
     func testInactiveFormAndDisabledCustomerAre404() async throws {
         try await withFixture { fx in
             let h = try signedHeaders(pairs)

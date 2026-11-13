@@ -1,6 +1,19 @@
 import { t } from '../i18n';
 import type { ApiError } from '../api/client';
 
+/** 429: names the wait from `Retry-After` when the server sent one. */
+export function rateLimitText(e: ApiError): string {
+  const a = t.admin.errors;
+  return e.retryAfter !== undefined
+    ? a.tooManyWait.replace('{seconds}', String(e.retryAfter))
+    : a.tooMany;
+}
+
+/** Text for a failed load: the rate-limit message for 429, otherwise the page's own `fallback`. */
+export function loadFailureText(e: ApiError, fallback: string): string {
+  return e.kind === 'http' && e.status === 429 ? rateLimitText(e) : fallback;
+}
+
 /** German, user-facing text for a failed admin call. The server's own fixed message is appended for validation errors. */
 export function describeError(e: ApiError): string {
   const a = t.admin.errors;
@@ -13,13 +26,14 @@ export function describeError(e: ApiError): string {
     case 404:
       return a.notFound;
     case 409:
-      return a.conflict;
+      // Retention problems carry their own fixed German reason (server: retention_missing / retention_import_running).
+      return e.code?.startsWith('retention_') && e.detail ? e.detail : a.conflict;
     case 412:
       return a.stale;
     case 422:
       return e.detail ? `${a.invalid} ${e.detail}` : a.invalid;
     case 429:
-      return a.tooMany;
+      return rateLimitText(e);
     default:
       return a.generic;
   }

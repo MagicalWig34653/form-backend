@@ -34,7 +34,7 @@ final class MailpitInteropTests: XCTestCase {
         XCTFail("no message arrived"); return [:]
     }
     private func transport(_ security: SMTPConfig.Security, user: String? = nil, pass: String? = nil) -> SMTPTransport {
-        SMTPTransport(config: SMTPConfig(host: env.host, port: env.smtp, security: security, username: user, password: pass, verifyCertificate: false), allowedNets: nets, allowInsecure: security == .plain)
+        SMTPTransport(config: SMTPConfig(host: env.host, port: env.smtp, security: security, username: user, password: pass, verifyCertificate: false), allowedNets: nets, allowInsecure: true)
     }
     private func message(html: Bool) throws -> MailMessage {
         try MailMessage(fromAddress: "praxis@example.org", fromName: "Praxis Müller & Söhne", to: ["empfang@example.org"], bcc: ["archiv@example.org"], replyTo: "erika@example.net",

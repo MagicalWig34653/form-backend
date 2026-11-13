@@ -14,9 +14,13 @@ public struct SFTPConfig: Sendable, Equatable {
     public var password: String
     /// `SHA256:<base64 without padding>` exactly like `ssh-keygen -lf` prints it. REQUIRED: there is no trust-on-first-use.
     public var hostKeySHA256: String
+    /// Per answer.
     public var timeout: TimeInterval
-    public init(host: String, port: Int = 22, username: String, password: String, hostKeySHA256: String, timeout: TimeInterval = 30) {
+    /// Absolute limit for the whole session from `connect()` on (review Astra 2 M6).
+    public var totalTimeout: TimeInterval
+    public init(host: String, port: Int = 22, username: String, password: String, hostKeySHA256: String, timeout: TimeInterval = 30, totalTimeout: TimeInterval = 600) {
         self.host = host; self.port = port; self.username = username; self.password = password; self.hostKeySHA256 = hostKeySHA256; self.timeout = timeout
+        self.totalTimeout = totalTimeout
     }
 }
 
@@ -68,10 +72,13 @@ private final class SFTPPacketHandler: ChannelDuplexHandler, @unchecked Sendable
     typealias OutboundIn = ByteBuffer
     typealias OutboundOut = SSHChannelData
     private var pending = Data()
+    private var failed = false
     let continuation: AsyncStream<Result<Data, FTPError>>.Continuation
-    init(_ c: AsyncStream<Result<Data, FTPError>>.Continuation) { continuation = c }
+    let backlog: ReplyBacklog
+    init(_ c: AsyncStream<Result<Data, FTPError>>.Continuation, backlog: ReplyBacklog) { continuation = c; self.backlog = backlog }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard !failed else { return }
         let d = unwrapInboundIn(data)
         guard case .channel = d.type, case .byteBuffer(var b) = d.data else { return }   // stderr (.stdErr) is ignored
         pending.append(contentsOf: b.readBytes(length: b.readableBytes) ?? [])
@@ -79,6 +86,8 @@ private final class SFTPPacketHandler: ChannelDuplexHandler, @unchecked Sendable
             let len = pending.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
             guard len > 0, len <= 1 << 20 else { continuation.yield(.failure(FTPError("bad_reply"))); context.close(promise: nil); return }
             guard pending.count >= 4 + len else { break }
+            // the client has one request in flight: a server that sends more than a few unread packets ends the session (review Astra 2 M6)
+            guard backlog.received() else { failed = true; continuation.yield(.failure(FTPError("reply_overflow"))); continuation.finish(); context.close(promise: nil); return }
             continuation.yield(.success(pending.subdata(in: pending.startIndex + 4 ..< pending.startIndex + 4 + len)))
             pending = Data(pending.dropFirst(4 + len))
         }
@@ -101,6 +110,9 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
     private var packets: AsyncStream<Result<Data, FTPError>>.Iterator?
     private var nextID: UInt32 = 1
     private var timeout: TimeInterval = 30
+    var timeoutForTests: TimeInterval { get { timeout } set { timeout = newValue } }
+    private var deadline: Date?
+    private var backlog = ReplyBacklog(limit: 4)
 
     public init(config: SFTPConfig, allowedNets: [CIDR] = [], group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton) {
         self.config = config; self.probeHost = nil; self.allowedNets = allowedNets; self.group = group; self.timeout = config.timeout
@@ -128,6 +140,9 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
     public func connect() async throws {
         guard let config else { throw FTPError("not_configured") }
         guard SSHHostKey.isValid(config.hostKeySHA256) else { throw FTPError("host_key_missing") }
+        let until = Date().addingTimeInterval(config.totalTimeout)
+        deadline = until
+        backlog = ReplyBacklog(limit: 4)
         let addrs: [String]
         do { addrs = try await HostGuard.resolve(host: config.host, allowedNets: allowedNets) }
         catch HostGuard.Failure.blocked { throw FTPError("target_blocked") } catch { throw FTPError("unresolvable") }
@@ -141,13 +156,15 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
         } catch { throw FTPError("connect_failed") }
         root = ch
         var cont: AsyncStream<Result<Data, FTPError>>.Continuation!
-        let stream = AsyncStream<Result<Data, FTPError>>(bufferingPolicy: .unbounded) { cont = $0 }
-        let c = cont!
-        // A refused host key or an exhausted login must end the attempt now, not after the SSH layer's own two-minute timeout.
+        let stream = AsyncStream<Result<Data, FTPError>>(bufferingPolicy: .unbounded) { cont = $0 }   // bounded by ReplyBacklog
+        let c = cont!, bl = backlog
+        // A refused host key, an exhausted login or a handshake that does not finish in time must end the attempt now,
+        // not after the SSH layer's own two-minute timeout.
+        let handshakeUntil = min(until, Date().addingTimeInterval(config.timeout))
         let watchdog = Task { [pin, auth, ch] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000)
-                if pin.rejected || auth.gaveUp { try? await ch.close(); return }
+                if pin.rejected || auth.gaveUp || Date() >= handshakeUntil { try? await ch.close(); return }
             }
         }
         defer { watchdog.cancel() }
@@ -157,7 +174,7 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
                 let p = ch.eventLoop.makePromise(of: Channel.self)
                 ssh.createChannel(p) { childChannel, kind in
                     guard kind == .session else { return childChannel.eventLoop.makeFailedFuture(FTPError("channel_refused")) }
-                    return childChannel.pipeline.addHandler(SFTPPacketHandler(c))
+                    return childChannel.pipeline.addHandler(SFTPPacketHandler(c, backlog: bl))
                 }
                 return p.futureResult
             }.get()
@@ -183,22 +200,39 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
 
     // MARK: packets
 
-    private func send(_ body: Data) async throws {
+    /// Remaining time for one step: at most `timeout`, never beyond the session deadline. `session` tells which one binds.
+    private func stepBudget() throws -> (seconds: TimeInterval, session: Bool) {
+        if let deadline, deadline < Date().addingTimeInterval(timeout) {
+            let left = deadline.timeIntervalSinceNow
+            guard left > 0 else { throw FTPError("deadline_exceeded") }
+            return (left, true)
+        }
+        return (timeout, false)
+    }
+
+    /// A write into an exhausted SSH window never completes: the same timer as for answers closes the channel (gegenlesen Astra 2, Codex 1).
+    func send(_ body: Data) async throws {
         guard let s = session else { throw FTPError("not_connected") }
+        let (seconds, bySession) = try stepBudget()
         var buf = s.allocator.buffer(capacity: body.count + 4)
         buf.writeInteger(UInt32(body.count)); buf.writeBytes(body)
-        do { try await s.writeAndFlush(buf).get() } catch { throw FTPError("connection_closed") }
+        let flag = Flag()
+        let t = s.eventLoop.scheduleTask(in: .milliseconds(max(1, Int64(seconds * 1000)))) { flag.set(); s.close(promise: nil) }
+        defer { t.cancel() }
+        do { try await s.writeAndFlush(buf).get() } catch { throw FTPError(flag.value ? (bySession ? "deadline_exceeded" : "timeout") : "connection_closed") }
     }
 
     private func receive() async throws -> Data {
         guard var it = packets, let s = session else { throw FTPError("not_connected") }
+        guard !backlog.overflowed else { throw FTPError("reply_overflow") }
+        let (seconds, session) = try stepBudget()
         let flag = Flag()
-        let t = s.eventLoop.scheduleTask(in: .milliseconds(Int64(timeout * 1000))) { flag.set(); s.close(promise: nil) }
+        let t = s.eventLoop.scheduleTask(in: .milliseconds(max(1, Int64(seconds * 1000)))) { flag.set(); s.close(promise: nil) }
         defer { t.cancel() }
         let next = await it.next()
         packets = it
-        guard let n = next else { throw FTPError(flag.value ? "timeout" : "connection_closed") }
-        switch n { case .success(let d): return d; case .failure(let e): throw e }
+        guard let n = next else { throw FTPError(flag.value ? (session ? "deadline_exceeded" : "timeout") : "connection_closed") }
+        switch n { case .success(let d): backlog.consumed(); return d; case .failure(let e): throw e }
     }
     private final class Flag: @unchecked Sendable { private var v = false; private let l = NSLock(); func set() { l.lock(); v = true; l.unlock() }; var value: Bool { l.lock(); defer { l.unlock() }; return v } }
 
@@ -231,6 +265,7 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
 
     /// One request, one matching answer.
     private func request(_ type: UInt8, _ build: (inout W) -> Void) async throws -> (type: UInt8, body: R) {
+        if let deadline, deadline <= Date() { throw FTPError("deadline_exceeded") }
         let id = nextID; nextID &+= 1
         var w = W(); w.u8(type); w.u32(id); build(&w)
         try await send(w.d)
@@ -296,7 +331,9 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
                 let (t, r) = try await request(5) { $0.bytes(h); $0.u64(UInt64(out.count)); $0.u32(32 * 1024) }
                 if t == 101 { try status(t, r, ok: [1], phase: "read"); break }   // EOF
                 guard t == 103 else { throw FTPError("bad_reply") }
-                var rr = r; out.append(try rr.bytes())
+                var rr = r; let chunk = try rr.bytes()
+                guard !chunk.isEmpty else { throw FTPError("no_progress") }   // an empty DATA packet would repeat the same READ forever (M6)
+                out.append(chunk)
                 if out.count > limit { throw FTPError("too_large") }
             }
         } catch { await closeHandle(h); throw error }
@@ -318,6 +355,7 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
         guard t == 102 else { throw FTPError("bad_reply") }
         let h = try await rr.bytes()
         var names: [String] = []
+        var empty = 0
         do {
             while true {
                 let (t2, r2) = try await request(12) { $0.bytes(h) }
@@ -325,6 +363,8 @@ public final class SFTPClient: RemoteFileClient, @unchecked Sendable {
                 guard t2 == 104 else { throw FTPError("bad_reply") }
                 var x = r2; let n = try x.u32()
                 guard n < 10_000 else { throw FTPError("bad_reply") }
+                empty = n == 0 ? empty + 1 : 0
+                guard empty < 3 else { throw FTPError("no_progress") }   // endless empty NAME batches (M6)
                 for _ in 0..<n { let name = try x.str(); _ = try x.str(); _ = try x.attrs(); if name != "." && name != ".." { names.append(name) } }
                 if names.count > 100_000 { throw FTPError("too_large") }
             }

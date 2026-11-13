@@ -3,6 +3,7 @@ import XCTest
 import FormCore
 @testable import FormAdmin
 @testable import FormMigration
+@testable import FormMail
 
 final class LegacyFormConverterTests: XCTestCase {
     let tenant = UUID(), form = UUID()
@@ -41,6 +42,22 @@ final class LegacyFormConverterTests: XCTestCase {
         XCTAssertEqual(result.proposals["testingRecipients"], .array([.string("test@example.test")]))
         XCTAssertNil(result.document["form"]?["mail"])
         _ = try DocumentValidator.validate(result.document, tenant: tenant, form: form)
+    }
+    /// Decision 13.11.: an imported form (mailBody with placeholders, no `content`) sends the FULL mail, like the legacy backend.
+    func testImportedMailTemplateYieldsTheFullStandardMail() throws {
+        let result = try convert([["feldName": "email", "typ": "email", "pflicht": "1"], ["feldName": "anliegen", "typ": "text", "pflicht": "0"]],
+                                 config: ["fromName": "Praxis", "betreff": "Anfrage #=[email]=#", "mailBody": "Anliegen: #=[anliegen]=#", "toProductionMails": "[\"production@example.test\"]"])
+        guard case .object(var mail)? = result.proposals["mail"], case .object(var org)? = mail["organisation"] else { return XCTFail() }
+        XCTAssertNil(org["content"], "the converter does not mark the import as notification")
+        org["to"] = .array([.string("team@example.test")]); mail["organisation"] = .object(org)
+        mail["from"] = .object(["address": .string("absender@example.test")])
+        let json = try JSONSerialization.jsonObject(with: JCS.canonicalize(.object(mail))) as! [String: Any]
+        let plan = try XCTUnwrap(MailPlan.parse(json, fieldNames: ["email", "anliegen"]).0)
+        XCTAssertEqual(plan.organisation?.content, .full)
+        let o = try XCTUnwrap(plan.organisation)
+        let values = ["email": "a@example.test", "anliegen": "IMPORT-MARKER-1"]
+        XCTAssertEqual(MailTemplate.renderSubject(o.template.subject, values: values), "Anfrage a@example.test")
+        XCTAssertEqual(MailTemplate.render(o.template.body, values: values, html: o.template.isHTML), "Anliegen: IMPORT-MARKER-1")
     }
     func testEssentialFallbackAndDuplicateNames() throws {
         let fallback = try convert([], config: ["essentialPostFields": "[\"email\",\"email\"]"])

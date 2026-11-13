@@ -312,9 +312,9 @@ export function createAdminApi(http: Http) {
         { body: { ids } },
       ),
     retention: (tenant: string, form: string) =>
-      http.request<{ days: number | null }>('GET', `${f(tenant, form)}/retention`),
-    setRetention: (tenant: string, form: string, days: number | null) =>
-      http.request<{ days: number | null }>('PUT', `${f(tenant, form)}/retention`, {
+      http.request<{ days: number }>('GET', `${f(tenant, form)}/retention`),
+    setRetention: (tenant: string, form: string, days: number) =>
+      http.request<{ days: number }>('PUT', `${f(tenant, form)}/retention`, {
         body: { days },
       }),
     exportPage: (tenant: string, form: string, cursor?: string) =>
@@ -362,8 +362,12 @@ export function createAdminApi(http: Http) {
       tenant: string,
       account: string,
       body: { kid: string; enc: string; sealed: string },
+      quiet = false,
     ) =>
-      http.request<void>('PUT', `${t(tenant)}/key-access/${encodeURIComponent(account)}`, { body }),
+      http.request<void>('PUT', `${t(tenant)}/key-access/${encodeURIComponent(account)}`, {
+        body,
+        ...(quiet ? { quiet } : {}),
+      }),
     revokeKeyAccess: (tenant: string, account: string) =>
       http.request<void>('DELETE', `${t(tenant)}/key-access/${id(account)}`),
     keyCandidates: (tenant: string) =>
@@ -394,10 +398,11 @@ export function createAdminApi(http: Http) {
     ) => http.request<void>('PUT', `${t(tenant)}/key-rotation/objects/${id(objectId)}`, { body }),
     finishRotation: (tenant: string, kid: string) =>
       http.request<void>('POST', `${t(tenant)}/key-rotation/finish`, { body: { kid } }),
-    keyRecovery: (tenant: string, kid?: string) =>
+    keyRecovery: (tenant: string, kid?: string, quiet = false) =>
       http.request<RecoveryRecord>(
         'GET',
         `${t(tenant)}/key-recovery${kid ? `?kid=${encodeURIComponent(kid)}` : ''}`,
+        quiet ? { quiet } : {},
       ),
     adsStatistics: (tenant: string, form: string, days = 30) =>
       http.request<AdsStatistics>('GET', `${f(tenant, form)}/statistics/ads?days=${days}`),

@@ -25,7 +25,7 @@ final class MailEndToEndTests: XCTestCase {
     private let defaultMail: FormCore.JSONValue = .object([
         "from": .object(["address": .string("info@example.org"), "name": .string("Praxis Müller")]),
         "organisation": .object(["to": .array([.string("empfang@example.org")]), "bcc": .array([.string("archiv@example.org")]), "replyToField": .string("email"),
-                                 "subject": .string("Neue Anfrage von #=[name]=#"), "body": .string("<p>#=[nachricht]=#</p><p>#=[liste]=#</p>"), "format": .string("html")]),
+                                 "subject": .string("Neue Anfrage von #=[name]=#"), "body": .string("<p>#=[nachricht]=#</p><p>#=[liste]=#</p>"), "format": .string("html"), "content": .string("full")]),
         "confirmation": .object(["toField": .string("email"), "subject": .string("Danke, #=[name]=#"), "body": .string("Wir melden uns, #=[name]=#.\nIhre Nachricht: #=[nachricht]=#")]),
     ])
 
@@ -118,6 +118,119 @@ final class MailEndToEndTests: XCTestCase {
         try await f.sql.raw("SELECT mail_kind, state, attempts, last_error_code, transport_kind FROM mail_deliveries ORDER BY mail_kind").all(decoding: Row.self)
     }
     private let pairs: [(String, String)] = [("name", "Erika <Muster>"), ("email", "erika@example.net"), ("nachricht", "Grüße & <b>Hallo</b> MAIL-MARKER-4711"), ("liste", "a")]
+
+    private func mailWithout(content: String?, template: Bool = true) -> FormCore.JSONValue {
+        guard case .object(var mail) = defaultMail, case .object(var org)? = mail["organisation"] else { return .null }
+        org["content"] = content.map { .string($0) }
+        if !template { org["subject"] = nil; org["body"] = nil; org["format"] = nil }
+        mail["organisation"] = .object(org); mail["confirmation"] = nil
+        return .object(mail)
+    }
+
+    /// ADR 0041 (13.11.): the standard (no `content`, i.e. every form and release that existed before) is the FULL mail, as the legacy backend sent it:
+    /// the practice team has no access to the backend, everything must be in the mail.
+    func testStandardMailWithTemplateCarriesAllValues() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: mailWithout(content: nil))   // as stored before ADR 0041: no content key
+            try await connect(w, smtp)
+            try await submit(w, pairs) { XCTAssertEqual($0.status, .ok, text($0)) }
+            try await until { smtp.mails.count == 1 }
+            let o = decoded(try XCTUnwrap(smtp.mails.first).data)
+            XCTAssertEqual(subject(o.headers["subject"] ?? ""), "Neue Anfrage von Erika <Muster>")
+            XCTAssertEqual(o.body, "<p>Grüße &amp; &lt;b&gt;Hallo&lt;/b&gt; MAIL-MARKER-4711</p><p>a</p>")
+            XCTAssertEqual(o.headers["reply-to"], "erika@example.net")
+        }
+    }
+
+    /// A new form without any mail template must not fail and must still send every field (label: value).
+    func testStandardMailWithoutTemplateListsAllFields() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: mailWithout(content: nil, template: false))
+            try await connect(w, smtp)
+            var id = ""
+            try await submit(w, pairs) { res async throws in XCTAssertEqual(res.status, .ok, text(res)); id = ((obj(res)["submission"] as? [String: Any])?["id"] as? String) ?? "" }
+            try await until { smtp.mails.count == 1 }
+            let o = decoded(try XCTUnwrap(smtp.mails.first).data)
+            XCTAssertEqual(o.headers["content-type"], "text/plain; charset=utf-8")
+            XCTAssertEqual(subject(o.headers["subject"] ?? ""), "Neue Einsendung: Kontakt")
+            for line in ["name: Erika <Muster>", "email: erika@example.net", "liste: a"] { XCTAssertTrue(o.body.contains(line), "\(line)\n\(o.body)") }
+            XCTAssertTrue(o.body.contains("Kennung: \(id)"), o.body)
+            XCTAssertEqual(o.headers["reply-to"], "erika@example.net")
+        }
+    }
+
+    /// Explicit choice: a notification carries no submitted value; a resend renders the same mode.
+    func testExplicitNotificationSendsOnlyTheLink() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: mailWithout(content: "notification"))
+            try await connect(w, smtp)
+            var id = ""
+            try await submit(w, pairs) { res async throws in XCTAssertEqual(res.status, .ok, text(res)); id = ((obj(res)["submission"] as? [String: Any])?["id"] as? String) ?? "" }
+            try await until { smtp.mails.count == 1 }
+            let o = decoded(try XCTUnwrap(smtp.mails.first).data)
+            let wire = try XCTUnwrap(smtp.mails.first).data + (o.headers["subject"] ?? "") + o.body
+            for secret in ["MAIL-MARKER", "Erika", "Muster", "erika@example.net", "Grüße"] { XCTAssertFalse(wire.contains(secret), secret) }
+            XCTAssertNil(o.headers["reply-to"], "the submitted address is a submitted value too")
+            XCTAssertEqual(o.headers["content-type"], "text/plain; charset=utf-8")
+            XCTAssertEqual(subject(o.headers["subject"] ?? ""), "Neue Einsendung: Kontakt", "the localized form title, not the fallback")
+            XCTAssertTrue(o.body.contains("Kennung: \(id)"), o.body)
+            XCTAssertTrue(o.body.contains("\(AdminFixture.origin)/t/\(w.tenant.uuidString.lowercased())/f/\(w.form)/entries"), o.body)
+            XCTAssertTrue(o.body.contains("Formular: Kontakt"), o.body)
+        }
+    }
+
+    /// Review 0041: the manual resend of a notification carries no submitted value either, and its time is the receipt of the submission.
+    func testManualResendOfANotificationCarriesNoValueAndTheReceiptTime() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: mailWithout(content: "notification"))
+            try await submit(w, pairs) { XCTAssertEqual($0.status, .ok) }   // no connection yet: waits for a human
+            try await f.sql.raw("UPDATE submissions SET received_at = '2027-01-15 08:00:00.000000'").run()
+            try await connect(w, smtp)
+            var entry = "", org = ""
+            try await w.user.get("tenants/\(w.tenant)/forms/\(w.form)/mail-deliveries") { res async throws in
+                let d = try XCTUnwrap(((obj(res)["items"] as? [[String: Any]]) ?? []).first)
+                entry = d["submissionId"] as? String ?? ""; org = d["id"] as? String ?? ""
+            }
+            struct Obj: Decodable { let ciphertext: Blob }
+            let objRow = try await f.sql.raw("SELECT ciphertext FROM stored_objects").first(decoding: Obj.self)
+            let pkg = try PackageV2(String(decoding: try XCTUnwrap(objRow).ciphertext.data, as: UTF8.self))
+            let cek = try HPKE.open(pkg.b, enc: pkg.a, recipient: w.customerKey, info: Data("kubus-anfrage v2".utf8), aad: Data(pkg.kid.utf8))
+            for r in ["content.resend", "content.decrypt"] { try await f.grant(w.userID, r, customer: w.tenant, by: w.root) }
+            try await w.user.send(.POST, "tenants/\(w.tenant)/forms/\(w.form)/entries/\(entry)/resends", body: "{\"deliveryId\":\"\(org)\",\"contentKey\":\"\(cek.base64URLString)\"}") { res async throws in
+                XCTAssertEqual(res.status, .accepted, text(res))
+            }
+            try await until { smtp.mails.count == 1 }
+            let o = decoded(try XCTUnwrap(smtp.mails.first).data)
+            let wire = try XCTUnwrap(smtp.mails.first).data + (o.headers["subject"] ?? "") + o.body
+            for secret in ["MAIL-MARKER", "Erika", "Muster", "erika@example.net", "Grüße"] { XCTAssertFalse(wire.contains(secret), secret) }
+            XCTAssertNil(o.headers["reply-to"])
+            XCTAssertEqual(subject(o.headers["subject"] ?? ""), "Neue Einsendung: Kontakt")
+            XCTAssertTrue(o.body.contains("Zeitpunkt: 15.01.2027 09:00 Uhr"), "receipt in Europe/Berlin, not the resend time: \(o.body)")
+            XCTAssertTrue(o.body.contains("Kennung: \(entry)"), o.body)
+            XCTAssertTrue(o.body.contains("\(AdminFixture.origin)/t/\(w.tenant.uuidString.lowercased())/f/\(w.form)/entries"), o.body)
+        }
+    }
+
+    /// Decision 13.11.: no extra audit entry or warning for either mode (the choice itself in the Mail tab is enough).
+    func testNoExtraAuditEntryForAnyContentMode() async throws {
+        try await AdminFixture.with { f in
+            _ = try await world(f, mail: defaultMail)
+            _ = try await world(f, mail: mailWithout(content: nil))
+            _ = try await world(f, mail: mailWithout(content: "notification"))
+            let extra = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code = 'release.mail-fulltext'").first(decoding: C.self)?.c
+            XCTAssertEqual(extra, 0)
+            let publishes = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code = 'release.publish'").first(decoding: C.self)?.c
+            XCTAssertEqual(publishes, 3)
+        }
+    }
 
     func testRestrictedRecipientsBlockBCCAndConfirmationBeforeSMTP() async throws {
         let smtp = FakeSMTPServer(); try await smtp.start()
@@ -402,6 +515,14 @@ final class MailEndToEndTests: XCTestCase {
             let from: FormCore.JSONValue = .object(["address": s("info@example.org")])
             let org: FormCore.JSONValue = .object(["to": .array([s("a@example.org")]), "subject": s("S"), "body": s("B")])
             try await patch(.object(["from": from, "organisation": org]), .ok)
+            // Review 0041: in notification mode a hidden, partial template or a stale reply-to field never blocks saving.
+            for hidden: FormCore.JSONValue in [
+                .object(["to": .array([s("a@example.org")]), "format": s("html")]),
+                .object(["to": .array([s("a@example.org")]), "subject": s(""), "body": s("B"), "format": s("text"), "content": s("notification")]),
+                .object(["to": .array([s("a@example.org")]), "replyToField": s("nope"), "content": s("notification")]),
+                .object(["to": .array([s("a@example.org")]), "subject": s(""), "body": s("B"), "content": s("full")]),   // template optional: default list
+                .object(["to": .array([s("a@example.org")])]),                                                          // new form, no template at all
+            ] { try await patch(.object(["from": from, "organisation": hidden]), .ok) }
             for bad: FormCore.JSONValue in [
                 .object(["from": from]),                                                                                                   // nothing to send
                 .object(["organisation": org]),                                                                                            // no sender
@@ -411,11 +532,12 @@ final class MailEndToEndTests: XCTestCase {
                 .object(["from": from, "organisation": .object(["to": .array((0..<21).map { s("u\($0)@example.org") }), "subject": s("S"), "body": s("B")])]),
                 .object(["from": from, "organisation": .object(["to": .array([s("a@example.org")]), "subject": s("S\nX"), "body": s("B")])]),   // line break in the subject
                 .object(["from": from, "organisation": .object(["to": .array([s("a@example.org")]), "subject": s("S"), "body": s("B"), "format": s("pdf")])]),
-                .object(["from": from, "organisation": .object(["to": .array([s("a@example.org")]), "subject": s("S"), "body": s("B"), "replyToField": s("nope")])]),
+                .object(["from": from, "organisation": .object(["to": .array([s("a@example.org")]), "subject": s("S"), "body": s("B"), "replyToField": s("nope"), "content": s("full")])]),
                 .object(["from": from, "confirmation": .object(["toField": s("nope"), "subject": s("S"), "body": s("B")])]),                // unknown field
                 .object(["from": from, "organisation": org, "extra": s("x")]),
             ] { try await patch(bad, .unprocessableEntity) }
-            let revNow = try await f.sql.raw("SELECT revision AS c FROM form_drafts").first(decoding: C.self)?.c
+            let draftID = try XCTUnwrap(UUID(uuidString: draft))   // the fixture may hold a second draft: read exactly this one
+            let revNow = try await f.sql.raw("SELECT revision AS c FROM form_drafts WHERE id=\(bind: DB.bin(draftID))").first(decoding: C.self)?.c
             XCTAssertEqual(revNow, rev, "rejected configurations change nothing")
         }
     }

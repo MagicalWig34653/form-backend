@@ -40,9 +40,11 @@ public struct MailDispatcher: Sendable {
     let now: @Sendable () -> Date
     let logger: Logger
     let queue: SendQueue
+    /// Origin of the PWA (FORM_ADMIN_ORIGIN) for the link in notification mails; nil = mail without link.
+    let adminOrigin: String?
 
-    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.db = db; self.secrets = secrets; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.logger = logger; self.now = now
+    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, adminOrigin: String? = nil, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.db = db; self.secrets = secrets; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.logger = logger; self.adminOrigin = adminOrigin; self.now = now
         queue = SendQueue(maxConcurrent: Self.maxConcurrent, maxQueued: Self.maxQueued)
     }
 
@@ -53,7 +55,29 @@ public struct MailDispatcher: Sendable {
         guard let mail = definition["mail"] as? [String: Any] else { return nil }
         var names = Set<String>()
         for (_, f) in (definition["fields"] as? [String: Any]) ?? [:] { if let n = (f as? [String: Any])?["name"] as? String { names.insert(n) } }
-        return MailPlan.parse(mail, fieldNames: names).0
+        guard var plan = MailPlan.parse(mail, fieldNames: names).0 else { return nil }
+        plan.formTitle = title(definition["title"])
+        plan.fields = ((definition["fields"] as? [String: Any]) ?? [:]).keys.sorted { $0.compare($1, options: .numeric) == .orderedAscending }.compactMap { id in
+            guard let f = (definition["fields"] as? [String: Any])?[id] as? [String: Any], let n = f["name"] as? String else { return nil }
+            let label = title(f["label"]).unicodeScalars.map { $0.value < 0x20 || $0.value == 0x7F ? " " : Character($0) }
+            let text = String(label).trimmingCharacters(in: .whitespaces)
+            return MailPlan.Field(name: n, label: text.isEmpty ? n : text)
+        }
+        return plan
+    }
+
+    /// `form.title` is localized (`{"de": "…"}`): German first, otherwise the first non-empty value by language key. A plain string is accepted as is.
+    static func title(_ raw: Any?) -> String {
+        if let s = raw as? String { return s }
+        guard let map = raw as? [String: Any] else { return "" }
+        if let de = map["de"] as? String, !de.isEmpty { return de }
+        return map.keys.sorted().lazy.compactMap { map[$0] as? String }.first { !$0.isEmpty } ?? ""
+    }
+
+    /// When the submission came in (the "Zeitpunkt" of a notification); nil when unknown.
+    private func receivedAt(_ tx: SQLDatabase, submission: UUID) async throws -> Date? {
+        struct R: Decodable { let received_at: Date? }
+        return try await tx.raw("SELECT received_at FROM submissions WHERE id=\(bind: DB.bin(submission))").first(decoding: R.self)?.received_at
     }
 
     /// Creates the delivery rows (inside `tx`) and renders the messages from the in-memory submission.
@@ -91,13 +115,13 @@ public struct MailDispatcher: Sendable {
                 """).run()
         }
 
-        func make(_ kind: String, to: [String], bcc: [String], replyTo: String?, template: MailPlan.Template) async throws {
+        func make(_ kind: String, to: [String], bcc: [String], replyTo: String?, template: MailPlan.Template, notify: Bool = false) async throws {
             let id = existingID ?? UUID()
             guard let conn else { try await row(kind: kind, state: "waiting-manual", code: "no_connection", token: nil, id: id); return }
+            let received = kind == "organisation" ? try await receivedAt(tx, submission: submission) : nil
             do {
-                let msg = try MailMessage(fromAddress: plan.fromAddress, fromName: plan.fromName, to: to, bcc: bcc, replyTo: replyTo,
-                                          subject: MailTemplate.renderSubject(template.subject, values: values),
-                                          body: MailTemplate.render(template.body, values: values, html: template.isHTML), isHTML: template.isHTML, date: now())
+                let msg = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: replyTo, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
+                                            customer: customer, form: form, submission: submission)
                 guard try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else {
                     try await row(kind: kind, state: "abandoned", code: "recipient_not_allowed", token: nil, id: id); return
                 }
@@ -112,7 +136,7 @@ public struct MailDispatcher: Sendable {
 
         if let o = plan.organisation, onlyKind == nil || onlyKind == "organisation" {
             let reply = o.replyToField.flatMap { values[$0] }.flatMap(MailAddress.parse)
-            try await make("organisation", to: o.to, bcc: o.bcc, replyTo: reply, template: o.template)
+            try await make("organisation", to: o.to, bcc: o.bcc, replyTo: reply, template: o.template, notify: o.content == .notification)
         }
         if let c = plan.confirmation, onlyKind == nil || onlyKind == "confirmation" {
             if let addr = values[c.toField].flatMap(MailAddress.parse) {
@@ -134,26 +158,28 @@ public struct MailDispatcher: Sendable {
         plan.apply(derived: &values, now: now())
         guard let conn = try await connection(tx, customer: customer, form: form), ["smtp", "mail-proxy"].contains(conn.kind) else { throw ResendError.noConnection }
         let to: [String], bcc: [String], reply: String?, template: MailPlan.Template
+        var notify = false
         switch kind {
         case "organisation":
             guard let o = plan.organisation else { throw ResendError.kindNotPlanned }
-            to = o.to; bcc = o.bcc; reply = o.replyToField.flatMap { values[$0] }.flatMap(MailAddress.parse); template = o.template
+            to = o.to; bcc = o.bcc; reply = o.replyToField.flatMap { values[$0] }.flatMap(MailAddress.parse); template = o.template; notify = o.content == .notification
         case "confirmation":
             guard let c = plan.confirmation else { throw ResendError.kindNotPlanned }
             guard let addr = values[c.toField].flatMap(MailAddress.parse) else { throw ResendError.recipientInvalid }
             to = [addr]; bcc = []; reply = nil; template = c.template
         default: throw ResendError.kindNotPlanned
         }
-        let message: MailMessage
-        do {
-            message = try MailMessage(fromAddress: plan.fromAddress, fromName: plan.fromName, to: to, bcc: bcc, replyTo: reply,
-                                      subject: MailTemplate.renderSubject(template.subject, values: values),
-                                      body: MailTemplate.render(template.body, values: values, html: template.isHTML), isHTML: template.isHTML, date: now())
-            _ = try message.rfc822()
-        } catch { throw ResendError.messageInvalid }
         struct Submission: Decodable { let submission_id: Blob }
         guard let source = try await tx.raw("SELECT submission_id FROM mail_deliveries WHERE id=\(bind: DB.bin(delivery)) AND customer_id=\(bind: customer) AND form_id=\(bind: form)").first(decoding: Submission.self),
-              let submission = DB.uuid(source.submission_id.data), try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else { throw ResendError.recipientInvalid }
+              let submission = DB.uuid(source.submission_id.data) else { throw ResendError.recipientInvalid }
+        let message: MailMessage
+        let received = kind == "organisation" ? try await receivedAt(tx, submission: submission) : nil
+        do {
+            message = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: reply, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
+                                        customer: customer, form: form, submission: submission)
+            _ = try message.rfc822()
+        } catch { throw ResendError.messageInvalid }
+        guard try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else { throw ResendError.recipientInvalid }
         let token = UUID(), t = DB.time(now())
         let states = allowUncertain ? "'waiting-manual','uncertain'" : "'waiting-manual'"
         struct N: Decodable { let n: Int }
@@ -165,6 +191,24 @@ public struct MailDispatcher: Sendable {
             """).run()
         guard try await tx.raw("SELECT ROW_COUNT() AS n").first(decoding: N.self)?.n ?? 0 == 1 else { throw ResendError.notResendable }
         return PreparedMail(deliveryID: delivery, leaseToken: token, message: message, connection: conn)
+    }
+
+    /// Renders one message. `notify` (organisation mail in the explicitly chosen notification mode, ADR 0041) ignores the template and the submitted values completely;
+    /// its "Zeitpunkt" is `receivedAt` (receipt of the submission, also on a later resend or a delayed flow mail), `now` only when unknown.
+    static func renderMessage(adminOrigin: String?, now: Date, receivedAt: Date? = nil, plan: MailPlan, to: [String], bcc: [String], replyTo: String?, template: MailPlan.Template, notify: Bool, isConfirmation: Bool = false, values: [String: String],
+                       customer: Blob, form: Blob, submission: UUID) throws -> MailMessage {
+        if notify {
+            let link = adminOrigin.flatMap { o in DB.uuid(customer.data).flatMap { c in DB.uuid(form.data).map { "\(o)/t/\(c.uuidString.lowercased())/f/\($0.uuidString.lowercased())/entries" } } }
+            let n = MailNotification.render(formTitle: plan.formTitle, at: receivedAt ?? now, reference: submission.uuidString.lowercased(), link: link)
+            return try MailMessage(fromAddress: plan.fromAddress, fromName: plan.fromName, to: to, bcc: bcc, replyTo: nil, subject: n.subject, body: n.body, isHTML: false, date: now)
+        }
+        // Organisation mail in `full` mode without its own subject/body (a new form, an import without template): the standard (decision 13.11.2026).
+        let ownSubject = isConfirmation || !template.subject.trimmingCharacters(in: .whitespaces).isEmpty
+        let ownBody = isConfirmation || !template.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let subject = ownSubject ? MailTemplate.renderSubject(template.subject, values: values) : MailStandard.subject(formTitle: plan.formTitle)
+        let body = ownBody ? MailTemplate.render(template.body, values: values, html: template.isHTML)
+            : MailStandard.body(formTitle: plan.formTitle, at: receivedAt ?? now, reference: submission.uuidString.lowercased(), fields: plan.fields, values: values)
+        return try MailMessage(fromAddress: plan.fromAddress, fromName: plan.fromName, to: to, bcc: bcc, replyTo: replyTo, subject: subject, body: body, isHTML: ownBody && template.isHTML, date: now)
     }
 
     /// The `mail` section of the form version behind a release (nil when absent or invalid).

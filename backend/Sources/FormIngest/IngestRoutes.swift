@@ -31,6 +31,9 @@ public struct IngestConfig: Sendable {
     public var now: @Sendable () -> Date
     /// Hard HTTP body limit (contract ingest/README, VORGESCHLAGEN: 32 MiB).
     public var maxBodyBytes: Int
+    /// Submissions in flight per replica, checked before the body is collected (review Astra 2 M5). 0 = no budget.
+    /// 16 x 32 MiB bounds the buffered bodies of one replica to 512 MiB.
+    public var maxConcurrent: Int = 16
     public var webhookLimits: WebhookLimits?
     /// Outgoing mail (ADR 0010). nil = the application sends no mail.
     public var mail: MailDispatcher?
@@ -48,8 +51,9 @@ public enum IngestSetup {
     public static func register(_ app: Application, config: IngestConfig) {
         app.http.client.configuration.redirectConfiguration = .disallow
         let handler = SubmitHandler(config: config)
+        let gated = app.grouped(IngestGate(maxConcurrent: config.maxConcurrent))   // runs before `body: .collect`
         for path in [["api", "v2", "submit"], ["api", "v2", "submit", "index.php"]] {
-            app.on(.POST, path.map { PathComponent(stringLiteral: $0) }, body: .collect(maxSize: ByteCount(value: config.maxBodyBytes))) { req in
+            gated.on(.POST, path.map { PathComponent(stringLiteral: $0) }, body: .collect(maxSize: ByteCount(value: config.maxBodyBytes))) { req in
                 try await handler.submit(req)
             }
             for method in [HTTPMethod.GET, .PUT, .PATCH, .DELETE] {
@@ -102,7 +106,8 @@ struct SubmitHandler: Sendable {
         // Cheap pre-check before any parsing (review M6): without well-formed signature headers nothing is parsed or hashed.
         guard let tsHeader = req.headers.first(name: "X-Kubus-Timestamp"), !tsHeader.isEmpty, tsHeader.utf8.count <= 20,
               let sigHeader = req.headers.first(name: "X-Kubus-Signature"), sigHeader.utf8.count == 88,
-              let sigRaw = Data(base64Encoded: sigHeader), sigRaw.count == 64 else { throw Abort(.forbidden) }
+              let sigRaw = Data(base64Encoded: sigHeader), sigRaw.count == 64,
+              RequestSignature.validTimestamp(tsHeader, now: Int64(now.timeIntervalSince1970)) else { throw Abort(.forbidden) }   // stale requests are not parsed (M5)
         let body = req.body.data.map { Array($0.readableBytesView) } ?? []
         var uploads: [Upload] = []
         let fields: PHPValue
@@ -226,8 +231,8 @@ struct SubmitHandler: Sendable {
                     INSERT INTO submissions (id, customer_id, form_id, release_id, release_evidence, received_at, environment, state, removable, retention_due_at, malware_scan_status, captcha_status)
                     VALUES (\(bind: Self.bin(submissionID)), \(bind: form.customer_id), \(bind: Self.bin(formUUID)), \(bind: releaseID), 'recorded', \(bind: ts),
                       \(bind: environment), 'accepted', 1,
-                      (SELECT DATE_ADD(CAST(\(bind: ts) AS DATETIME(6)), INTERVAL CAST(JSON_VALUE(safe_value_json, '$') AS UNSIGNED) DAY) FROM settings
-                        WHERE scope_key = \(bind: "form:" + formUUID.uuidString.lowercased()) AND setting_key = 'retention.days'), \(bind: protection.malware.rawValue), \(bind: protection.captcha.rawValue))
+                      DATE_ADD(CAST(\(bind: ts) AS DATETIME(6)), INTERVAL COALESCE((SELECT CAST(JSON_VALUE(safe_value_json, '$') AS UNSIGNED) FROM settings
+                        WHERE scope_key = \(bind: "form:" + formUUID.uuidString.lowercased()) AND setting_key = 'retention.days'), \(literal: Retention.defaultDays)) DAY),\(bind: protection.malware.rawValue), \(bind: protection.captcha.rawValue))
                     """).run()
                 if let storage = req.application.storage[StorageServiceKey.self], let customer = DB.uuid(form.customer_id.data) {
                     try await storage.insert(sql: t, customer: customer, form: formUUID, submission: submissionID, role: "data", ordinal: 0, wire: wire, kid: kid, payloadHash: payloadHash.data, originalBytes: stored.count)

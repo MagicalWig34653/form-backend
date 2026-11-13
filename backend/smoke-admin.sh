@@ -6,15 +6,16 @@
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
 DOCKER=${DOCKER:-docker}; command -v "$DOCKER" >/dev/null 2>&1 || DOCKER=/opt/homebrew/bin/docker
-IMAGE=${MARIADB_IMAGE:-mariadb:lts}; NAME=p4a-mariadb; PORT=${P3B_PORT:-33417}; HPORT=${SMOKE_HTTP_PORT:-38417}; PPORT=${SMOKE_PUBLIC_PORT:-38418}
+. backend/e2e-common.sh
+IMAGE=${MARIADB_IMAGE:-mariadb:lts}; NAME=$(e2e_name p4a-mariadb); PORT=${P3B_PORT:-$(e2e_pick_port)}; HPORT=${SMOKE_HTTP_PORT:-$(e2e_pick_port)}; PPORT=${SMOKE_PUBLIC_PORT:-$(e2e_pick_port)}
 PW=$(openssl rand -hex 16); TMP=$(mktemp -d); KEYFILE="$TMP/server.key"; APP_PID=""
 umask 077; openssl rand -hex 32 > "$KEYFILE"; chmod 600 "$KEYFILE"
 savelogs() { [ -n "${E2E_LOG_DIR:-}" ] || return 0; mkdir -p "$E2E_LOG_DIR"; for l in "$TMP"/*.log; do [ -f "$l" ] && cp "$l" "$E2E_LOG_DIR/$(basename "$0" .sh)-$(basename "$l")"; done; return 0; }  # CI: keep logs as artifact
-cleanup() { savelogs; [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; rm -rf "$TMP"; echo "cleanup done"; }
+cleanup() { savelogs; [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; e2e_cleanup; rm -rf "$TMP"; echo "cleanup done"; }
 trap cleanup EXIT
+e2e_reap_stale
 "$DOCKER" info >/dev/null 2>&1 || { echo "ENV: docker daemon not reachable"; exit 2; }
-"$DOCKER" rm -f "$NAME" >/dev/null 2>&1
-"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=smoke "$IMAGE" >/dev/null || { echo "ENV: container start failed"; exit 2; }
+"$DOCKER" run -d "${E2E_LABEL_ARGS[@]}" --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=smoke "$IMAGE" >/dev/null || { echo "ENV: container start failed"; exit 2; }
 up=0
 for _ in $(seq 90); do
   if "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' smoke >/dev/null 2>&1 && sleep 2 \

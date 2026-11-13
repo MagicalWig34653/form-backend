@@ -42,3 +42,23 @@ final class AppConfigTests: XCTestCase {
         }
     }
 }
+
+final class AdminRequestLimitConfigTests: XCTestCase {
+    func testDefaultsAndOverrides() throws {
+        let d = try AppConfig(env: ["FORM_DB_PASSWORD": "p"])
+        XCTAssertEqual(d.adminRequestLimitIP, 600)
+        XCTAssertEqual(d.adminRequestLimitAccount, 300)
+        let c = try AppConfig(env: ["FORM_DB_PASSWORD": "p", "FORM_ADMIN_REQUEST_LIMIT_IP": "50", "FORM_ADMIN_REQUEST_LIMIT_ACCOUNT": "5"])
+        XCTAssertEqual(c.adminRequestLimitIP, 50)
+        XCTAssertEqual(c.adminRequestLimitAccount, 5)
+    }
+    func testInvalidLimitsFailAtStart() {
+        for k in ["FORM_ADMIN_REQUEST_LIMIT_IP", "FORM_ADMIN_REQUEST_LIMIT_ACCOUNT"] {
+            for v in ["0", "-1", "abc", "", "1.5", "+5", "100001"] {
+                XCTAssertThrowsError(try AppConfig(env: ["FORM_DB_PASSWORD": "p", k: v]), "\(k)=\(v)") {
+                    XCTAssertEqual(($0 as? ConfigError)?.variable, k)
+                }
+            }
+        }
+    }
+}

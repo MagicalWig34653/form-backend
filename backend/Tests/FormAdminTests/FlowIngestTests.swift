@@ -36,13 +36,12 @@ final class FlowIngestTests: XCTestCase {
     private func count(_ f: AdminFixture, _ table: String) async throws -> Int {
         try await f.sql.raw("SELECT COUNT(*) AS c FROM \(unsafeRaw: table)").first(decoding: Count.self)?.c ?? -1
     }
-    private func modified(_ doc: JSONValue, flow: String?) throws -> JSONValue {
+    private func modified(_ doc: JSONValue, flow: String?, content: String? = "full") throws -> JSONValue {
         var top = try XCTUnwrap(doc.object), form = try XCTUnwrap(top["form"]?.object)
         // One organisation mail makes duplicate delivery observable for both legacy and flow paths.
-        form["mail"] = .object([
-            "from": .object(["address": .string("sender@example.org")]),
-            "organisation": .object(["to": .array([.string("recipient@example.org")]), "subject": .string("Ablauf-Test"), "body": .string("#=[nachricht]=#")])
-        ])
+        var organisation: [String: JSONValue] = ["to": .array([.string("recipient@example.org")]), "subject": .string("Ablauf-Test"), "body": .string("#=[nachricht]=#")]
+        if let content { organisation["content"] = .string(content) }
+        form["mail"] = .object(["from": .object(["address": .string("sender@example.org")]), "organisation": .object(organisation)])
         top["form"] = .object(form)
         let formHash = DocHash.hex(DocHash.sha256(.object(form)))
         top["views"] = .array(try XCTUnwrap(top["views"]?.array).map { value in
@@ -74,7 +73,7 @@ final class FlowIngestTests: XCTestCase {
         }
         return .object(top)
     }
-    private func world(_ f: AdminFixture, flow: String?) async throws -> World {
+    private func world(_ f: AdminFixture, flow: String?, content: String? = "full") async throws -> World {
         let root = try await f.account(), user = try await f.account(), system = try await f.account(), tenant = try await f.customer()
         for right in ["form.create", "form.read", "draft.write", "release.publish", "key.manage", "flow.execute", "flow.resume", "content.resend", "content.decrypt"] { try await f.grant(user, right, customer: tenant, by: root) }
         try await f.grant(system, "system.manage", system: true, by: root)
@@ -83,7 +82,7 @@ final class FlowIngestTests: XCTestCase {
         try await c.post("tenants/\(tenant)/forms", "{\"name\":\"Ablauf\"}") { XCTAssertEqual($0.status, .created, text($0)); form = jsonObject($0)["id"] as? String ?? "" }
         try await c.get("tenants/\(tenant)/forms/\(form)") { draft = (jsonObject($0)["draftIds"] as? [String])?.first ?? "" }
         try await c.get("tenants/\(tenant)/forms/\(form)/drafts/\(draft)") { doc = try parse($0)["document"] ?? .null }
-        doc = try modified(doc, flow: flow)
+        doc = try modified(doc, flow: flow, content: content)
         try await c.send(.PATCH, "tenants/\(tenant)/forms/\(form)/drafts/\(draft)", body: String(decoding: JCS.canonicalize(doc), as: UTF8.self), headers: ["If-Match": "\"1\""]) {
             XCTAssertEqual($0.status, .ok, text($0)); hash = jsonObject($0)["hash"] as? String ?? ""
         }
@@ -199,6 +198,22 @@ final class FlowIngestTests: XCTestCase {
             // Even an explicit second engine call cannot claim a completed run.
             try await FlowEngine(db: f.app.db(.mysql)).execute(run: try XCTUnwrap(DB.uuid(run.id.data)), state: FlowState(nodeID: "entry", fields: ["nachricht": .string("DUPLICATE")]))
             XCTAssertEqual(smtp.mails.count, 1)
+        }
+    }
+    /// ADR 0041: the flow mail block with an explicit `content: notification` sends no field value, not even a transformed one.
+    func testFlowMailInNotificationModeCarriesNoFieldValue() async throws {
+        try requireDatabase()
+        let smtp = FakeSMTPServer(); try await smtp.start(); defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, flow: "mail", content: "notification"); try await connect(w, smtp)
+            let id = try await submit(f, w)
+            try await until { smtp.mails.count == 1 }
+            let wire = try XCTUnwrap(smtp.mails.first).data, body = mailBody(smtp)
+            for secret in ["FLOW-TRANSFORMED", "FLOW-ORIGINAL", "Ablauf-Test"] { XCTAssertFalse(wire.contains(secret) || body.contains(secret), secret) }
+            XCTAssertTrue(body.contains("Formular: Ablauf"), body)
+            XCTAssertTrue(body.contains("Kennung: \(id)"), body)
+            XCTAssertTrue(body.contains("\(AdminFixture.origin)/t/\(w.tenant.uuidString.lowercased())/f/\(w.form)/entries"), body)
+            XCTAssertFalse(wire.lowercased().contains("reply-to:"))
         }
     }
     func testAutomaticWebhooksOnlyForStandardPlaceholderAndNeverOnReplay() async throws {

@@ -240,7 +240,13 @@ for (const [label, status, body, text] of failures) {
 for (const [code, text] of [
   ['unknownKeyGeneration@kid', 'Der Schlüssel (kid) ist im Ziel nicht vorhanden'],
   ['source_no_tls', 'Die Quelle bietet kein TLS an'],
+  ['source_cert_hostname', 'passt nicht zum Hostnamen'],
+  ['source_cert_untrusted', 'unbekannten Stelle'],
+  ['source_cert_expired', 'ist abgelaufen'],
   ['database', 'Datenbankfehler beim Schreiben ins Ziel'],
+  ['database@1062:uq_customer_active_key', 'Fehlernummer 1062, Name uq_customer_active_key'],
+  ['key_conflict_active', 'schon einen aktiven Schlüssel'],
+  ['key_conflict_number', 'derselben Nummer'],
 ] as const) {
   test(`Fehlgeschlagener Lauf (${code}) erklärt sich und lässt sich fortsetzen`, async ({
     page,

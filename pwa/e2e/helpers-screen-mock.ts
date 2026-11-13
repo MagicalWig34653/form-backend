@@ -377,6 +377,27 @@ export async function mock(page: Page) {
           forms: [{ customer: T, id: F, name: 'Kontakt' }],
         }),
       );
+    if (p === '/audit') {
+      const q = new URL(r.request().url()).searchParams;
+      if (q.get('action') === 'forbidden') return r.fulfill(j({ type: 'forbidden' }, 403));
+      const items =
+        q.get('action') === 'none'
+          ? []
+          : [
+              {
+                id: '55555555-5555-4555-8555-555555555555',
+                occurredAt: '2026-11-03T10:00:00.000Z',
+                category: 'key',
+                action: 'key.rotate',
+                actorId: D,
+                actorKind: 'human',
+                customerId: T,
+                formId: F,
+                subjectId: null,
+              },
+            ];
+      return r.fulfill(j({ items, nextCursor: null }));
+    }
     if (p === '/ops')
       return r.fulfill(
         j({

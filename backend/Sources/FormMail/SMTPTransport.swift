@@ -76,6 +76,8 @@ public struct SMTPTransport: MailTransport {
     /// Plain (unencrypted) connections and AUTH over them are refused unless this is set (development only).
     public let allowInsecure: Bool
     let group: EventLoopGroup
+    /// Test hook: trust anchors instead of the system roots (lets tests exercise real chain and host-name verification with synthetic certificates).
+    var trustRoots: [NIOSSLCertificate]? = nil
 
     public init(config: SMTPConfig, allowedNets: [CIDR] = [], allowInsecure: Bool = false, group: EventLoopGroup = MultiThreadedEventLoopGroup.singleton) {
         self.config = config; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.group = group
@@ -116,7 +118,13 @@ public struct SMTPTransport: MailTransport {
 
     private func tlsContext() throws -> NIOSSLContext {
         var c = TLSConfiguration.makeClientConfiguration()
-        if !config.verifyCertificate { c.certificateVerification = .none }
+        if !config.verifyCertificate {
+            guard allowInsecure else { throw MailTransportError("insecure_not_allowed", transient: false) }
+            c.certificateVerification = .none
+        }
+        // Otherwise `.fullVerification` stays: chain and host name are checked. For IP literals no server name is passed (NIOSSL refuses
+        // IPs as SNI); NIOSSL then matches the connected address against the certificate's IP SANs only, never the CN.
+        if let roots = trustRoots { c.trustRoots = .certificates(roots) }
         return try NIOSSLContext(configuration: c)
     }
 
@@ -128,7 +136,7 @@ public struct SMTPTransport: MailTransport {
         catch HostGuard.Failure.blocked { throw MailTransportError("target_blocked", transient: false) }
         catch { throw MailTransportError("unresolvable", transient: true) }
         let context: NIOSSLContext
-        do { context = try tlsContext() } catch { throw MailTransportError("tls_failed", transient: false) }
+        do { context = try tlsContext() } catch let e as MailTransportError { throw e } catch { throw MailTransportError("tls_failed", transient: false) }
         let hostname = IPAddr(config.host) == nil ? config.host : nil
         var stream: AsyncStream<Result<SMTPReply, MailTransportError>>.Continuation!
         let replies = AsyncStream<Result<SMTPReply, MailTransportError>>(bufferingPolicy: .unbounded) { stream = $0 }

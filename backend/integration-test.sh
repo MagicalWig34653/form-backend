@@ -9,7 +9,15 @@ cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
 DOCKER=${DOCKER:-docker}; command -v "$DOCKER" >/dev/null 2>&1 || DOCKER=/opt/homebrew/bin/docker
 IMAGE=${MARIADB_IMAGE:-mariadb:lts}; NAME=${P3B_NAME:-p4a-mariadb}; PORT=${P3B_PORT:-33417}
 PW=$(openssl rand -hex 16)
-cleanup() { "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; echo "cleanup: container $NAME removed"; }
+cleanup() {
+  rc=$?
+  if [ "$rc" != 0 ]; then
+    # A server that died or restarted mid-run looks like an abruptly closed connection in the tests: say so.
+    echo "diag: container state: $("$DOCKER" inspect -f 'status={{.State.Status}} oomKilled={{.State.OOMKilled}} exit={{.State.ExitCode}} restarts={{.RestartCount}} started={{.State.StartedAt}}' "$NAME" 2>&1)"
+    echo "diag: server log tail:"; "$DOCKER" logs --tail 15 "$NAME" 2>&1 | sed 's/^/diag:   /'
+  fi
+  "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; echo "cleanup: container $NAME removed"
+}
 trap cleanup EXIT
 "$DOCKER" info >/dev/null 2>&1 || { echo "ENV: docker daemon not reachable"; exit 2; }
 "$DOCKER" rm -f "$NAME" >/dev/null 2>&1

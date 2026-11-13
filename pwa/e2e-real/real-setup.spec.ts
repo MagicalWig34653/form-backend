@@ -41,8 +41,8 @@ test('bootstrap link registers a passkey and the same passkey logs in', async ({
     ['vorname', 'Vorname', 'text'],
   ]);
   await page.getByRole('link', { name: 'Einbindung', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Einrichtungsdatei ausstellen' }).click();
-  const file = await page.getByLabel('Einrichtungsdatei', { exact: true }).inputValue();
+  await page.getByRole('button', { name: 'Zugangsdatei ausstellen' }).click();
+  const file = await page.getByLabel('Zugangsdatei', { exact: true }).inputValue();
   const creds = JSON.parse(file) as Record<string, string>;
   expect(creds.signingSeed).toMatch(/^[A-Za-z0-9_-]{43}$/);
   const dir = mkdtempSync(join(tmpdir(), 'e2e-sdk-'));
@@ -70,8 +70,12 @@ test('bootstrap link registers a passkey and the same passkey logs in', async ({
   );
   console.log('SDK:', out.trim().slice(0, 200));
 
-  await page.getByRole('link', { name: 'Einsendungen', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Öffnen', exact: true }).click();
+  await page.getByRole('link', { name: 'Einsendungen', exact: true }).last().click();
+  await page
+    .getByRole('button', { name: /^Aktionen für Einsendung/ })
+    .first()
+    .click();
+  await page.getByRole('menuitem', { name: 'Öffnen' }).click();
   const detail = page.getByRole('dialog');
   await expect(detail.getByText(marker)).toBeVisible();
   await expect(detail.getByText('Erika')).toBeVisible();

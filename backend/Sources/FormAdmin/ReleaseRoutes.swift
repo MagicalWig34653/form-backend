@@ -98,6 +98,9 @@ enum ReleaseRoutes {
                         """).run()
                     struct FormLock: Decodable { let active: Int }
                     guard try await tx.raw("SELECT active FROM forms WHERE id = \(bind: DB.bin(formID)) AND customer_id = \(bind: DB.bin(tenant)) FOR UPDATE").first(decoding: FormLock.self) != nil else { throw Abort(.notFound) }
+                    // No go-live without a retention period (ADR 0012 no. 2): 409 with the reason; the transaction (incl. the idempotency key) rolls back.
+                    struct Cnt: Decodable { let c: Int }
+                    guard try await tx.raw("SELECT COUNT(*) AS c FROM settings WHERE scope_key = \(bind: Retention.scopeKey(formID)) AND setting_key = \(bind: Retention.settingKey)").first(decoding: Cnt.self)?.c == 1 else { throw RetentionProblem.missing }
                     // Confirmation: bound to this session, account, form, draft revision and hash; single use; unexpired.
                     struct Conf: Decodable { let session_id: Blob; let account_id: Blob; let draft_id: Blob; let draft_revision: UInt64; let candidate_sha256: Blob; let expires_at: Date; let consumed_at: Date?; let revoked_at: Date? }
                     guard let c = try await tx.raw("""
@@ -205,7 +208,13 @@ enum ReleaseRoutes {
             return (r.version_no, false)
         }
         struct N: Decodable { let n: Int }
-        let next = (try await tx.raw("SELECT COALESCE(MAX(version_no), 0) AS n FROM resource_versions WHERE customer_id = \(bind: DB.bin(tenant)) AND resource_kind = \(bind: kind) AND resource_id = \(bind: DB.bin(id))").first(decoding: N.self)?.n ?? 0) + 1
+        var next = (try await tx.raw("SELECT COALESCE(MAX(version_no), 0) AS n FROM resource_versions WHERE customer_id = \(bind: DB.bin(tenant)) AND resource_kind = \(bind: kind) AND resource_id = \(bind: DB.bin(id))").first(decoding: N.self)?.n ?? 0) + 1
+        if kind == "form" {
+            // An imported form already holds form_versions rows (version 1, contract "migration-review") that have no
+            // resource_versions entry: the next number must lie above them, otherwise the release collides (duplicate key).
+            let taken = try await tx.raw("SELECT COALESCE(MAX(version_no), 0) AS n FROM form_versions WHERE customer_id = \(bind: DB.bin(tenant)) AND form_id = \(bind: DB.bin(id))").first(decoding: N.self)?.n ?? 0
+            next = max(next, taken + 1)
+        }
         try await tx.raw("""
             INSERT INTO resource_versions (customer_id, resource_kind, resource_id, semantic_version, version_no, content_sha256)
             VALUES (\(bind: DB.bin(tenant)), \(bind: kind), \(bind: DB.bin(id)), \(bind: semver), \(bind: next), \(bind: Blob(hash)))

@@ -3515,7 +3515,7 @@ paths:
     get:
       operationId: getAudit
       summary: Anmelde-, MCP- und Änderungsereignisse ohne Secrets lesen
-      description: 'VORGESCHLAGEN: Sicht mit systemweitem audit.read, keine Klartexte, Tokens oder Headerwerte;
+      description: 'Umgesetzt (Abbild: p5-implementiert.openapi.yaml, FA-146), je Grant-Bereich (System, Kunde, Formular). VORGESCHLAGEN: Sicht mit audit.read, keine Klartexte, Tokens oder Headerwerte;
         Bereichsfehler separat nur über erlaubte Formularprojektion. Auditpersistenz nicht pauschal manipulationssicher
         nennen.'
       x-proposal-status: VORGESCHLAGEN

@@ -351,36 +351,58 @@
                     class="min-h-12"
                   /></Row
                 >
-                <Row id="org-reply" optional label={t.admin.mail.replyTo}>
-                  <Select id="org-reply" bind:value={f.organisation.replyToField}>
-                    <option value="">{t.admin.mail.none}</option>
-                    {#each names as n (n)}<option value={n}>{n}</option>{/each}
+                <Row id="org-content" label={t.admin.mail.contentLabel}>
+                  <Select id="org-content" bind:value={f.organisation.content}>
+                    <option value="full">{t.admin.mail.contentFull}</option>
+                    <option value="notification">{t.admin.mail.contentNotification}</option>
                   </Select>
                 </Row>
-                <Row id="org-subject" label={t.admin.mail.subject} error={problem('orgSubject')}
-                  ><Input
-                    id="org-subject"
-                    aria-invalid={!!problem('orgSubject')}
-                    aria-describedby={problem('orgSubject') ? 'org-subject-error' : undefined}
-                    bind:value={f.organisation.subject}
-                  /></Row
-                >
-                <Row id="org-format" label={t.admin.mail.format}>
-                  <Select id="org-format" bind:value={f.organisation.format}>
-                    <option value="text">{t.admin.mail.formatText}</option><option value="html"
-                      >{t.admin.mail.formatHtml}</option
-                    >
-                  </Select>
-                </Row>
-                <MailBodyEditor
-                  id="org-body"
-                  label={t.admin.mail.body}
-                  bind:value={f.organisation.body}
-                  format={f.organisation.format}
-                  names={[...names, ...derivedNames]}
-                  error={problem('orgBody')}
-                  onedit={() => (changed = true)}
-                />
+                {#if f.organisation.content === 'notification'}
+                  <p
+                    class="text-muted-foreground m-0 max-w-prose text-sm"
+                    data-testid="org-notification-hint"
+                  >
+                    {t.admin.mail.contentNotificationHint}
+                  </p>
+                {:else}
+                  <p
+                    class="text-muted-foreground m-0 max-w-prose text-sm"
+                    data-testid="org-full-hint"
+                  >
+                    {t.admin.mail.contentFullHint}
+                  </p>
+                  <!-- Reply-To is a submitted value: only meaningful (and only set by the server) in full mode. -->
+                  <Row id="org-reply" optional label={t.admin.mail.replyTo}>
+                    <Select id="org-reply" bind:value={f.organisation.replyToField}>
+                      <option value="">{t.admin.mail.none}</option>
+                      {#each names as n (n)}<option value={n}>{n}</option>{/each}
+                    </Select>
+                  </Row>
+                  <Row id="org-subject" label={t.admin.mail.subject} error={problem('orgSubject')}
+                    ><Input
+                      id="org-subject"
+                      aria-invalid={!!problem('orgSubject')}
+                      aria-describedby={problem('orgSubject') ? 'org-subject-error' : undefined}
+                      bind:value={f.organisation.subject}
+                    /></Row
+                  >
+                  <Row id="org-format" label={t.admin.mail.format}>
+                    <Select id="org-format" bind:value={f.organisation.format}>
+                      <option value="text">{t.admin.mail.formatText}</option><option value="html"
+                        >{t.admin.mail.formatHtml}</option
+                      >
+                    </Select>
+                  </Row>
+                  <MailBodyEditor
+                    id="org-body"
+                    label={t.admin.mail.body}
+                    bind:value={f.organisation.body}
+                    format={f.organisation.format}
+                    names={[...names, ...derivedNames]}
+                    error={problem('orgBody')}
+                    onedit={() => (changed = true)}
+                  />
+                {/if}
               </div>
             </details>
           {/if}

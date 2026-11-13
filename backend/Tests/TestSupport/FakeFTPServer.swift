@@ -16,6 +16,10 @@ public final class FakeFTPServer: @unchecked Sendable {
         public var corruptUploadsNamed: String? = nil   // stores different bytes for files with this name
         public var bogusPasvAddress = false             // PASV names a foreign IP (must be ignored)
         public var passiveReply: String? = nil          // answer EPSV/PASV with this (malformed) text after the code
+        public var preliminaryFlood = false             // answers SIZE with "150" every 200 ms, never with a final reply
+        public var replyFlood = 0                       // answers TYPE with this many extra "200" lines at once
+        public var replyDelay: TimeInterval = 0         // every reply is sent this late
+        public var slowCommands: [String: TimeInterval] = [:]   // replies to these commands (e.g. "RNFR") are sent this late
         public init() {}
     }
     public let options: Options
@@ -80,6 +84,7 @@ public final class FakeFTPServer: @unchecked Sendable {
         var listener: Channel?
         init(server: FakeFTPServer, tls: NIOSSLContext) { self.server = server; self.tls = tls; tlsActive = server.options.implicitTLS }
 
+        var current = ""
         func channelActive(context: ChannelHandlerContext) { reply(context, "220 fake ftp") }
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             var b = unwrapInboundIn(data)
@@ -90,7 +95,15 @@ public final class FakeFTPServer: @unchecked Sendable {
                 handle(context, String(decoding: line, as: UTF8.self))
             }
         }
-        func reply(_ ctx: ChannelHandlerContext, _ s: String) { ctx.writeAndFlush(NIOAny(ByteBuffer(string: s + "\r\n")), promise: nil) }
+        func reply(_ ctx: ChannelHandlerContext, _ s: String) {
+            let d = server.options.slowCommands[current] ?? server.options.replyDelay
+            guard d > 0 else { ctx.writeAndFlush(NIOAny(ByteBuffer(string: s + "\r\n")), promise: nil); return }
+            ctx.eventLoop.scheduleTask(in: .milliseconds(Int64(d * 1000))) { ctx.writeAndFlush(NIOAny(ByteBuffer(string: s + "\r\n")), promise: nil) }
+        }
+        func stall(_ ctx: ChannelHandlerContext) {
+            reply(ctx, "150 still working")
+            ctx.eventLoop.scheduleTask(in: .milliseconds(200)) { if ctx.channel.isActive { self.stall(ctx) } }
+        }
 
         func abs(_ p: String) -> String {
             var parts = (p.hasPrefix("/") ? [] : cwd.split(separator: "/").map(String.init))
@@ -101,6 +114,7 @@ public final class FakeFTPServer: @unchecked Sendable {
         func handle(_ ctx: ChannelHandlerContext, _ line: String) {
             let sp = line.firstIndex(of: " ")
             let cmd = (sp.map { String(line[..<$0]) } ?? line).uppercased()
+            current = cmd
             let arg = sp.map { String(line[line.index(after: $0)...]) } ?? ""
             server.record(cmd == "PASS" ? "PASS ***" : line)
             let o = server.options
@@ -113,7 +127,9 @@ public final class FakeFTPServer: @unchecked Sendable {
             case "PROT": dataTLS = arg.uppercased() == "P"; reply(ctx, dataTLS ? "200 ok" : "200 clear")
             case "USER": userOK = arg == o.user; reply(ctx, "331 password")
             case "PASS": if userOK && arg == o.password { authed = true; reply(ctx, "230 in") } else { reply(ctx, "530 login incorrect") }
-            case "TYPE": reply(ctx, "200 binary")
+            case "TYPE":
+                reply(ctx, "200 binary")
+                if o.replyFlood > 0 { ctx.writeAndFlush(NIOAny(ByteBuffer(string: String(repeating: "200 again\r\n", count: o.replyFlood))), promise: nil) }
             case "QUIT": reply(ctx, "221 bye"); ctx.close(promise: nil)
             default:
                 guard authed else { return reply(ctx, "530 not logged in") }
@@ -142,6 +158,7 @@ public final class FakeFTPServer: @unchecked Sendable {
                 let p = abs(arg)
                 if s.files[p] != nil { s.mutate { $0._files[p] = nil }; reply(ctx, "250 deleted") } else { reply(ctx, "550 no such file") }
             case "SIZE":
+                if s.options.preliminaryFlood { return stall(ctx) }
                 if let d = s.files[abs(arg)] { reply(ctx, "213 \(d.count)") } else { reply(ctx, "550 no such file") }
             case "RNFR":
                 let p = abs(arg)

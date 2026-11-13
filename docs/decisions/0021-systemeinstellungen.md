@@ -35,7 +35,8 @@ niemals Werte (auch bei künftig sensiblen Einträgen). Sensible Werte werden ni
 zurückgegeben. Zurzeit enthält die Registry keine Geheimnisse.
 
 MCP-Limit und Webhookquoten werden je Operation aus der Registry gelesen. REST-
-Tokenbudget bleibt 120/min und erhält einen getrennten Zähler. Explizite
+Tokenbudget bleibt 120/min und erhält einen getrennten Zähler.
+(Admin-Anfragelimit der Sitzungen: seit 13.11.2026 IP 600/min und Konto 300/min per ENV, siehe `docs/handoffs/Admin-Anfragelimit.md`.) Explizite
 Webhook-Testkonfigurationen bleiben möglich. Alle übrigen Werte sind als
 restartRequired markiert und werden beim Start aus DB+ENV zusammengeführt.
 Admin-Origin und RP-ID werden gemeinsam auf Konsistenz geprüft. Der Serverschlüssel

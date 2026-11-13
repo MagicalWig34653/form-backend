@@ -1,5 +1,15 @@
 # Arbeitsplan
 
+## Nachtsession fb-nacht (13.11.2026, 02:40 bis 06:00, lokal, nicht gepusht)
+
+Auf main gemergt (Rollback-Ref je Merge in Todolino): Ops-Liste trotz vorlaufender DB-Uhr (05A35EB7), Zertifikatsfehler der Quelle benannt (443C1306), Umstieg-UI 409/Schlüssel-ID/Abschluss (CF9547A6), Admin-Anfragelimit je Konto (63A481E7), Lasttest/Failover aktuell und rc-Prüfung gegen Pipes (3A140F21), DomainCollector-Flake (ECC292AF), Harness-Diagnose für DB-Abbruch (2C1378DF), E2E Lücke 7 und Beleg Lücke 6 (7D503F6B), Freigabe importierter Formulare (Versionsnummer, Fund aus 7D503F6B). Letztes Image `form-backend:1966ce08c410`.
+
+Nächste Schritte:
+- Pushen und CI abwarten. Neue CI-Schritte im Job `e2e-real`: `e2e-ops.sh`, `e2e-admin-limit.sh`, `e2e-migration-convert.sh` (dazu die Schritte der Parallel-Session). Keiner davon ist in der CI gelaufen.
+- Offene Nutzerfragen: Malware (5DAD0F85), Rotation nach Umstieg (FF958178), Sichtbarkeit importierter Einsendungen (2DC195BE). Aufbewahrung (72 h, Pflicht, änderbar) ist umgesetzt (EEDF6CCE, ADR 0012 Nr. 2, ungemergt, Review offen); Cutover (Snapshot und Quiesce) ist beantwortet, aber noch nicht umgesetzt.
+- Konverter-Funde: Der Import konvertiert selbst, 409 kommt ohne Grundtext (`docs/handoffs/E2E-Migration-Konverter.md`). Importierte Kunden sind `disabled` und in `/tenants` unsichtbar.
+- Lücke 14 (Vorwarnung im Plan-Schritt, EDBC4A14) ist offen. Lücke 10: Delta nach Rotation endet mit `missing_target` (Entscheidung FF958178); das Delta selbst entfällt seit ADR 0043 (Einmal-Snapshot, 48E3D133), die Rotations-Spec muss auf Wiederholung mit gleichem Snapshot umgestellt werden (`docs/handoffs/Einmal-Snapshot-Quiesce.md`).
+
 ## Setup-Assistent: weitere Schritte (11.11.2026, Todolino 9C74289D)
 
 Umgesetzt: Schritte Passkeys, API-Token, Probe-Einsendung, neue Reihenfolge, Abschluss-Zusammenfassung (siehe STATUS). Offen: Review, Merge, Abnahme im echten Browser (Passkey-Hinzufügen, echte Einsendung); optional ein lesender Endpunkt für SDK-Zugänge, falls sie als Beleg zählen sollen.
@@ -467,3 +477,7 @@ Bestandskandidat. Swift-Testbestand kompiliert, PWA Check/Lint und 159 Vitest gr
 DB-/Browserlauf, Upgradeabnahme und unabhängiger Review bleiben beim Nutzer.
 Ein schreibender Codex, keine Delegation/Commits, Besitz frei, keine Anwendungsjobs.
 Keine Cutoverfreigabe; RSA/CBC und finaler Löschabgleich bleiben außerhalb des Pakets.
+
+## Review Astra 2, Rest (12.11.2026)
+
+Branch `agent/astra2-reste` (Worktree `~/Development/worktrees/fb-astra2`), ADR 0042. Offen: Review und Merge, Upgrade 0033 an einer Bestandskopie prüfen, Umgebungsvariable für `ingest.maxConcurrent`, Lasttest des Eingangs (P10), SFTP-Echttest gegen Docker-Server, Proxy/WAF-Differential für Multipart.

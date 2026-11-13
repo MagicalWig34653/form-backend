@@ -22,6 +22,9 @@ struct RehearsalSource {
     static let smtpPassword = "SMTP-Passwort-Geheim-4711", proxyURL = "https://proxyuser:proxy-secret-99@proxy.example.invalid/send"
     static let cloudflare = "cf-secret-key-123"
     static let recoveryPassphrase = "recovery-code-nur-im-test"
+    /// Synthetic legacy recovery code of the active key (the envelope in `datenschluesselRecovery` is sealed under it).
+    static let recoveryWrap = try! Data(hex: "1818a17eeba88a06a5c09c538a539f0463322de3f93adb2306ae6304eeddd183f8fee562537397dd2c07fcea52c5e3da")
+    static let recoveryCode = "SYNT-8K2M-Q7WX-4PDN-ZB6V-H3JR-9TLC-5EFA"
 
     static func privateKey(_ seed: UInt8) -> Curve25519.KeyAgreement.PrivateKey { try! Curve25519.KeyAgreement.PrivateKey(rawRepresentation: Data(repeating: seed, count: 32)) }
     // The legacy system has exactly one active data key for the whole installation (plus retiring ones); every form uses it.
@@ -102,7 +105,10 @@ struct RehearsalSource {
         }
         // Recovery envelopes exist for the active generations (bytes opaque for the importer; copied exactly).
         for key in [alphaActive] {
-            let salt = Data((0..<32).map { UInt8(($0 &* 7) & 0xff) }), iv = Data((0..<12).map { UInt8($0 &+ 3) }), wrap = Data((0..<48).map { UInt8(($0 &* 5 &+ 1) & 0xff) })
+            // A real legacy recovery envelope (PBKDF2-HMAC-SHA256, 600000 iterations, AES-256-GCM with the kid as AAD) of the active key's
+            // secret under the synthetic `recoveryCode`; precomputed so that the rehearsals stay fast. The browser E2E opens it.
+            let salt = try! Data(hex: "0b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4"), iv = try! Data(hex: "030405060708090a0b0c0d0e")
+            let wrap = recoveryWrap
             try await s.raw("INSERT INTO datenschluesselRecovery (kid,salt,iterationen,iv,wrap,erstelltAm) VALUES (\(bind: kid(key)),\(bind: Blob(salt)),600000,\(bind: Blob(iv)),\(bind: Blob(wrap)),1750000001)").run()
         }
         // Mail connections (credentials only here and later in the encrypted secret store).

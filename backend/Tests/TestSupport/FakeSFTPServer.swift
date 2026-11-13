@@ -13,6 +13,12 @@ public final class FakeSFTPServer: @unchecked Sendable {
     private var storage: [String: Data] = [:]
     private var directories: Set<String> = ["/", "/objects"]
     private var deleteFailure = false
+    private var emptyReadReplies = false
+    /// READ answers DATA with zero bytes forever (a client must not loop on it, review Astra 2 M6).
+    public var emptyReads: Bool { get { lock.lock(); defer { lock.unlock() }; return emptyReadReplies } set { lock.lock(); emptyReadReplies = newValue; lock.unlock() } }
+    private var stalled = false
+    /// After the next packet the sessions stop reading: the SSH window is never replenished, so a client write eventually blocks.
+    public var stallInput: Bool { get { lock.lock(); defer { lock.unlock() }; return stalled } set { lock.lock(); stalled = newValue; lock.unlock() } }
     public var failDelete: Bool { get { lock.lock(); defer { lock.unlock() }; return deleteFailure } set { lock.lock(); deleteFailure = newValue; lock.unlock() } }
     public var files: [String: Data] { lock.lock(); defer { lock.unlock() }; return storage }
     public var fingerprint: String {
@@ -62,6 +68,7 @@ public final class FakeSFTPServer: @unchecked Sendable {
         }
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             let message = unwrapInboundIn(data)
+            if s.stallInput { context.channel.setOption(ChannelOptions.autoRead, value: false).whenFailure { _ in } }   // later reads stop: the SSH window runs dry
             guard case .byteBuffer(var b) = message.data else { return }
             buffer.append(contentsOf: b.readBytes(length: b.readableBytes) ?? [])
             while buffer.count >= 4 {
@@ -96,6 +103,7 @@ public final class FakeSFTPServer: @unchecked Sendable {
             case 5: // READ
                 let h = try r.bytes(), offset = try r.u64(), count = try r.u32()
                 guard let path = handles[h], let d = s.files[path] else { status(ctx, id: id, code: 4); return }
+                if s.emptyReads { reply(ctx, type: 103, id: id) { $0.bytes(Data()) }; return }
                 guard offset < d.count else { status(ctx, id: id, code: 1); return }
                 reply(ctx, type: 103, id: id) { $0.bytes(Data(d.dropFirst(Int(offset)).prefix(Int(count)))) }
             case 6: // WRITE

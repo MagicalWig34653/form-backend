@@ -116,7 +116,12 @@ struct MigrationService {
         } catch {
             try? await connectionApp.asyncShutdown()
             // Neither driver nor source diagnostics can cross this boundary: only the classified cause.
-            throw SourceFailure.classify(error)
+            var failure = SourceFailure.classify(error)
+            if failure == .certUntrusted {
+                // Unknown CA and expired look the same in the handshake error. A separate, credential-free connection reads the certificate.
+                if let notAfter = await SourceTLSProbe.leafNotValidAfter(address: pinned, port: port, group: app.eventLoopGroup), Double(notAfter) < Date().timeIntervalSince1970 { failure = .certExpired }
+            }
+            throw failure
         }
     }
     static func readOnlyGrant(_ grant: String) -> Bool {
@@ -154,10 +159,20 @@ struct MigrationService {
             let safe = column.utf8.count <= 20 && column.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) || $0 == 95 }) ? column : "column"
             return String("\(reason.rawValue)@\(safe)".prefix(40))
         case .invalidSource: return "invalid_source"
-        case .invalidPlan: return "invalid_plan"
+        case .snapshotChanged: return "snapshot_changed"
+        case .sourceChanged: return "source_changed"
+        case .sourceNotQuiesced: return "source_not_quiesced"
+        case .invalidPlan, .invalidPlanField: return "invalid_plan"
+        case .statisticsReviewMissing: return "statistics_review_missing"
+        case .statisticsKeyUnknown: return "statistics_key_unknown"
         case .conflict: return "conflict"
         case .missingTarget: return "missing_target"
         case .database: return "database"
+        // Server error number and index/column name (never the message): "database@1062:uq_customer_active_key".
+        case let .databaseAt(_, code, _, object): return String("database@\(code)\(object.isEmpty ? "" : ":" + object)".prefix(40))
+        case let .keyConflict(reason): return "key_conflict_" + reason.rawValue.lowercased()
+        case .targetFormsLive: return "target_forms_live"
+        case .customerNameMismatch: return "customer_name_mismatch"
         case .lock: return "lock"
         case .interrupted: return "interrupted"
         }
@@ -175,18 +190,21 @@ struct MigrationService {
             let refs = try JSONDecoder().decode(MigrationSourceRefs.self, from: Data(job.source_json.utf8))
             let source = try await open(refs), hmac = try await key()
             let plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
+            // The rehearsal's fingerprint (report_json) is what a real run expects; progress writes keep it so that a resume still has it.
+            let storedFingerprint = (try? JSONSerialization.jsonObject(with: Data(job.report_json.utf8)) as? [String: Any])?["sourceFingerprint"] as? String
+            let expectedFingerprint = job.dry_run == 0 ? storedFingerprint : nil
             // withSource replaces every error by one generic answer. The importer's own failures carry a safe description
             // (table, column, reason; never a source value), so they travel out as a value and keep the real cause.
             let outcome = try await withSource(source) { src -> Result<ImportReport, ImportFailure> in
               do {
                 let importer = try LegacyImporter(source: src, target: target, secrets: secrets, hmacKey: hmac)
-                return .success(try await importer.run(plan: plan, dryRun: job.dry_run == 1, expectedSchema: job.expected_schema) { phase, processed in
+                return .success(try await importer.run(plan: plan, dryRun: job.dry_run == 1, expectedSchema: job.expected_schema, expectedSourceFingerprint: expectedFingerprint) { phase, processed in
                     struct C: Decodable { let cancel_requested: Int }
                     let cancel = try await sql.raw("SELECT cancel_requested FROM migration_jobs WHERE id=\(bind: id)").first(decoding: C.self)?.cancel_requested
                     let enabled = try await SystemSettings.value("migration.enabled", sql: sql) == "true"
                     if Task.isCancelled || cancel != 0 || !enabled { throw ImportFailure.interrupted }
                     try await PermissionService(sql: sql).authorize(account: actor, "migration.run", on: .system)
-                    let progress = "{\"processed\":\(processed)}"
+                    let progress = expectedFingerprint.map { "{\"processed\":\(processed),\"sourceFingerprint\":\"\($0)\"}" } ?? "{\"processed\":\(processed)}"
                     try await sql.raw("UPDATE migration_jobs SET phase=\(bind: phase),report_json=\(bind: progress),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()
                 })
               } catch let failure as ImportFailure { return .failure(failure) }
@@ -201,7 +219,7 @@ struct MigrationService {
                 struct Issue: Decodable { let issue_code: String; let count: Int }
                 // All runs of the namespace: a repeated run (new snapshot id) resumes ledger entries and does not report their cases again.
                 let issues = try await sql.raw("SELECT i.issue_code, COUNT(DISTINCT i.source_table, i.source_key) AS count FROM migration_issues i JOIN migration_runs r ON r.id=i.run_id WHERE r.source_namespace=\(bind: plan.namespace) AND i.state='open' GROUP BY i.issue_code").all(decoding: Issue.self)
-                let codes = Set(["migration-review", "unmapped-table", "unmapped-column", "source-deletion-review", "unsupported-content"])
+                let codes = Set(["migration-review", "unmapped-table", "unmapped-column", "source-deletion-review", "unsupported-content", "statistics-review-missing", "statistics-key-unknown"])
                 // One entry per code (unknown codes are folded into migration-review and summed).
                 var totals: [String: Int] = [:]
                 for issue in issues { totals[codes.contains(issue.issue_code) ? issue.issue_code : "migration-review", default: 0] += issue.count }

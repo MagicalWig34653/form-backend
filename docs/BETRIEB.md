@@ -416,6 +416,44 @@ Für einen Proxy auf dem Compose-Host z.B. `FORM_PUBLIC_PUBLISH_PORT=18080`,
 `127.0.0.1:18080` bzw. `127.0.0.1:18081` ändern. Swarm-Hostports liegen auf
 allen Host-IPs und erfordern eine Firewallbegrenzung auf den Proxy.
 
+### Betriebshärtung des Proxys (Todolino 2000434E)
+
+**Sicherheitsheader.** Die Vorlage setzt HSTS (`max-age=31536000; includeSubDomains`, bewusst
+ohne `preload`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` und eine
+`Permissions-Policy` (Kamera, Mikrofon, Standort, Zahlung, USB aus; WebAuthn bleibt erlaubt).
+`includeSubDomains` setzt voraus, dass alle Subdomains der Origin HTTPS können. Das Backend
+setzt `nosniff` und `Referrer-Policy` bereits selbst (`StaticSite.swift`, `Routes.swift`); die
+Vorlage verbirgt diese Backend-Header und setzt sie einmal neu, damit nichts doppelt ankommt.
+Die CSP der App-Shell (same-origin, `frame-ancestors 'none'`) liefert das Backend für HTML;
+der Proxy ergänzt nur für Antworten ohne CSP (API/JSON) `frame-ancestors 'none'`. Kein
+`add_header` in `location`-Blöcken ergänzen (verdrängt die Server-Header).
+
+**Prüfung.** `deploy/proxy/check-headers.sh URL [curl-Argumente]` (Exit ≠ 0 bei fehlendem,
+doppeltem oder falschem Header, auch HSTS-`preload`). Gegen den Produktivhost nach jedem
+Proxy-Change ausführen. `deploy/proxy/test-template.sh` prüft die Vorlage lokal in einem
+nginx-Container (`nginx -t`, Header je Host/Pfad, IP-Kürzung, Access-Log); Docker und openssl
+nötig, bisher nicht Teil von CI.
+
+**Proxy-Logs.** Das Access-Log der Vorlage kürzt IPs (IPv4 letztes Oktett auf `.0`, IPv6 auf
+/48) und enthält `$uri` ohne Query-String und ohne Referer. Das Backend erhält weiterhin die
+ungekürzte Peer-IP (Drosselung/Missbrauchsschutz). Frist 7 Tage: `deploy/proxy/logrotate.example`
+(`daily`, `rotate 7`, `maxage 7`, USR1 nach Rotation). Betreiber mit Docker-Logging statt Dateien:
+`json-file` kennt nur Größen-, keine Zeitgrenzen (`max-size`/`max-file` so wählen, dass etwa
+7 Tage abgedeckt sind) oder Logs per Treiber in ein System mit 7-Tage-Retention leiten. Die
+Anwendungslogs (Level `FORM_LOG_LEVEL`) unterliegen derselben Betreiberpflicht; Docker-Logs der
+App-Container sind nicht automatisch begrenzt. Keine Debugmitschnitte dauerhaft aktivieren.
+
+**Interner Listener.** `form-internal:8081` darf nur über VPN/Firewall erreichbar sein (interne
+Adresse im `listen`, Hostport-Bindung auf 127.0.0.1/Proxy-Netz, Swarm-Hostports per Firewall).
+`FORM_INTERNAL_SECOND_FACTOR=0` (Default) ist laut ADR 0022/P11-G für den internen Listener
+korrekt, weil dort Passkey mit Pflicht-UV genügt; diese Annahme trägt der Netzschutz. Wird das
+Dashboard öffentlich gemountet (`FORM_PUBLIC_DASHBOARD=1`), ist Passkey plus Passwort Pflicht.
+Der Code erzwingt das bereits: `AuthConfig.secondFactorRequired` ist für Listener `public`
+immer wahr (`FormAuth/AuthGuard.swift`), unabhängig vom internen Schalter; ein Konfigurationsfehler
+dagegen ist nicht möglich. Nicht erzwungen: dass der interne Port netzseitig begrenzt ist; wo der
+interne Listener nicht strikt per VPN/Firewall geschützt werden kann, `FORM_INTERNAL_SECOND_FACTOR=1`
+setzen.
+
 Die Listen vertrauen **Socket-Peers des Proxys**, nicht den Clientnetzen. Beispiel für
 zwei feste, tatsächlich am Backend sichtbare Proxy-Adressen:
 `FORM_PUBLIC_TRUSTED_PROXIES=192.0.2.10/32` und
@@ -487,6 +525,17 @@ Compose kann nach Kompatibilitätsprüfung das vorige Image über `update.sh --i
 verwenden, dabei wird auch dessen Migration erneut gestartet. Bei inkompatiblem Schema
 isolierten Restore mit passendem Image vorbereiten und kontrolliert umschalten.
 
+## Umstieg: Schreibpause des Altsystems (ADR 0043)
+
+Der Import ist ein Einmal-Snapshot, es gibt kein Delta. Das Altsystem muss von „Prüflauf starten“ bis zum Ende
+des Imports (und bis zur Umschaltung) ruhen. Der Code prüft das: Der Prüflauf speichert einen
+Quellen-Fingerabdruck (SHA-256 über `CHECKSUM TABLE` und `COUNT(*)` aller Tabellen; nur ein Hash im
+Bericht). Der Import rechnet ihn vor dem ersten Schreiben und nach dem letzten Objekt neu. Abweichung vor dem
+Schreiben: `source_changed`, nichts geschrieben, „Prüflauf wiederholen“. Abweichung während des Imports:
+`source_not_quiesced`, Lauf `failed`, Ziel aus der Sicherung wiederherstellen. Anderer Snapshot-Hash auf bestehendem
+Namespace: `snapshot_changed`. Das Quell-Konto braucht nur `SELECT`. Die Messung liest jede Tabelle einmal
+vollständig (je Messpunkt etwa so lange wie das Zählen der Zeilen). Details: `docs/UMSTIEG-CHECKLISTE.md`.
+
 ## Backup/Restore gegen die externe DB
 
 Skripte benötigen `FORM_DB_HOST`, `FORM_DB_PORT` (3306), `FORM_DB_USER` (form), `FORM_DB_NAME`
@@ -522,10 +571,44 @@ Wartungspause nicht. Dump: `--single-transaction --quick --hex-blob`, Routinen, 
 Trigger; Transaktionskonsistenz gilt für InnoDB. Benutzer braucht Leserechte und passende
 Rechte für Metadaten/Routinen/Events; kein genereller Root-Zwang.
 
-Neues Backupverzeichnis 0700 enthält `database.sql`, `counts.tsv` (exakte Basistabellen-
-zeilenzahlen), `source-database`, `SHA256SUMS`, Dateien 0600. Nach Erfolg verschlüsselt und
-unabhängig vom Server mit definierten Aufbewahrungsfristen sichern. DB-Benutzer/Grants und
-Server-Konfiguration separat sichern. App erst nach abgeschlossener Sicherung wieder starten.
+Backups sind **verschlüsselt (fail-closed)**. Ohne Empfänger bricht `backup-db.sh` vor dem
+Dump ab. Bevorzugt age: `FORM_BACKUP_AGE_RECIPIENTS_FILE` (nur öffentliche Schlüssel `age1...`;
+der private Schlüssel liegt nicht auf dem Server, sondern offline/beim Betreiber). Alternative gpg:
+`FORM_BACKUP_GPG_RECIPIENT` plus `FORM_BACKUP_GPG_PUBKEY_FILE` (öffentlicher Schlüssel, wird in
+ein temporäres Schlüsselbund importiert). Der Dump läuft per Pipe direkt in den Verschlüsseler
+(umask 077); Klartext-SQL wird nie auf die Platte geschrieben. Nur für Entwicklung gibt es
+`FORM_BACKUP_ALLOW_PLAINTEXT=1` (laute Warnung; Restore verlangt dieselbe Variable).
+
+Neues Backupverzeichnis 0700 enthält `database.sql.age` bzw. `database.sql.gpg`, `counts.tsv`
+(exakte Basistabellenzeilenzahlen, Tabellennamen im Klartext), `source-database`, `SHA256SUMS`
+(deckt Chiffrat, Zählung und Quellnamen), Dateien 0600. Empfohlener Verzeichnisname:
+`form-backup-YYYYMMDDTHHMMSSZ` (UTC; nur solche Namen verarbeitet `backup-prune.sh`).
+DB-Benutzer/Grants und Server-Konfiguration separat sichern. App erst nach abgeschlossener
+Sicherung wieder starten.
+
+**Offsite** (`scripts/backup-offsite.sh BACKUP [--dry-run]`): `FORM_BACKUP_OFFSITE_METHOD=rclone|rsync`,
+`FORM_BACKUP_OFFSITE_TARGET`. rclone: `rclone copy` + `rclone check` (deckt auch sftp-/S3-Ziele
+über die rclone-Konfiguration); rsync: über ssh (`FORM_BACKUP_OFFSITE_SSH_OPTS`), danach
+prüfsummenbasierter Vergleich. Das Skript prüft lokal die Prüfsummen vor dem Upload, verweigert
+Klartext-Backups und fremde Dateien. Zielwahl ist Betreiberentscheidung. Kriterien: Standort EU,
+AVV mit dem Anbieter, Verschlüsselung beim Betreiber (clientseitig, wie hier; serverseitige
+Anbieterverschlüsselung allein genügt nicht), Append-only bzw. Objektsperre (Object Lock) wenn
+möglich, damit ein kompromittierter Server Backups nicht löschen kann; Zugangsdaten des Ziels
+nur mit Schreib-/Listenrecht, ohne Löschrecht.
+
+**Aufbewahrung** (`scripts/backup-prune.sh WURZEL [--dry-run] [--offsite]`): löscht lokal
+Backups älter als `FORM_BACKUP_RETENTION_DAYS`. **Standard 30 Tage ist nur eine Voreinstellung;
+die Frist legt die Klinik fest (AVV § 12).** Alter kommt aus dem Verzeichnisnamen, das jüngste
+Backup bleibt immer, andere Verzeichnisse und Namen ohne Muster oder `SHA256SUMS` werden nie
+angefasst. `--offsite` löscht zusätzlich am rclone-Ziel; bei Objektsperre/Append-only regelt der
+Anbieter per Lifecycle-Regel. Restore-Nachweis: `docs/betrieb/restore-probe-2026-11-12.md`,
+wiederholbar mit `scripts/test-backup-crypto.sh` (Docker nötig, Wegwerf-DB).
+
+Restore: age `FORM_BACKUP_AGE_IDENTITY_FILE` (privater Schlüssel nur auf dem
+Wiederherstellungsrechner), gpg `FORM_BACKUP_GPG_HOME` (Schlüsselbund mit privatem Schlüssel,
+Standard `~/.gnupg`). Entschlüsselung per Pipe ohne Klartextdatei; ein falscher Schlüssel
+bricht vor `CREATE DATABASE` ab. Privaten Schlüssel getrennt vom Server und vom Offsite-Ziel
+sichern (mindestens zwei Aufbewahrungsorte); ohne ihn sind alle Backups wertlos.
 
 Restore prüft die Prüfsummen, verlangt `restore_*`, führt `CREATE DATABASE` ohne
 `IF NOT EXISTS` aus und importiert erst danach in diese neue DB. Existiert sie bereits,
@@ -594,6 +677,10 @@ Bei getrennten öffentlichen/internen Domains `FORM_OAUTH_ISSUER` auf die öffen
 setzen. `FORM_OAUTH_AUTHORIZE_BASE_URL` ist die interne HTTPS-Admin-Origin (Default FORM_ADMIN_ORIGIN)
 oder eine explizit aktivierte öffentliche Dashboard-Origin. Metadaten zeigen diese Origin als
 Authorization-Endpoint; der Browser muss sie erreichen können. Beide Änderungen erfordern Neustart.
+`FORM_ADMIN_REQUEST_LIMIT_IP` (Standard 600/min je Client-IP, alle Admin-Anfragen) und `FORM_ADMIN_REQUEST_LIMIT_ACCOUNT`
+(Standard 300/min je angemeldetem Konto) begrenzen die Admin-API; ganze Zahl 1 bis 100000, sonst Startfehler, Neustart nötig.
+Hinter Proxy/NAT teilen sich Nutzer eine IP, die SPA braucht rund 12 Aufrufe je Seitenladung; Anmelde- und Fehlversuchsgrenzen
+bleiben unverändert. Bei Überschreitung zeigt die PWA „Zu viele Anfragen. Bitte in N Sekunden erneut versuchen.“
 `FORM_MCP_TOKEN_RATE_LIMIT` überschreibt die DB-Einstellung `mcp.requestsPerMinute`, Default 60/min
 je persönlichem oder OAuth-Access-Token. Clientprofil, DB-Upgradegrenze und Abnahme:
 `docs/handoffs/P11-E.md`. Keine Header-/Body-/Tokenlogs für OAuth/MCP aktivieren.

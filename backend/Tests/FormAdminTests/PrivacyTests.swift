@@ -158,11 +158,12 @@ final class PrivacyTests: XCTestCase {
             struct R: Decodable { let reason_code: String; let actor_id: Blob? }
             let recs = try await f.sql.raw("SELECT reason_code, actor_id FROM deletion_records").all(decoding: R.self)
             XCTAssertEqual(recs.count, 2); XCTAssertTrue(recs.allSatisfy { $0.reason_code == "retention" && $0.actor_id == nil })
-            // switching the policy off removes the due dates
-            try await w.admin.send(.PUT, policy, body: "{\"days\":null}") { XCTAssertEqual($0.status, .ok); XCTAssertTrue(obj($0)["days"] is NSNull || obj($0)["days"] == nil) }
+            // the period is mandatory: null is rejected (422 with a reason) and nothing changes
+            try await w.admin.send(.PUT, policy, body: "{\"days\":null}") { XCTAssertEqual($0.status.code, 422); XCTAssertTrue(text($0).contains("Aufbewahrungsfrist ist Pflicht (1–3650 Tage)"), text($0)) }
+            try await w.admin.get(policy) { XCTAssertEqual(obj($0)["days"] as? Int, 30) }
             let none = try await f.sql.raw("SELECT COUNT(*) AS n FROM submissions WHERE retention_due_at IS NOT NULL").first(decoding: Due.self)?.n
-            XCTAssertEqual(none, 0)
-            let again = try await SubmissionEraser.purgeDue(db: f.app.db(.mysql), now: Date().addingTimeInterval(400 * 86_400)); XCTAssertEqual(again, 0)
+            XCTAssertEqual(none, 1)  // the held one stays, with its due date
+            let again = try await SubmissionEraser.purgeDue(db: f.app.db(.mysql), now: Date().addingTimeInterval(400 * 86_400)); XCTAssertEqual(again, 0)  // held
         }
     }
 
@@ -225,9 +226,9 @@ final class PrivacyTests: XCTestCase {
                 """).run()
             try await f.sql.raw("INSERT INTO debug_objects (customer_id, form_id, debug_request_id, sequence_no, object_id) VALUES (\(bind: t), \(bind: form), \(bind: dbgReq), 1, \(bind: dbgObj))").run()
 
-            // a retention pass that selected the row before the policy was lifted must not delete it
+            // a retention pass that selected the row before the period was extended must not delete it
             try await f.grant(w.user, "content.hold", customer: w.tenant, by: w.root)
-            try await w.admin.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/retention", body: "{\"days\":null}") { XCTAssertEqual($0.status, .ok) }
+            try await w.admin.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/retention", body: "{\"days\":3650}") { XCTAssertEqual($0.status, .ok) }
             let late = try await f.app.db(.mysql).transaction { c in
                 try await SubmissionEraser.erase(c as! SQLDatabase, tenant: w.tenant, form: UUID(uuidString: w.form)!, ids: [UUID(uuidString: id)!], reason: "retention", actor: nil, now: Date().addingTimeInterval(900 * 86_400), requireDue: true)
             }
@@ -355,4 +356,144 @@ final class PrivacyTests: XCTestCase {
         }
     }
 
+
+    // MARK: mandatory retention period (ADR 0012 no. 2, package EEDF6CCE)
+
+    private func dueDays(_ f: AdminFixture, _ id: String) async throws -> Int? {
+        struct D: Decodable { let d: Int? }
+        return try await f.sql.raw("SELECT DATEDIFF(retention_due_at, received_at) AS d FROM submissions WHERE id = \(bind: DB.bin(UUID(uuidString: id)!))").first(decoding: D.self)?.d
+    }
+
+    /// New form: 3 days in the settings and in GET; the ingest sets the due date; without a stored value the ingest still falls back to the default.
+    func testNewFormHasThreeDaysAndIngestSetsTheDueDate() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, rights: ["content.read", "privacy.manage"])
+            XCTAssertEqual(Retention.defaultDays, 3); XCTAssertEqual(Retention.defaultHours, 72)
+            try await w.admin.get("tenants/\(w.tenant)/forms/\(w.form)/retention") { XCTAssertEqual(self.obj($0)["days"] as? Int, 3, self.text($0)) }
+            struct V: Decodable { let v: String }
+            let stored = try await f.sql.raw("SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key = \(bind: "form:" + w.form) AND setting_key = 'retention.days'").first(decoding: V.self)?.v
+            XCTAssertEqual(stored, "3")
+            let a = try await submit(f, w, "DUE-A", key: "a")
+            let da = try await dueDays(f, a); XCTAssertEqual(da, 3)
+            // safeguard: the setting is gone (older data) -> the default still applies, never NULL
+            try await f.sql.raw("DELETE FROM settings WHERE scope_key = \(bind: "form:" + w.form) AND setting_key = 'retention.days'").run()
+            try await w.admin.get("tenants/\(w.tenant)/forms/\(w.form)/retention") { XCTAssertEqual(self.obj($0)["days"] as? Int, 3, self.text($0)) }
+            let b = try await submit(f, w, "DUE-B", key: "b")
+            let db = try await dueDays(f, b); XCTAssertEqual(db, 3)
+            // PUT without a value, with null or out of range is a 422 with the German reason
+            for body in ["{\"days\":null}", "{}", "{\"days\":3651}"] {
+                try await w.admin.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/retention", body: body) {
+                    XCTAssertEqual($0.status.code, 422, body); XCTAssertTrue(self.text($0).contains("Aufbewahrungsfrist ist Pflicht (1–3650 Tage)"), self.text($0))
+                }
+            }
+        }
+    }
+
+    /// Publishing needs a stored period: 409 with the reason in the usual problem body; with it the release goes through.
+    func testPublishWithoutRetentionPeriodIsRefusedWithTheReason() async throws {
+        try await AdminFixture.with { f in
+            let root = try await f.account(), user = try await f.account(), tenant = try await f.customer()
+            for r in ["form.create", "form.read", "draft.write", "release.publish"] { try await f.grant(user, r, customer: tenant, by: root) }
+            let c = try await f.login(user)
+            var form = "", draft = "", hash = "", conf = ""
+            try await c.post("tenants/\(tenant)/forms", "{\"name\":\"Ohne Frist\"}") { form = self.obj($0)["id"] as? String ?? "" }
+            try await f.sql.raw("DELETE FROM settings WHERE scope_key = \(bind: "form:" + form) AND setting_key = 'retention.days'").run()
+            try await c.get("tenants/\(tenant)/forms/\(form)") { draft = (self.obj($0)["draftIds"] as? [String])?.first ?? "" }
+            try await c.get("tenants/\(tenant)/forms/\(form)/drafts/\(draft)") { hash = self.obj($0)["hash"] as? String ?? "" }
+            try await c.post("tenants/\(tenant)/forms/\(form)/publication-confirmations", "{\"draftId\":\"\(draft)\",\"revision\":1,\"hash\":\"\(hash)\",\"confirm\":true}") { conf = self.obj($0)["confirmationId"] as? String ?? "" }
+            let body = "{\"draftId\":\"\(draft)\",\"revision\":1,\"hash\":\"\(hash)\",\"confirmationId\":\"\(conf)\"}"
+            try await c.send(.POST, "tenants/\(tenant)/forms/\(form)/releases", body: body, headers: ["Idempotency-Key": "k"]) {
+                XCTAssertEqual($0.status.code, 409, self.text($0)); XCTAssertEqual(self.obj($0)["message"] as? String, "Aufbewahrungsfrist fehlt")
+            }
+            struct N: Decodable { let c: Int }
+            let rel = try await f.sql.raw("SELECT COUNT(*) AS c FROM releases").first(decoding: N.self)?.c; XCTAssertEqual(rel, 0)
+            // the refusal rolled back (confirmation unused, key free): with the period set, the same request publishes
+            try await f.sql.raw("INSERT INTO settings (scope_key, setting_key, safe_value_json, manageable, modified_at) VALUES (\(bind: "form:" + form), 'retention.days', '3', 1, NOW(6))").run()
+            try await c.send(.POST, "tenants/\(tenant)/forms/\(form)/releases", body: body, headers: ["Idempotency-Key": "k"]) { XCTAssertEqual($0.status, .created, self.text($0)) }
+        }
+    }
+
+    /// Upgrade 0034: fills missing periods and due dates, keeps existing ones, and can run again.
+    func testUpgrade0034FillsMissingPeriodsAndDueDatesAndIsIdempotent() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, rights: ["content.read", "privacy.manage"])
+            let name = "0034-retention-default"
+            XCTAssertTrue(MigrationRunner.upgrades.contains(name))
+            let id = try await submit(f, w, "UPG", key: "u")
+            try await f.sql.raw("DELETE FROM settings WHERE scope_key = \(bind: "form:" + w.form) AND setting_key = 'retention.days'").run()
+            try await f.sql.raw("UPDATE submissions SET retention_due_at = NULL, received_at = '2026-01-10 12:00:00.000000'").run()
+            // a second submission without received_at (migration): due date from "now"
+            let other = DB.bin(UUID())
+            try await f.sql.raw("INSERT INTO submissions (id,customer_id,form_id,release_evidence,environment,state,removable,malware_scan_status) VALUES (\(bind: other),\(bind: DB.bin(w.tenant)),\(bind: DB.bin(UUID(uuidString: w.form)!)),'legacy-unknown','production','migration-review',1,'none')").run()
+            let schema = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("db/schema-p3.sql").path
+            for round in 1...2 {
+                try await f.sql.raw("DELETE FROM schema_migrations WHERE name = \(bind: name)").run()
+                let r = try await MigrationRunner(db: f.sql).run(schemaFile: MigrationRunner.upgradeFile(name, schemaFile: schema), name: name)
+                XCTAssertEqual(r, .applied(statements: 2), "round \(round)")
+                try await w.admin.get("tenants/\(w.tenant)/forms/\(w.form)/retention") { XCTAssertEqual(self.obj($0)["days"] as? Int, 3) }
+                struct V: Decodable { let v: String }
+                let stored = try await f.sql.raw("SELECT CAST(safe_value_json AS CHAR) AS v FROM settings WHERE scope_key = \(bind: "form:" + w.form) AND setting_key = 'retention.days'").first(decoding: V.self)?.v
+                XCTAssertEqual(stored, "3", "the upgrade writes the row itself (round \(round))")
+                let d = try await dueDays(f, id); XCTAssertEqual(d, 3, "round \(round)")
+                struct T: Decodable { let ok: Int }
+                let fresh = try await f.sql.raw("SELECT (retention_due_at > UTC_TIMESTAMP(6) AND retention_due_at < DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 4 DAY)) AS ok FROM submissions WHERE id = \(bind: other)").first(decoding: T.self)?.ok
+                XCTAssertEqual(fresh, 1, "round \(round)")
+            }
+            // an existing period and due date are never touched
+            try await w.admin.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/retention", body: "{\"days\":5}") { XCTAssertEqual($0.status, .ok) }
+            try await f.sql.raw("DELETE FROM schema_migrations WHERE name = \(bind: name)").run()
+            _ = try await MigrationRunner(db: f.sql).run(schemaFile: MigrationRunner.upgradeFile(name, schemaFile: schema), name: name)
+            try await w.admin.get("tenants/\(w.tenant)/forms/\(w.form)/retention") { XCTAssertEqual(self.obj($0)["days"] as? Int, 5) }
+            let d5 = try await dueDays(f, id); XCTAssertEqual(d5, 5)
+        }
+    }
+
+    /// The retention job keeps imported submissions while an import can still be resumed (job, or the command-line import lock) and deletes them afterwards.
+    func testRetentionJobSkipsImportedSubmissionsWhileAnImportCanResume() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, rights: ["content.read", "privacy.manage"])
+            let imported = try await submit(f, w, "IMP", key: "i"), normal = try await submit(f, w, "NOR", key: "n")
+            try await f.sql.raw("UPDATE submissions SET state = 'migration-review' WHERE id = \(bind: DB.bin(UUID(uuidString: imported)!))").run()
+            let db = f.app.db(.mysql), later = Date().addingTimeInterval(4 * 86_400)
+            let job = DB.bin(UUID())
+            let plan = "{\"formCustomers\":{\"\(w.form)\":\"\(w.tenant.uuidString.lowercased())\"}}"
+            func insertJob(_ state: String, dry: Int) async throws {
+                try await f.sql.raw("DELETE FROM migration_jobs").run()
+                try await f.sql.raw("""
+                    INSERT INTO migration_jobs (id, actor_id, source_json, plan_json, expected_schema, state, phase, dry_run, report_json, created_at, updated_at)
+                    VALUES (\(bind: job), \(bind: DB.bin(w.user)), '{}', \(bind: plan), \(bind: String(repeating: "0", count: 64)), \(bind: state), 'source', \(bind: dry), '{}', NOW(6), NOW(6))
+                    """).run()
+            }
+            struct N: Decodable { let c: Int }
+            func exists(_ id: String) async throws -> Bool {
+                try await f.sql.raw("SELECT COUNT(*) AS c FROM submissions WHERE id = \(bind: DB.bin(UUID(uuidString: id)!))").first(decoding: N.self)?.c == 1
+            }
+            // a paused real import: the retention PUT is refused, the job deletes the normal one and keeps the imported one
+            try await insertJob("paused", dry: 0)
+            try await w.admin.send(.PUT, "tenants/\(w.tenant)/forms/\(w.form)/retention", body: "{\"days\":7}") {
+                XCTAssertEqual($0.status.code, 409, self.text($0)); XCTAssertTrue(self.text($0).contains("Import"), self.text($0))
+            }
+            var n = try await SubmissionEraser.purgeDue(db: db, now: later); XCTAssertEqual(n, 1)
+            let kept = try await exists(imported), gone = try await exists(normal); XCTAssertTrue(kept); XCTAssertFalse(gone)
+            for state in ["queued", "running", "failed"] {
+                try await insertJob(state, dry: 0)
+                n = try await SubmissionEraser.purgeDue(db: db, now: later); XCTAssertEqual(n, 0, state)
+            }
+            // a dry run is no real import: it does not protect
+            try await insertJob("queued", dry: 1)
+            let probe = try await SubmissionEraser.importMayResume(f.sql); XCTAssertFalse(probe)
+            // the command-line import (no job) holds its lock
+            try await f.sql.raw("DELETE FROM migration_jobs").run()
+            try await f.sql.withSession { session in
+                struct L: Decodable { let l: Int? }
+                let got = try await session.raw("SELECT GET_LOCK('form_legacy_import', 0) AS l").first(decoding: L.self)?.l; XCTAssertEqual(got, 1)
+                let held = try await SubmissionEraser.purgeDue(db: db, now: later); XCTAssertEqual(held, 0, "command-line import lock")
+                _ = try await session.raw("SELECT RELEASE_LOCK('form_legacy_import')").run()
+            }
+            // nothing can resume any more (review): the imported submission is deleted
+            try await insertJob("review", dry: 0)
+            n = try await SubmissionEraser.purgeDue(db: db, now: later); XCTAssertEqual(n, 1)
+            let after = try await exists(imported); XCTAssertFalse(after)
+        }
+    }
 }

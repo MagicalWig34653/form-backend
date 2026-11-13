@@ -2,6 +2,7 @@
 import Foundation
 import Crypto
 import SQLKit
+import FormCore
 import FormCrypto
 import FormPersistence
 
@@ -15,7 +16,51 @@ extension LegacyRow {
     }
 }
 
+/// A legacy key row the plan assigns to a customer with a generation number (what the importer takes over).
+struct KeyRow {
+    var kid: String, customer: String, number: Int, publicKey: Data, state: String
+}
+enum KeyTarget { case insert, adopt }
+
 extension LegacyImporter {
+    /// nil when the row is not importable by the plan (no customer, no number, invalid key, other status): that stays an examination case.
+    func keyRow(_ p: ImportPlan, _ r: LegacyRow) throws -> KeyRow? {
+        let kid = try r.required("kid")
+        guard let customer = p.keyCustomers[kid], p.customers[customer] != nil,
+              let number = p.keyGenerationNumbers[kid], number > 0,
+              let pub = try r.bytes("publicKey"), pub.count == 32, try keyID(pub) == kid,
+              ["aktiv","auslaufend"].contains(try r.required("status")) else { return nil }
+        return KeyRow(kid:kid,customer:customer,number:number,publicKey:pub,state:try r.required("status") == "aktiv" ? "active":"retiring")
+    }
+    /// Compares one key with what the target holds for the customer. `customer` is the SQL literal of the customer id.
+    /// Same key id with the same public key: adopt. Anything the unique keys (customer+number, one active per customer) would reject:
+    /// a named conflict instead of a database error.
+    func checkKeyTarget(_ db: SQLDatabase, customer: String, key: KeyRow) async throws -> KeyTarget {
+        if let existing = try await scalar(db,"SELECT HEX(public_key) AS v FROM customer_key_generations WHERE customer_id=\(customer) AND kid=\(val(key.kid))") {
+            guard existing.lowercased() == hex(key.publicKey) else { throw ImportFailure.keyConflict(.publicKey) }
+            return .adopt
+        }
+        if try await scalar(db,"SELECT kid AS v FROM customer_key_generations WHERE customer_id=\(customer) AND generation_no=\(key.number)") != nil { throw ImportFailure.keyConflict(.number) }
+        if key.state == "active", try await scalar(db,"SELECT kid AS v FROM customer_key_generations WHERE customer_id=\(customer) AND state='active'") != nil { throw ImportFailure.keyConflict(.active) }
+        return .insert
+    }
+    /// Before anything is written: the key rows of the plan against each other and against the target, so a conflict is named
+    /// at the start (also in the rehearsal) instead of surfacing as a database error in the middle of the key phase.
+    func keyPreflight(_ src: SQLDatabase, _ dst: SQLDatabase, _ p: ImportPlan) async throws {
+        let cols = try await columns(src,"datenschluessel")
+        guard ["kid","publicKey","status","erstelltAm"].allSatisfy(cols.contains) else { return }
+        let projected = try await projection(src,"datenschluessel",cols)
+        let rows = try await src.raw(query("SELECT \(projected) AS v FROM datenschluessel ORDER BY kid LIMIT 10000")).all(decoding:TextRow.self)
+        var numbers = Set<String>(), active = Set<String>()
+        for row in rows {
+            guard let key = try keyRow(p,try LegacyRow.decode(row.v,table:"datenschluessel")) else { continue }
+            guard numbers.insert("\(key.customer)/\(key.number)").inserted else { throw ImportFailure.keyConflict(.plan) }
+            if key.state == "active", !active.insert(key.customer).inserted { throw ImportFailure.keyConflict(.plan) }
+            // A key the ledger already took over is not checked against the target again (a later rotation there is not a conflict).
+            if try await scalar(dst,"SELECT '1' AS v FROM migration_objects WHERE source_namespace=\(val(p.namespace)) AND source_table='datenschluessel' AND source_key=\(bin(Data(key.kid.utf8))) LIMIT 1") != nil { continue }
+            _ = try await checkKeyTarget(dst,customer:try uid(key.customer),key:key)
+        }
+    }
     func owner(_ p: ImportPlan, _ r: LegacyRow, form: String = "formularUUID") throws -> (String,String) {
         let f = try r.required(form); guard let c = p.formCustomers[f] else { throw ImportFailure.invalidPlan }; return (try uid(c),try r.uuid(form))
     }
@@ -42,13 +87,14 @@ extension LegacyImporter {
     func transform(_ src: SQLDatabase, _ db: SQLDatabase, _ p: ImportPlan, _ table: String, _ r: LegacyRow) async throws -> [Destination] {
         switch table {
         case "datenschluessel":
-            let kid = try r.required("kid")
-            guard let customer = p.keyCustomers[kid], p.customers[customer] != nil,
-                  let number = p.keyGenerationNumbers[kid], number > 0,
-                  let pub = try r.bytes("publicKey"), pub.count == 32, try keyID(pub) == kid,
-                  ["aktiv","auslaufend"].contains(try r.required("status")) else { throw ImportFailure.invalidPlan }
-            let c = try uid(customer)
-            return [try await insert(db,"customer_key_generations",["generation_id":bin(DB.bin(UUID()).data),"customer_id":c,"kid":val(kid),"generation_no":String(number),"public_key":bin(pub),"state":val(try r.required("status") == "aktiv" ? "active":"retiring"),"created_at":try timestamp(r.required("erstelltAm"),table:r.table,column:"erstelltAm")],key:["customer_id":c,"kid":val(kid)])]
+            guard let key = try keyRow(p,r) else { throw ImportFailure.invalidPlan }
+            let c = try uid(key.customer)
+            let ref = Destination(table:"customer_key_generations",predicate:"customer_id=\(c) AND kid=\(val(key.kid))")
+            // The same generation already in the target (earlier takeover, interrupted run without ledger entry) is adopted unchanged.
+            if try await checkKeyTarget(db,customer:c,key:key) == .adopt { return [ref] }
+            // A legacy creation time of 0 means unknown: the column is NOT NULL, so use the same epoch placeholder as the synthetic customers.
+            let created = try timestamp(r.required("erstelltAm"),table:r.table,column:"erstelltAm")
+            return [try await insert(db,"customer_key_generations",["generation_id":bin(DB.bin(UUID()).data),"customer_id":c,"kid":val(key.kid),"generation_no":String(key.number),"public_key":bin(key.publicKey),"state":val(key.state),"created_at":created == "NULL" ? "'1970-01-01 00:00:00'" : created],key:["customer_id":c,"kid":val(key.kid)])]
         case "datenschluesselRecovery":
             // Legacy recovery envelope (bvk www/src/krypto/schluessel-modell.js recoveryWickeln/kekR, normalisierePassphrase in
             // schluessel-seite.js): PBKDF2-HMAC-SHA256(normalized code, salt[32], 600000) -> AES-256-GCM(iv[12], AAD=ASCII(kid), sk_D) = 48 bytes.
@@ -84,7 +130,11 @@ extension LegacyImporter {
             return refs
         case "formulare":
             let (c,f) = try owner(p,r,form:"UUID")
-            return [try await insert(db,"forms",["id":f,"customer_id":c,"name":val(try r.text("name")),"active":"0"],key:["id":f])] + (try await configuration(src,db,p,r,customer:c,form:f))
+            let form = try await insert(db,"forms",["id":f,"customer_id":c,"name":val(try r.text("name")),"active":"0"],key:["id":f])
+            // Retention period is mandatory (ADR 0012 no. 2): an imported form gets the default unless one exists. Not a ledger destination.
+            let scope = Retention.scopeKey(UUID(uuidString:try r.required("UUID"))!)
+            try await exec(db,"INSERT IGNORE INTO settings (scope_key,setting_key,safe_value_json,manageable,modified_at) VALUES (\(val(scope)),\(val(Retention.settingKey)),\(val(String(Retention.defaultDays))),1,UTC_TIMESTAMP(6))")
+            return [form] + (try await configuration(src,db,p,r,customer:c,form:f))
         case "formularFelder":
             let (c,f) = try owner(p,r)
             guard let definition = try await scalar(db,"SELECT definition_json AS v FROM form_versions WHERE customer_id=\(c) AND form_id=\(f) AND version_no=1"),
@@ -104,7 +154,10 @@ extension LegacyImporter {
             // Only a UUID is taken over as a transport id; any other value stays an examination case.
             let sentText = try r.text("sentServer")
             let sentServer = sentText.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
-            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft"),"legacy_sent_server":sentServer.map(val) ?? "NULL"],key:["id":id])
+            // The imported submission gets the retention period of its target form (ADR 0012 no. 2); the value is fixed at write time.
+            let received = try timestamp(r.text("time"),table:r.table,column:"time")
+            let due = "DATE_ADD(COALESCE(CAST(\(received) AS DATETIME(6)),UTC_TIMESTAMP(6)),INTERVAL COALESCE((SELECT CAST(JSON_VALUE(safe_value_json,'$') AS UNSIGNED) FROM settings WHERE scope_key=\(val(Retention.scopeKey(UUID(uuidString:try r.required("formularUUID")) ?? UUID()))) AND setting_key=\(val(Retention.settingKey))),\(Retention.defaultDays)) DAY)"
+            let sub = try await insert(db,"submissions",["id":id,"customer_id":c,"form_id":f,"release_evidence":"'legacy-unknown'","received_at":try timestamp(r.text("time"),table:r.table,column:"time"),"environment":"'legacy-unknown'","state":"'migration-review'","removable":try boolean(r,"removable"),"retention_due_at":due,"malware_scan_status":val(try r.text("malwareScanStatus") ?? "nicht_geprueft"),"legacy_sent_server":sentServer.map(val) ?? "NULL"],key:["id":id])
             var refs = [sub]
             // Each package is checked independently. Unsupported packages stay in the immutable source dump.
             var review = false
@@ -136,10 +189,13 @@ extension LegacyImporter {
             let ref = try await secrets.put(priv,on:db)
             return [try await insert(db,"webhook_endpoints",["id":id,"customer_id":c,"form_id":f,"target_url":val(url.absoluteString),"signing_secret_ref":val(ref),"public_key":bin(pub),"active":"0","created_at":val(try r.required("erstelltAm"))],key:["id":id]), Destination(table:"managed_secrets",predicate:"ref=\(val(ref))")]
         case "statistics":
-            guard let review = p.statisticsReview, !review.isEmpty else { throw ImportFailure.invalidPlan }
+            guard let review = p.statisticsReview, !review.isEmpty else { throw ImportFailure.statisticsReviewMissing }
             let (c,f) = try owner(p,r); var refs: [Destination] = []; var metadata: [String:String?] = [:]
             for key in r.values.keys where !["ID","UUID","formularUUID","timestamp","status","type"].contains(key) { metadata[key] = try r.text(key) }
-            let customer = try r.required("formularUUID"); guard let cid = p.formCustomers[customer], let pk = p.statisticsPublicKeys[cid], let pub = Data(base64Encoded:pk), pub.count == 32 else { throw ImportFailure.invalidPlan }
+            let customer = try r.required("formularUUID"); guard let cid = p.formCustomers[customer] else { throw ImportFailure.invalidPlan }
+            guard let pk = p.statisticsPublicKeys[cid], let pub = Data(base64Encoded:pk), pub.count == 32 else { throw ImportFailure.statisticsKeyUnknown }
+            // The recipient must be a key generation of the customer (otherwise nobody could ever open the rows): review case, the run goes on.
+            guard try await scalar(db,"SELECT kid AS v FROM customer_key_generations WHERE customer_id=\(c) AND kid=\(val(try keyID(pub)))") != nil else { throw ImportFailure.statisticsKeyUnknown }
             let wire = try PackageV2.seal(Data(try json(metadata).utf8),recipient:pub).wire
             let object = try await store(db,p,customer:c,form:f,submission:nil,role:"statistics-metadata",wire:wire); refs.append(object)
             let objectID = String(object.predicate.dropFirst("`id`=".count))

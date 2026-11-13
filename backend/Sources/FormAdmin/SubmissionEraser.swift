@@ -151,14 +151,30 @@ public enum SubmissionEraser {
         return out
     }
 
+    /// True while a real import (`dry_run = 0`) can still be resumed: queued, running, paused or failed (MigrationService /
+    /// SetupMigrationRoutes: resume is allowed from paused/failed; review, closed never continue), or while the command-line import
+    /// holds its lock (it runs without a job). Resuming compares the target snapshots, so deleted rows would read as `missing_target`.
+    /// `form` restricts the job check to jobs whose plan contains this (target) form; the lock check stays global.
+    static func importMayResume(_ sql: SQLDatabase, form: UUID? = nil) async throws -> Bool {
+        struct C: Decodable { let c: Int }
+        let open: SQLQueryString = "SELECT COUNT(*) AS c FROM migration_jobs WHERE dry_run = 0 AND state IN ('queued','running','paused','failed')"
+        let query: SQLQueryString
+        if let form { query = "\(open) AND JSON_CONTAINS_PATH(plan_json, 'one', \(bind: "$.formCustomers.\"" + form.uuidString.lowercased() + "\""))" } else { query = open }
+        if (try await sql.raw(query).first(decoding: C.self)?.c ?? 0) > 0 { return true }
+        return try await sql.raw("SELECT IF(IS_USED_LOCK('form_legacy_import') IS NULL, 0, 1) AS c").first(decoding: C.self)?.c == 1
+    }
+
     /// One bounded retention pass over all forms: submissions that are removable and past `retention_due_at`.
+    /// Imported submissions (`state = 'migration-review'`) are kept while an import can still be resumed (see `importMayResume`).
     /// Each submission is its own transaction, so one failure never blocks the rest.
     public static func purgeDue(db: Database, now: Date, batch: Int = 200, storage: StorageService? = nil) async throws -> Int {
         struct Due: Decodable { let id: Blob; let customer_id: Blob; let form_id: Blob }
         let sql = db as! SQLDatabase
+        let skipImported = try await importMayResume(sql)
         let due = try await sql.raw("""
             SELECT id, customer_id, form_id FROM submissions
             WHERE removable = 1 AND retention_due_at IS NOT NULL AND retention_due_at <= \(bind: DB.time(now))
+              AND NOT (\(literal: skipImported ? 1 : 0) = 1 AND state = 'migration-review')
             ORDER BY retention_due_at LIMIT \(literal: batch)
             """).all(decoding: Due.self)
         var n = 0, failed = 0

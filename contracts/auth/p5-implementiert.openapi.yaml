@@ -58,6 +58,26 @@ components:
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/EntryItem' } }
         nextCursor: { type: [string, 'null'] }
+    AuditItem:
+      type: object
+      description: Nur Metadaten. safe_details_json und Importquellspalten werden nie ausgegeben.
+      required: [id, occurredAt, category, action, actorId, actorKind, customerId, formId, subjectId]
+      properties:
+        id: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        category: { type: string }
+        action: { type: string }
+        actorId: { type: [string, 'null'], format: uuid }
+        actorKind: { type: string, enum: [human, service, migration, legacy] }
+        customerId: { type: [string, 'null'], format: uuid }
+        formId: { type: [string, 'null'], format: uuid }
+        subjectId: { type: [string, 'null'], format: uuid }
+    AuditList:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AuditItem' } }
+        nextCursor: { type: [string, 'null'] }
     Ciphertext:
       type: object
       description: Versiegeltes Paket KUBUS-AEAD:2 (crypto/paket-v2.md). Der Server entschlüsselt nie.
@@ -165,6 +185,24 @@ paths:
       parameters: [{ $ref: '#/components/parameters/tenantId' }, { $ref: '#/components/parameters/formId' }, { $ref: '#/components/parameters/cursor' }, { $ref: '#/components/parameters/limit' }]
       responses:
         '200': { description: Seite., content: { application/json: { schema: { $ref: '#/components/schemas/EntryList' } } } }
+  /audit:
+    get:
+      operationId: getAudit
+      description: 'FA-146. Recht audit.read (live, je Grant: System = alle Zeilen inkl. ohne Kunde, Kunde = dessen Zeilen, Formular = genau dessen Zeilen); ohne audit.read 403. Nur Metadaten (kein safe_details_json), neueste zuerst, Keyset-Paginierung (cursor = Ereignis-ID im sichtbaren Bereich, sonst 400), Cache-Control no-store, keine frische Anmeldung (wie listEntries). Filter nur einschränkend: from/to (ISO 8601), action (exakter Code), category, actor (Konto-UUID), customer, form. Ungültige Werte 400.'
+      security: [{ Session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/cursor' }
+        - { $ref: '#/components/parameters/limit' }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: action, in: query, schema: { type: string, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$' } }
+        - { name: category, in: query, schema: { type: string, maxLength: 64, pattern: '^[A-Za-z0-9._:-]+$' } }
+        - { name: actor, in: query, schema: { type: string, format: uuid } }
+        - { name: customer, in: query, schema: { type: string, format: uuid } }
+        - { name: form, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Seite., content: { application/json: { schema: { $ref: '#/components/schemas/AuditList' } } } }
+        '403': { description: Kein audit.read. }
   /tenants/{tenantId}/forms/{formId}/entries/{entryId}/resends:
     post:
       operationId: resendMail
@@ -289,10 +327,10 @@ paths:
   /tenants/{tenantId}/key-recovery:
     get:
       operationId: getKeyRecovery
-      description: 'Recht key.manage, frische Anmeldung, Audit key.recovery.read. Optional ?kid= (16 Hex, aktive oder auslaufende Generation; sonst die aktive). {keyId,salt,iterations(600000),iv,wrap}; no-store. Importierte Alt-Recovery-Hüllen (ADR 0037) sind formatgleich.'
+      description: 'Recht key.manage, frische Anmeldung, Audit key.recovery.read. Optional ?kid= (16 Hex, aktive oder auslaufende Generation; sonst die aktive). {keyId,salt,iterations(600000),iv,wrap}; no-store. Importierte Alt-Recovery-Hüllen (ADR 0037) sind formatgleich. Ohne Hülle für die Generation: 404 mit code recovery_missing (nur für berechtigte Aufrufer; ohne Recht bleibt es das neutrale 404 ohne Code).'
       security: [{ Session: [] }]
       parameters: [{ $ref: '#/components/parameters/tenantId' }]
-      responses: { '200': { description: Recovery-Hülle. } }
+      responses: { '200': { description: Recovery-Hülle. }, '404': { description: 'Kein Recht oder Kunde unbekannt (neutral), oder code recovery_missing: für die Generation ist keine Wiederherstellung hinterlegt.' } }
   /tenants/{tenantId}/forms/{formId}/mail-connection:
     put:
       operationId: setMailConnection

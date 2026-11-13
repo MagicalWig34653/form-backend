@@ -45,7 +45,15 @@
             ? k.mismatch
             : issue === 'no-account-key'
               ? k.noAccountKey
-              : k.failed;
+              : issue === 'no-passkey'
+                ? k.noPasskey
+                : issue === 'no-recovery'
+                  ? k.noRecovery
+                  : issue === 'wrong-code'
+                    ? k.wrongCode
+                    : issue === 'reauth'
+                      ? k.reauth
+                      : k.failed;
   }
 
   async function refresh(): Promise<void> {

@@ -15,7 +15,7 @@ Inventarisieren: Formulare/UUIDs, Feldschemata, individuelle Handlerlogik, Domai
 5. Verschlüsselte Pakete und Schlüsselhüllen möglichst bytegleich übertragen. Entschlüsselbarkeit in einer berechtigten Testumgebung nachweisen. Keine private Passphrase in CLI-Argumenten, Logs oder Agentkontext.
 6. Synthetische Referenzfälle und anonymisierte Strukturfixtures für Parität prüfen: Statuscodes, Signaturen, Canonicalisierung, Pflichtfelder, Anhänge, Mailausgaben und Idempotenz.
 7. Probelauf mit Mengen-, Referenz-, Hash-/Stichproben- und Statistikvergleich; Abweichungen erklären.
-8. Umschaltung bevorzugt mit kurzer Schreibpause, finalem Delta und eindeutigem Übergangspunkt; Parallelbetrieb/Dual Write nur bei begründetem Bedarf.
+8. Umschaltung bevorzugt mit Schreibpause des Altsystems (vom Import geprüft, ADR 0043; kein Delta) und eindeutigem Übergangspunkt; Parallelbetrieb/Dual Write nur bei begründetem Bedarf.
 9. Rückfallfenster und Verhalten neuer Daten nach Umschaltung definieren. Ein simples Zurückschalten stellt neue Daten im Altsystem nicht her.
 
 ## Besondere Grenzen

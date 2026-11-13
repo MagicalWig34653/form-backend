@@ -7,14 +7,15 @@
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
 DOCKER=${DOCKER:-docker}; command -v "$DOCKER" >/dev/null 2>&1 || DOCKER=/opt/homebrew/bin/docker
-NAME=p4a-loadtest-mariadb; PORT=${P3B_PORT:-33660}; WPORT=${E2E_PORT:-4260}; PPORT=$((WPORT+100))
+. backend/e2e-common.sh
+NAME=$(e2e_name p4a-loadtest-mariadb); PORT=${P3B_PORT:-$(e2e_pick_port)}; WPORT=${E2E_PORT:-$(e2e_pick_port)}; PPORT=$((WPORT+100))
 W=${LOAD_WORKERS:-8}; N=${LOAD_TOTAL:-400}; R=${LOAD_REPEATS:-50}; RACE=${LOAD_RACE:-8}
 PW=$(openssl rand -hex 16); TMP=$(mktemp -d); APP_PID=""
-cleanup() { [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; "$DOCKER" rm -f "$NAME" >/dev/null 2>&1; rm -rf "$TMP"; echo "cleanup done"; }
+cleanup() { [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; e2e_cleanup; rm -rf "$TMP"; echo "cleanup done"; }
 trap cleanup EXIT
+e2e_reap_stale
 umask 077; openssl rand -hex 32 > "$TMP/server.key"
-"$DOCKER" rm -f "$NAME" >/dev/null 2>&1
-"$DOCKER" run -d --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "${MARIADB_IMAGE:-mariadb:lts}" >/dev/null || { echo "ENV: container"; exit 2; }
+"$DOCKER" run -d "${E2E_LABEL_ARGS[@]}" --tmpfs /var/lib/mysql --name "$NAME" -p "127.0.0.1:$PORT:3306" -e MARIADB_ROOT_PASSWORD="$PW" -e MARIADB_DATABASE=e2e "${MARIADB_IMAGE:-mariadb:lts}" >/dev/null || { echo "ENV: container"; exit 2; }
 for _ in $(seq 90); do
   "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' e2e >/dev/null 2>&1 && sleep 2 && "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot -e 'select 1' e2e >/dev/null 2>&1 && up=1 && break; sleep 1
 done
@@ -22,11 +23,14 @@ done
 SB="swift build --package-path backend --scratch-path backend/.build --cache-path backend/.build/cache --manifest-cache local --disable-sandbox --build-system native --product App"
 export CLANG_MODULE_CACHE_PATH="$PWD/backend/.build/ModuleCache" SWIFTPM_MODULECACHE_OVERRIDE="$PWD/backend/.build/ModuleCache"
 $SB >/dev/null 2>&1 || { sleep 2; $SB >/dev/null 2>&1; } || { echo "ENV: build"; exit 2; }  # retry: the Swift frontend crashes sporadically
-(cd pwa && npm run build >/dev/null 2>&1) || { echo "ENV: pwa build"; exit 2; }
+e2e_pwa_build "$TMP/dist" || { echo "ENV: pwa build"; exit 2; }
 BIN=backend/.build/debug/App
 export FORM_DB_PORT=$PORT FORM_DB_USER=root FORM_DB_PASSWORD=$PW FORM_DB_NAME=e2e FORM_DB_TLS=disable FORM_ALLOW_INSECURE_DEV=1
-export FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$PPORT E2E_PUBLIC_URL=http://127.0.0.1:$PPORT FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$PWD/pwa/dist"
+export FORM_INTERNAL_PORT=$WPORT FORM_PUBLIC_PORT=$PPORT E2E_PUBLIC_URL=http://127.0.0.1:$PPORT FORM_SCHEMA_FILE=backend/db/schema-p3.sql FORM_PUBLIC_DIR="$TMP/dist"
 export FORM_SERVER_KEY_FILE="$TMP/server.key" FORM_ADMIN_ORIGIN=http://localhost:$WPORT FORM_RP_ID=localhost
+# The load test measures throughput and idempotency, not the per-client ingest limiter (ingest.requestsPerMinute, default 60):
+# all workers share one IP, so the limiter would answer most requests with 429. 0 = off; LOADTEST_INGEST_LIMIT overrides.
+export FORM_INGEST_REQUESTS_PER_MINUTE=${LOADTEST_INGEST_LIMIT:-0}
 "$BIN" migrate >/dev/null 2>&1 || { echo "FAIL migrate"; exit 1; }
 PASSWORD=$(openssl rand -hex 12); printf '%s' "$PASSWORD" > "$TMP/bootpw"
 OUT=$(FORM_BOOTSTRAP_PASSWORD_FILE="$TMP/bootpw" "$BIN" bootstrap-admin admin 2>&1) || { echo "FAIL bootstrap-admin"; exit 1; }
@@ -36,8 +40,9 @@ LINK=$(printf '%s\n' "$OUT" | sed -n 's/.*): \(http[^ ]*\)$/\1/p' | head -1)
 for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
 CRED="$TMP/credentials.json"
 export E2E_SETUP_LINK="$LINK" E2E_PASSWORD="$PASSWORD" E2E_PORT=$WPORT E2E_SPEC=real-load-setup.spec.ts E2E_CREDENTIALS_OUT="$CRED"
-(cd pwa && npx playwright test -c e2e-real/playwright.config.ts 2>&1 | tail -8)
-[ -s "$CRED" ] || { echo "FAIL provisioning (no credentials)"; exit 1; }
+(cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; prc=$?  # own status, not hidden behind tail
+tail -8 "$TMP/playwright.log"
+[ "$prc" = 0 ] && [ -s "$CRED" ] || { echo "FAIL provisioning (playwright rc=$prc, credentials missing or empty)"; exit 1; }
 echo "ok   form provisioned, credentials issued (not shown)"
 
 URL=http://127.0.0.1:$PPORT; DRV=backend/loadtest/driver.php

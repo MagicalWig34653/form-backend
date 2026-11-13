@@ -232,7 +232,7 @@
     },
     "mail": {
       "type": "object",
-      "description": "VORGESCHLAGEN (ADR 0010): mail with content, sent by the server at ingest from the in-memory submission; nothing is stored. Field names refer to the submitted names (fields[*].name).",
+      "description": "VORGESCHLAGEN (ADR 0010, ADR 0041): mail sent by the server at ingest from the in-memory submission; nothing is stored. The organisation mail carries all submitted values by default (organisation.content full, decision 13.11.2026: the practice team has no backend access); only an explicit content notification reduces it to a link. Field names refer to the submitted names (fields[*].name).",
       "properties": {
         "from": {
           "type": "object",
@@ -278,13 +278,11 @@
             },
             "subject": {
               "type": "string",
-              "minLength": 1,
               "maxLength": 300,
               "description": "Placeholders #=[fieldName]=# (legacy syntax); values are stripped of line breaks."
             },
             "body": {
               "type": "string",
-              "minLength": 1,
               "maxLength": 100000,
               "description": "Placeholders #=[fieldName]=#; values are HTML-escaped when format is html."
             },
@@ -294,12 +292,18 @@
                 "html"
               ],
               "default": "text"
+            },
+            "content": {
+              "enum": [
+                "notification",
+                "full"
+              ],
+              "default": "full",
+              "description": "ADR 0041 (changed 13.11.2026). full (default, also when absent, also for releases published before): all submitted values; the template (subject, body, format) is rendered when given, an empty or absent subject/body is replaced by the standard (subject 'Neue Einsendung: <form title>', body = field list 'label: value'). notification (explicit choice only): form name, time, reference and a link into the PWA; subject, body and format are not rendered and are kept for a switch back. No extra audit entry or warning for either mode."
             }
           },
           "required": [
-            "to",
-            "subject",
-            "body"
+            "to"
           ],
           "additionalProperties": false
         },

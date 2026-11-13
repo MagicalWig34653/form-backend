@@ -41,7 +41,8 @@ struct AdminFixture {
         let admin = try await Application.make(.testing, provider)
         Persistence.configure(admin, try cfg("p4atest"))
         let adminSQL = Persistence.sql(admin)
-        try await adminSQL.raw("CREATE DATABASE \(ident: name)").run()
+        // An unreachable server must surface as this error, not as Vapor's "Application not shut down" assertion in deinit.
+        do { try await adminSQL.raw("CREATE DATABASE \(ident: name)").run() } catch { try? await admin.asyncShutdown(); try? await group?.shutdownGracefully(); throw error }
         func cleanup() async { try? await adminSQL.raw("DROP DATABASE IF EXISTS \(ident: name)").run(); try? await admin.asyncShutdown(); try? await group?.shutdownGracefully() }
         let app: Application
         do { app = try await Application.make(.testing, provider) } catch { await cleanup(); throw error }
@@ -49,8 +50,7 @@ struct AdminFixture {
             Persistence.configure(app, try cfg(name), maxConnectionsPerEventLoop: singleConnection ? 1 : 2)
             let schema = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .deletingLastPathComponent().appendingPathComponent("db/schema-p3.sql").path
-            _ = try await MigrationRunner(db: Persistence.sql(app)).run(schemaFile: schema)
-            _ = try await MigrationRunner(db: Persistence.sql(app)).run(schemaFile: URL(fileURLWithPath: schema).deletingLastPathComponent().appendingPathComponent("upgrades/0027-account-recovery.sql").path, name: "0027-account-recovery")
+            _ = try await MigrationRunner(db: Persistence.sql(app)).runWithUpgrades(schemaFile: schema)   // what `migrate` applies
             try HTTPSetup.configure(app)
             let key = try StaticServerKey(Data(repeating: 7, count: 32))
             var auth = AuthConfig(relyingParty: RelyingParty(rpID: "admin.example.test", origin: origin), clientIP: { _ in "203.0.113.9" })
@@ -61,7 +61,7 @@ struct AdminFixture {
             let loopback = [CIDR("127.0.0.0/8")!]
             struct Digest: DigestSecretProvider { let store: SecretStore; func secret(ref: String) async throws -> Data? { try await store.get(ref) } }
             struct MailSecrets: MailSecretProvider { let store: SecretStore; func secret(ref: String) async throws -> String? { try await store.get(ref).map { String(decoding: $0, as: UTF8.self) } } }
-            let dispatcher = MailDispatcher(db: app.db(.mysql), secrets: MailSecrets(store: secrets), allowedNets: loopback, allowInsecure: true, logger: app.logger)
+            let dispatcher = MailDispatcher(db: app.db(.mysql), secrets: MailSecrets(store: secrets), allowedNets: loopback, allowInsecure: true, logger: app.logger, adminOrigin: origin)
             struct DeploySecrets: DeploySecretProvider { let store: SecretStore; func secret(ref: String, on session: SQLDatabase) async throws -> String? { try await store.get(ref, on: session).map { String(decoding: $0, as: UTF8.self) } } }
             let sdkDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("sdk/php")
             let deploy = DeployService(db: app.db(.mysql), secrets: DeploySecrets(store: secrets), bundle: { try SDKBundle.load(from: sdkDir) }, allowedNets: loopback, allowInsecure: true, logger: app.logger)

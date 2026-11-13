@@ -19,7 +19,7 @@
   import { router } from '$lib/router.svelte';
   import { tenantPath } from '$lib/routes';
   import { session } from '$lib/session.svelte';
-  import { describeError, needsFreshLogin } from '$lib/admin/describe';
+  import { describeError, needsFreshLogin, loadFailureText } from '$lib/admin/describe';
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { Button } from '$lib/components/ui/button';
   import SearchField from '$lib/components/admin/SearchField.svelte';
@@ -78,7 +78,8 @@
     loading = false;
     if (r.ok) items = r.data.items;
     else if (!handleSessionError(r.error))
-      loadError = r.error.status === 403 ? t.lists.forbidden : t.lists.failed;
+      loadError =
+        r.error.status === 403 ? t.lists.forbidden : loadFailureText(r.error, t.lists.failed);
   }
   onMount(() => void load());
   onDestroy(() => {

@@ -24,14 +24,17 @@ const done: Facts = {
   passkeys: 2,
   tokens: 1,
   testEntries: { checked: 1, withEntries: { tenant: 't', form: 'f' } },
-  migration: { available: true, jobs: 1 },
+  migration: { available: true, jobs: 1, status: 'imported' },
 };
 const stateOf = (facts: Facts, skipped: StepId[] = []) =>
   Object.fromEntries(deriveSteps(facts, skipped).map((s) => [s.id, s.state]));
 
 describe('Schrittableitung', () => {
   it('zeigt nur Schritte, die es gibt, und blendet den Umstieg ohne Recht aus', () => {
-    const steps = deriveSteps({ ...done, migration: { available: false, jobs: null } });
+    const steps = deriveSteps({
+      ...done,
+      migration: { available: false, jobs: null, status: null },
+    });
     expect(steps.map((s) => s.id)).toEqual([
       'account',
       'recovery',
@@ -55,7 +58,7 @@ describe('Schrittableitung', () => {
         mail: 0,
         customers: 0,
         forms: { total: 0, published: 0 },
-        migration: { available: true, jobs: 0 },
+        migration: { available: true, jobs: 0, status: 'none' },
       }),
     ).toMatchObject({
       account: 'done',
@@ -196,7 +199,13 @@ describe('Fakten laden', () => {
             { definition: { key: 'admin.rpID' }, value: '', source: 'env' },
           ],
         });
-      if (path === '/migration/jobs') return ok({ items: [{}, {}] });
+      if (path === '/migration/jobs')
+        return ok({
+          items: [
+            { state: 'review', dryRun: true },
+            { state: 'review', dryRun: false },
+          ],
+        });
       if (path === '/account/tokens')
         return ok({
           items: [
@@ -243,7 +252,7 @@ describe('Fakten laden', () => {
       addresses: true,
       customers: 2,
       forms: { total: 2, published: 1, unpublished: { tenant: 'a', form: 'f1' } },
-      migration: { available: true, jobs: 2 },
+      migration: { available: true, jobs: 2, status: 'imported' },
       passkeys: 2,
       tokens: 1,
       testEntries: { checked: 1, withEntries: { tenant: 'b', form: 'f2' } },
@@ -291,7 +300,7 @@ describe('Fakten laden', () => {
       forms: null,
       passkeys: null,
       testEntries: null,
-      migration: { available: false, jobs: null },
+      migration: { available: false, jobs: null, status: null },
     });
   });
 
@@ -304,5 +313,61 @@ describe('Fakten laden', () => {
     });
     const r = await loadFacts(partial, ['form'], { required: true }, true);
     expect(r.facts.forms).toBeNull();
+  });
+});
+
+describe('Umstieg-Schritt: erst nach echtem Import erledigt', () => {
+  const withMig = (status: 'none' | 'running' | 'dryRun' | 'imported' | null, jobs = 1): Facts => ({
+    ...done,
+    migration: { available: true, jobs, status },
+  });
+  const step = (f: Facts, id: StepId) => deriveSteps(f).find((s) => s.id === id);
+
+  it('Prüflauf allein, laufender Lauf und keine Läufe sind offen, mit benanntem Stand', () => {
+    expect(step(withMig('dryRun'), 'migration')).toMatchObject({ state: 'open', detail: 'dryRun' });
+    expect(step(withMig('running'), 'migration')).toMatchObject({
+      state: 'open',
+      detail: 'running',
+    });
+    expect(step(withMig('none', 0), 'migration')).toMatchObject({ state: 'open' });
+    expect(step(withMig('none', 0), 'migration')?.detail).toBeUndefined();
+    expect(step(withMig('imported'), 'migration')?.state).toBe('done');
+    expect(step(withMig(null, 0), 'migration')?.state).toBe('error');
+  });
+
+  it('Kunden-Schritt nennt importierte (noch deaktivierte) Kunden, ohne sie zu zählen', () => {
+    const f = { ...withMig('imported'), customers: 0, forms: { total: 0, published: 0 } };
+    expect(step(f, 'customer')).toMatchObject({ state: 'open', detail: 'imported' });
+    expect(
+      step({ ...f, migration: { available: true, jobs: 1, status: 'dryRun' } }, 'customer')?.detail,
+    ).toBeUndefined();
+    expect(step({ ...withMig('none', 0), customers: 0 }, 'customer')?.detail).toBeUndefined();
+  });
+
+  it('liest den Importstand aus den Läufen', async () => {
+    const run = async (items: unknown[]) => {
+      const d = {
+        http: { request: async () => ({ ok: true, data: { items } }) },
+        adminApi: {},
+      } as never;
+      const r = await loadFacts(
+        d,
+        ['migration'],
+        { required: true, migrationAllowed: true, migrationEnabled: true },
+        true,
+      );
+      return r.facts.migration?.status;
+    };
+    expect(await run([])).toBe('none');
+    expect(await run([{ state: 'review', dryRun: true }])).toBe('dryRun');
+    expect(await run([{ state: 'running', dryRun: true }])).toBe('running');
+    expect(await run([{ state: 'failed', dryRun: false }])).toBe('none');
+    expect(
+      await run([
+        { state: 'review', dryRun: true },
+        { state: 'review', dryRun: false },
+      ]),
+    ).toBe('imported');
+    expect(await run([{ state: 'closed', dryRun: false }])).toBe('imported');
   });
 });

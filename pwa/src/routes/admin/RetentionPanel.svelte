@@ -3,12 +3,11 @@
   import { t } from '$lib/i18n';
   import { adminApi } from '$lib/api';
   import { router } from '$lib/router.svelte';
-  import { describeError, needsFreshLogin } from '$lib/admin/describe';
+  import { describeError, needsFreshLogin, loadFailureText } from '$lib/admin/describe';
   import { handleSessionError, reauthenticate } from '$lib/admin/guard.svelte';
   import { formPath } from '$lib/routes';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import { Switch } from '$lib/components/ui/switch';
   import Panel from '$lib/components/admin/Panel.svelte';
   import Row from '$lib/components/admin/Row.svelte';
   import Skeleton from '$lib/components/admin/Skeleton.svelte';
@@ -34,19 +33,21 @@
   let loaded = $state(false);
   let loadError = $state('');
   let saved = $state<number | null>(null);
-  let enabled = $state(false);
   let days = $state('');
   let busy = $state(false);
   let status = $state('');
   let statusKind = $state<'ok' | 'error'>('ok');
   let savedAt = $state<Date | null>(null);
 
-  const parsed = $derived(days.trim() === '' ? null : Number(days));
-  const valid = $derived(!enabled || (Number.isInteger(parsed) && parsed! >= 1 && parsed! <= 3650));
-  const target = $derived(enabled ? parsed : null);
-  /** Shortening (or switching on) deletes existing submissions: the user has to confirm. */
-  const shortens = $derived(target !== null && (saved === null || target < saved));
-  const dirty = $derived(loaded && target !== saved);
+  /** The period is mandatory (server default 72 h = 3 days): there is no way to switch the deletion off. */
+  /** `bind:value` on a number input yields a number (or null when empty), so normalise to text first. */
+  const text = $derived(String(days ?? '').trim());
+  const parsed = $derived(text === '' ? null : Number(text));
+  const valid = $derived(Number.isInteger(parsed) && parsed! >= 1 && parsed! <= 3650);
+  const target = $derived(valid ? parsed : null);
+  /** Shortening deletes existing submissions: the user has to confirm. */
+  const shortens = $derived(target !== null && saved !== null && target < saved);
+  const dirty = $derived(loaded && text !== String(saved));
   $effect(() => ondirty?.(dirty));
 
   async function load(): Promise<void> {
@@ -54,16 +55,15 @@
     const res = await adminApi.retention(tenant, form);
     if (res.ok) {
       saved = res.data.days;
-      enabled = saved !== null;
-      days = saved === null ? '' : String(saved);
+      days = String(saved);
       loaded = true;
-    } else if (!handleSessionError(res.error)) loadError = r.loadFailed;
+    } else if (!handleSessionError(res.error)) loadError = loadFailureText(res.error, r.loadFailed);
   }
 
   async function save(event?: SubmitEvent): Promise<void> {
     event?.preventDefault();
     if (busy || !dirty) return;
-    if (!valid) {
+    if (!valid || target === null) {
       status = r.invalid;
       statusKind = 'error';
       return;
@@ -97,12 +97,10 @@
   }
 
   function discard(): void {
-    enabled = saved !== null;
     days = saved === null ? '' : String(saved);
     status = '';
   }
   $effect(() => {
-    void enabled;
     void days;
     if (dirty && status === t.admin.entries.retentionSaved) status = '';
   });
@@ -143,41 +141,35 @@
     </div>
   {:else}
     <form id={formId} onsubmit={(e) => void save(e)} class="flex max-w-[560px] flex-col gap-5">
-      <label class="flex min-h-10 items-center gap-3 text-sm font-medium">
-        <Switch bind:checked={enabled} disabled={!canWrite || busy} />{r.autoDelete}
-      </label>
-      {#if enabled}
-        <Row id="retention-days" label={r.days} hint={r.daysHint}>
-          <div class="flex flex-col gap-2">
-            <Input
-              id="retention-days"
-              type="number"
-              min="1"
-              max="3650"
-              class="w-32"
-              bind:value={days}
-              disabled={!canWrite || busy}
-            />
-            <div class="flex flex-wrap gap-2" role="group" aria-label={r.presets}>
-              {#each [30, 90, 365] as preset (preset)}
-                <Button
-                  type="button"
-                  variant={Number(days) === preset ? 'default' : 'outline'}
-                  size="sm"
-                  aria-pressed={Number(days) === preset}
-                  disabled={!canWrite || busy}
-                  onclick={() => (days = String(preset))}
-                  >{preset === 365
-                    ? r.presetYear
-                    : r.presetDays.replace('{n}', String(preset))}</Button
-                >
-              {/each}
-            </div>
+      <p class="text-muted-foreground m-0 text-sm">{r.standardHint}</p>
+      <Row id="retention-days" label={r.days} hint={r.daysHint}>
+        <div class="flex flex-col gap-2">
+          <Input
+            id="retention-days"
+            type="number"
+            min="1"
+            max="3650"
+            class="w-32"
+            bind:value={days}
+            disabled={!canWrite || busy}
+          />
+          <div class="flex flex-wrap gap-2" role="group" aria-label={r.presets}>
+            {#each [3, 30, 90, 365] as preset (preset)}
+              <Button
+                type="button"
+                variant={Number(days) === preset ? 'default' : 'outline'}
+                size="sm"
+                aria-pressed={Number(days) === preset}
+                disabled={!canWrite || busy}
+                onclick={() => (days = String(preset))}
+                >{preset === 365
+                  ? r.presetYear
+                  : r.presetDays.replace('{n}', String(preset))}</Button
+              >
+            {/each}
           </div>
-        </Row>
-      {:else}
-        <p class="text-muted-foreground m-0 text-sm">{r.autoDeleteOff}</p>
-      {/if}
+        </div>
+      </Row>
       {#if dirty && shortens}<Banner tone="warn"
           >{r.shortenWarn.replace('{n}', String(target))}</Banner
         >{/if}
@@ -185,7 +177,7 @@
   {/if}
   {#if loaded}
     <p class="text-muted-foreground m-0 mt-5 border-t pt-4 text-sm">
-      {saved === null ? r.currentOff : r.current.replace('{n}', String(saved))} ·
+      {saved === null ? '' : r.current.replace('{n}', String(saved))} ·
       <a
         class="underline underline-offset-4"
         href={formPath(tenant, form, 'entries')}

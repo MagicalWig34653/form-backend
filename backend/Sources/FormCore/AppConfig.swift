@@ -16,6 +16,7 @@ public struct ConfigError: Error, CustomStringConvertible, Equatable {
 /// FORM_PUBLIC_DASHBOARD=1 requires FORM_PUBLIC_DASHBOARD_HOSTS. Per-listener trusted proxies override FORM_TRUSTED_PROXIES.
 /// Variables: FORM_HTTP_HOST, FORM_PUBLIC_PORT, FORM_INTERNAL_PORT, FORM_LOG_LEVEL, FORM_DB_HOST, FORM_DB_PORT, FORM_DB_USER,
 /// FORM_DB_PASSWORD (required), FORM_DB_NAME, FORM_DB_TLS (verify|disable, default verify),
+/// FORM_ADMIN_REQUEST_LIMIT_IP (default 600) / FORM_ADMIN_REQUEST_LIMIT_ACCOUNT (default 300): admin API requests per minute, 1...100000.
 /// FORM_TRUSTED_PROXIES (CIDR list), FORM_MAIL_ALLOWED_NETS (CIDR list of private networks mail targets may use).
 /// FORM_ALLOW_INSECURE_DEV (must be exactly "1" to permit FORM_DB_TLS=disable; development only),
 /// FORM_SCHEMA_FILE (default db/schema-p3.sql relative to the working directory), FORM_PUBLIC_DIR (built PWA to serve, optional).
@@ -34,6 +35,8 @@ public struct AppConfig: Sendable, CustomStringConvertible {
     public var httpPort: Int
     public var publicPort: Int
     public var internalSecondFactor: Bool
+    public var adminRequestLimitIP = 600
+    public var adminRequestLimitAccount = 300
     public var publicDashboard: Bool
     public var publicDashboardHosts: [String]
     public var publicTrustedProxies: [CIDR]
@@ -79,6 +82,13 @@ public struct AppConfig: Sendable, CustomStringConvertible {
         guard [nil, "0", "1"].contains(env["FORM_PUBLIC_DASHBOARD"]) else { throw ConfigError(variable: "FORM_PUBLIC_DASHBOARD", reason: "expected 0 or 1") }
         guard [nil, "0", "1"].contains(env["FORM_INTERNAL_SECOND_FACTOR"]) else { throw ConfigError(variable: "FORM_INTERNAL_SECOND_FACTOR", reason: "expected 0 or 1") }
         internalSecondFactor = env["FORM_INTERNAL_SECOND_FACTOR"] == "1"
+        func perMinute(_ key: String, _ def: Int) throws -> Int {
+            guard let raw = env[key] else { return def }
+            guard !raw.isEmpty, raw.utf8.allSatisfy({ (48...57).contains($0) }), let v = Int(raw), (1...100_000).contains(v) else { throw ConfigError(variable: key, reason: "expected integer 1...100000 (requests per minute)") }
+            return v
+        }
+        adminRequestLimitIP = try perMinute("FORM_ADMIN_REQUEST_LIMIT_IP", 600)
+        adminRequestLimitAccount = try perMinute("FORM_ADMIN_REQUEST_LIMIT_ACCOUNT", 300)
         publicDashboard = env["FORM_PUBLIC_DASHBOARD"] == "1"
         publicDashboardHosts = (env["FORM_PUBLIC_DASHBOARD_HOSTS"] ?? "").split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         if !publicDashboard && publicDashboardHosts == [""] { publicDashboardHosts = [] }
