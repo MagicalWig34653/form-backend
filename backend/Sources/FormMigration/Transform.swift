@@ -9,6 +9,23 @@ import FormPersistence
 // Explicit projection contract; additional populated columns need human mapping review.
 let legacyConfigurationColumns = ["UUID","name","domains","fromName","betreff","betreffToFIller","toProductionMails","toTestingMails","modes","active","outgoingProductionServer","outgoingTestingServer","formularSendMailToFiller","essentialPostFields","mailBodyFiller","mailBody","besondereKategorien"]
 
+/// Legacy mail server TLS option (decision 0044). `SMTPallowSelfSigned` = 1 was the deliberate "own/self-signed certificates" switch;
+/// the old form once stored 2 for "not set" (hotfix: only 1 counts). Everything else keeps the certificate check on.
+public enum LegacyMailServer {
+    public static func verifiesCertificate(allowSelfSigned: String?) -> Bool {
+        allowSelfSigned?.trimmingCharacters(in: .whitespaces) != "1"
+    }
+
+    /// Safe config JSON of a legacy mail connection: the legacy values (readable in the plan) plus, for SMTP, the new `verifyCertificate` boolean.
+    static func safeConfigJSON(table: String, values: [String: String?]) throws -> String {
+        var safe: [String: Any] = [:]
+        for (k, v) in values { if let v { safe[k] = v } }
+        if table == "outgoingMailServer" { safe["verifyCertificate"] = verifiesCertificate(allowSelfSigned: values["SMTPallowSelfSigned"] ?? nil) }
+        if table == "outgoingMailProxy" { safe["legacyURLProtected"] = "true" } // URLs can contain credentials, paths or queries: keep the entire source URL protected.
+        return String(decoding: try JSONSerialization.data(withJSONObject: safe, options: [.sortedKeys]), as: UTF8.self)
+    }
+}
+
 extension LegacyRow {
     var hasUnmappedConfigurationValues: Bool {
         let known = Set(legacyConfigurationColumns + ["ID", "cloudflareKeys"])
@@ -115,15 +132,13 @@ extension LegacyImporter {
         case "outgoingMailServer", "outgoingMailProxy":
             let id = try r.required("UUID"), idSQL = try r.uuid("UUID")
             guard let owners = p.connectionCustomers[id], !owners.isEmpty else { throw ImportFailure.invalidPlan }
-            var safe: [String:String] = [:]
+            var values: [String:String?] = [:]
             let keys = table == "outgoingMailServer" ? ["SMTPHost","SMTPPort","SMTPSecurity","SMTPallowSelfSigned","fromMail"] : ["fromMail"]
-            for key in keys { safe[key] = try r.text(key) }
-            if table == "outgoingMailProxy" { // URLs can contain credentials, paths or queries: keep the entire source URL protected.
-                safe["legacyURLProtected"] = "true"
-            }
+            for key in keys { values[key] = try r.text(key) }
+            let safeJSON = try LegacyMailServer.safeConfigJSON(table: table, values: values)
             let credential = table == "outgoingMailServer" ? ["username":try r.text("SMTPUsername"),"password":try r.text("SMTPPassword")] : ["url":try r.text("proxyURL"),"auth":try r.text("proxyAuth")]
             let ref = try await secrets.put(Data(try json(credential).utf8),on:db)
-            var refs = [try await insert(db,"connections",["id":idSQL,"kind":val(table == "outgoingMailServer" ? "smtp":"mail-proxy"),"name":val(try r.required("name")),"safe_config_json":val(try json(safe)),"credential_ref":val(ref),"enabled":"0"],key:["id":idSQL])]
+            var refs = [try await insert(db,"connections",["id":idSQL,"kind":val(table == "outgoingMailServer" ? "smtp":"mail-proxy"),"name":val(try r.required("name")),"safe_config_json":val(safeJSON),"credential_ref":val(ref),"enabled":"0"],key:["id":idSQL])]
             // Secret ciphertext is part of the integrity check as well.
             refs.append(Destination(table:"managed_secrets",predicate:"ref=\(val(ref))"))
             for c in owners { guard p.customers[c] != nil else { throw ImportFailure.invalidPlan }; refs.append(try await insert(db,"customer_connections",["customer_id":try uid(c),"connection_id":idSQL],key:["customer_id":try uid(c),"connection_id":idSQL])) }

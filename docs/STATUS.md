@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## Selbstsignierte Mailserver-Zertifikate je Verbindung (13.11.2026, Todolino 734F1761, Branch `worktree-agent-ad61bcd80cb131b86`, lokal committet, ungemergt, nicht gepusht)
+
+- Nutzerentscheidung (Lino, Bestätigung in der App beim Review ausstehend): ADR 0044. `verifyCertificate:false` je SMTP-Verbindung produktiv erlaubt, nur ausdrücklich gesetzt, TLS bleibt Pflicht (`plain` weiter nur mit Dev-Schalter), Audit `connection.tls-verification-off`/`-on`, neuer `PUT /connections/{id}/tls-verification`. Ersetzt die Dev-Sperre der SMTP-TLS-Härtung; IP-SAN-Prüfung und Standard „prüfen“ bleiben.
+- Import: Altwert `SMTPallowSelfSigned = 1` -> `verifyCertificate:false` (nur 1; 0/2/leer/unbekannt prüfen). Plan-Eingabe `verifyCertificateOff`, Hinweis im Umstieg; Golden `contracts/migration/rehearsal-golden.json` ergänzt.
+- PWA: Schalter mit Warnhinweis, Kennzeichnung in der Liste, Menü „Zertifikatsprüfung wieder einschalten“. Details und Prüfungen: `docs/handoffs/SMTP-Selbstsigniert.md`.
+
 ## Freigabe importierter Einsendungen (13.11.2026, Todolino 2DC195BE, Branch `worktree-agent-a85ba50d422815162`, lokal committet, ungemergt, nicht gepusht)
 
 - Neu: Knopf „Importierte Einsendungen freigeben“ im Umstieg-Schritt „Prüfung“ (`POST migration/jobs/{id}/release-submissions`): `migration-review` -> `accepted` für Einsendungen ohne offenen Prüffall mit bereitem `:2`-Paket, erst nach bestandener Probe (`test_hash` nicht verlangt), Ledger-Nachweis (`target_hmac`) in derselben Transaktion fortgeschrieben, keine neuen Effekte. Entscheidung kam als Brain-Kommentar, Bestätigung durch Lino in der App offen. Übergabe `docs/handoffs/Freigabe-importierter-Einsendungen.md`, ADR 0014, Checkliste, Lücke 15.
@@ -118,7 +124,7 @@
 
 ## SMTP-TLS-Härtung (11.11.2026, Worktree-Branch `worktree-agent-a5d7f9391f8247db0`, lokal committet, ungemergt)
 
-- `verifyCertificate:false` bei SMTP nur mit `FORM_ALLOW_INSECURE_DEV`; produktiv Fehler beim Anlegen (422) und beim Transportaufbau (`MailConnection.transport`, zusätzlich `insecure_not_allowed` im `SMTPTransport`). Gespeicherte Altverbindungen mit `false` senden produktiv nicht mehr; vor Rollout umstellen.
+- (Überholt durch ADR 0044, 13.11.2026: Sperre zurückgebaut, Option je Verbindung erlaubt.) `verifyCertificate:false` bei SMTP nur mit `FORM_ALLOW_INSECURE_DEV`; produktiv Fehler beim Anlegen (422) und beim Transportaufbau (`MailConnection.transport`, zusätzlich `insecure_not_allowed` im `SMTPTransport`). Gespeicherte Altverbindungen mit `false` senden produktiv nicht mehr; vor Rollout umstellen.
 - IP-Literale: Hostprüfung wirkte schon (NIOSSL: kein SNI für IPs, Abgleich der verbundenen Adresse gegen IP-SAN, nie CN); jetzt mit Tests (passende IP-SAN ok, andere IP-SAN und fehlende IP-SAN scheitern). Details und Grenzen: `docs/handoffs/SMTP-TLS-Haertung.md`.
 ## Audit-Lese-API und PWA-Protokoll (11.11.2026, Todolino 3299A88F, Worktree-Branch `worktree-agent-a700b31cb123b21a1`, lokal committet, ungemergt)
 

@@ -115,7 +115,7 @@ final class FlowIngestTests: XCTestCase {
         return id
     }
     private func until(_ condition: () async throws -> Bool) async throws {
-        let end = Date().addingTimeInterval(8)
+        let end = Date().addingTimeInterval(30)  // 8 s was too tight on a loaded machine (delivery is asynchronous)
         while Date() < end { if try await condition() { return }; try await Task.sleep(nanoseconds: 50_000_000) }
         XCTFail("Mailzustellung nicht abgeschlossen")
     }

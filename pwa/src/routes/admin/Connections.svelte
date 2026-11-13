@@ -51,6 +51,8 @@
   let username = $state('');
   let secret = $state('');
   let url = $state('');
+  // Entscheidung 0044: je Verbindung ausdrücklich wählbar, nie voreingestellt.
+  let allowSelfSigned = $state(false);
 
   async function load(): Promise<void> {
     loadError = '';
@@ -116,12 +118,14 @@
             port: Number(port),
             security,
             ...(username.trim() ? { username: username.trim() } : {}),
+            ...(allowSelfSigned && security !== 'plain' ? { verifyCertificate: false } : {}),
           }
         : { url: url.trim() };
     const body = { kind, name: name.trim(), config, ...(secret ? { credential: secret } : {}) };
     const created = await run(() => adminApi.createConnection(body), t.admin.connections.created);
     if (created) {
       name = host = username = secret = url = '';
+      allowSelfSigned = false;
       showCreate = false;
       await load();
     }
@@ -153,6 +157,17 @@
     tested[c.id] = { ok: r.data.ok, at: new Date() };
     checks[c.id] = { running: false, outcome: deriveCheck(c.kind, r.data), error: '', ms };
   }
+
+  /** Wieder prüfen: die sichere Richtung braucht keine Rückfrage. */
+  async function verifyAgain(c: Connection): Promise<void> {
+    const done = await run(
+      () => adminApi.setTlsVerification(c.id, true),
+      t.admin.connections.verifyAgainDone,
+    );
+    if (done !== null || !message) await load();
+  }
+  const unverified = (c: Connection): boolean =>
+    c.kind === 'smtp' && (c.config as { verifyCertificate?: unknown }).verifyCertificate === false;
 
   function openAssign(c: Connection): void {
     assignFor = c;
@@ -251,6 +266,10 @@
                 </p>{/if}
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              {#if unverified(c)}<StatusChip
+                  tone="warn"
+                  label={t.admin.connections.unverified}
+                />{/if}
               {#if !c.enabled}<StatusChip tone="idle" label={t.admin.connections.disabled} />{/if}
               {#if result?.ok}<StatusChip
                   tone="ok"
@@ -278,6 +297,15 @@
                     label: t.admin.connections.assign,
                     onselect: () => openAssign(c),
                   },
+                  ...(unverified(c)
+                    ? [
+                        {
+                          id: 'verify',
+                          label: t.admin.connections.verifyAgain,
+                          onselect: () => void verifyAgain(c),
+                        },
+                      ]
+                    : []),
                 ]}
               />
             </div>
@@ -343,6 +371,22 @@
                 >{/each}
             </Select>
           </Row>
+          {#if security !== 'plain'}
+            <div class="flex flex-col gap-2">
+              <label class="flex min-h-11 items-center gap-3 text-sm">
+                <input
+                  id="conn-selfsigned"
+                  type="checkbox"
+                  class="size-5 accent-[var(--ui-accent)]"
+                  bind:checked={allowSelfSigned}
+                />
+                <span>{t.admin.connections.allowSelfSigned}</span>
+              </label>
+              {#if allowSelfSigned}<Banner tone="warn"
+                  >{t.admin.connections.selfSignedWarning}</Banner
+                >{/if}
+            </div>
+          {/if}
           <Row id="conn-user" optional label={t.admin.connections.username}
             ><Input id="conn-user" bind:value={username} autocomplete="off" /></Row
           >

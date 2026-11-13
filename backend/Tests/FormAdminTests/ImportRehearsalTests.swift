@@ -178,6 +178,10 @@ final class ImportRehearsalTests: XCTestCase {
         XCTAssertEqual([c4, c5, c6, c7], [3, 3, 3, 3])
         let c8 = try await h.count("submissions"), c9 = try await h.count("ingest_idempotency"), c10 = try await h.count("webhook_endpoints")
         XCTAssertEqual([c8, c9, c10], [n, 3, 1])
+        // Decision 0044: SMTPallowSelfSigned=1 (smtpTest) becomes verifyCertificate:false; 0 (smtpA) keeps verification on.
+        let offTest = try await h.scalar("SELECT JSON_EXTRACT(safe_config_json,'$.verifyCertificate') AS v FROM connections WHERE id=\(unhexUUID(RehearsalSource.smtpTest))")
+        let offA = try await h.scalar("SELECT JSON_EXTRACT(safe_config_json,'$.verifyCertificate') AS v FROM connections WHERE id=\(unhexUUID(RehearsalSource.smtpA))")
+        XCTAssertEqual(offTest, "false"); XCTAssertEqual(offA, "true")
         let packageCount = expected.values.reduce(0) { $0 + $1.packages.count }
         let objects = try await h.count("stored_objects", "object_role<>'statistics-metadata'")
         XCTAssertEqual(objects, packageCount)

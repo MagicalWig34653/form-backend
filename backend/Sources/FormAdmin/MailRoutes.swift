@@ -55,8 +55,34 @@ enum MailRoutes {
                     VALUES (\(bind: DB.bin(id)), \(bind: kind), \(bind: name), \(bind: configJSON), \(bind: ref), 1)
                     """).run()
                 try await audit(tx, actor: account, action: "connection.create", subject: id, at: ts)
+                // Decision 0044: certificate verification off is allowed per connection, but never silent (no host, no secret in the entry).
+                if kind == "smtp", config["verifyCertificate"] as? Bool == false { try await audit(tx, actor: account, action: "connection.tls-verification-off", subject: id, at: ts) }
             }
             return try FormAdmin.json(.created, ["id": id.uuidString.lowercased(), "status": "created"])
+        }
+
+        // Switch certificate verification of one SMTP connection on or off (decision 0044); both directions are audited.
+        root.put("connections", ":connectionId", "tls-verification") { req async throws -> Response in
+            let s = try await guardian.requireAuthenticated(req, mutation: true)
+            try await guardian.budget(req)
+            let account = s.accountID!
+            try await perms.authorize(account: account, "system.manage", on: .system)
+            try await guardian.requireFreshAuthentication(s, now: now())
+            guard let cid = req.parameters.get("connectionId").flatMap(lowerUUID) else { throw Abort(.badRequest) }
+            let obj = try jsonObject(req, allowed: ["verifyCertificate"])
+            guard let verify = obj["verifyCertificate"] as? Bool else { throw ValidationFailed(detail: "verifyCertificate (true|false)") }
+            struct R: Decodable { let kind: String; let safe_config_json: String }
+            try await db.transaction { conn in
+                let tx = conn as! SQLDatabase
+                guard let r = try await tx.raw("SELECT kind, safe_config_json FROM connections WHERE id = \(bind: DB.bin(cid)) FOR UPDATE").first(decoding: R.self) else { throw Abort(.notFound) }
+                guard r.kind == "smtp", var cfg = (try? JSONSerialization.jsonObject(with: Data(r.safe_config_json.utf8))) as? [String: Any] else { throw ValidationFailed(detail: "nur SMTP-Verbindungen") }
+                let was = (cfg["verifyCertificate"] as? Bool) ?? true
+                cfg["verifyCertificate"] = verify
+                let configJSON = String(decoding: try JSONSerialization.data(withJSONObject: cfg, options: [.sortedKeys]), as: UTF8.self)
+                try await tx.raw("UPDATE connections SET safe_config_json = \(bind: configJSON) WHERE id = \(bind: DB.bin(cid))").run()
+                if was != verify { try await audit(tx, actor: account, action: verify ? "connection.tls-verification-on" : "connection.tls-verification-off", subject: cid, at: DB.time(now())) }
+            }
+            return Response(status: .noContent)
         }
 
         // The host key an SFTP server offers; the administrator compares it out of band and then saves it as `hostKeySha256`. Authenticates nothing.

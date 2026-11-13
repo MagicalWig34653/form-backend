@@ -129,3 +129,43 @@ it('verlangt bei mehreren Kunden eine Kundenwahl je nicht ableitbarem Schlüssel
   await fireEvent.change(select, { target: { value: select.options[2]!.value } });
   await waitFor(() => expect(start.disabled).toBe(false));
 });
+
+it('weist im Umstieg auf Mailserver hin, deren Zertifikatsprüfung abgeschaltet übernommen wird', async () => {
+  const flagged = '44444444-4444-4444-8444-444444444442';
+  const normal = '44444444-4444-4444-8444-444444444441';
+  request.mockImplementation(async (method, path) => {
+    if (method === 'GET') return { ok: true, data: { items: [] } };
+    if (path === '/migration/test')
+      return {
+        ok: true,
+        data: {
+          schemaHMAC: 'c'.repeat(64),
+          formIds: [formId],
+          connectionIds: [normal, flagged],
+          connections: [
+            { id: normal, kind: 'smtp', name: 'Geprüft' },
+            { id: flagged, kind: 'smtp', name: 'Eigenes Zertifikat', verifyCertificateOff: true },
+          ],
+          counts: { submissions: 1 },
+        },
+      };
+    return { ok: true, data: {} };
+  });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Quelle prüfen' });
+  await type('Host', 'db.example');
+  await type('Datenbank', 'alt');
+  await type('Benutzer', 'lesen');
+  await fireEvent.click(screen.getByRole('button', { name: 'Verbindung prüfen' }));
+  await screen.findByText('Prüfbericht der Quelle');
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Weiter' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    ),
+  );
+  await fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  await screen.findByRole('heading', { name: 'Zuordnung' });
+  expect(
+    screen.getAllByText(/Zertifikatsprüfung für diesen Mailserver abgeschaltet übernommen/),
+  ).toHaveLength(1);
+});

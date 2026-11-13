@@ -441,6 +441,10 @@ export function createAdminApi(http: Http) {
       config: JsonObject;
       credential?: string;
     }) => http.request<{ id: string }>('POST', '/connections', { body }),
+    setTlsVerification: (connectionId: string, verifyCertificate: boolean) =>
+      http.request<void>('PUT', `/connections/${id(connectionId)}/tls-verification`, {
+        body: { verifyCertificate },
+      }),
     testConnection: (connectionId: string) =>
       http.request<TestResult>('POST', `/connections/${id(connectionId)}/test`),
     assignConnection: (tenant: string, connectionId: string) =>

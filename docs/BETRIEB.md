@@ -536,6 +536,15 @@ Schreiben: `source_changed`, nichts geschrieben, „Prüflauf wiederholen“. Ab
 Namespace: `snapshot_changed`. Das Quell-Konto braucht nur `SELECT`. Die Messung liest jede Tabelle einmal
 vollständig (je Messpunkt etwa so lange wie das Zählen der Zeilen). Details: `docs/UMSTIEG-CHECKLISTE.md`.
 
+## Mailserver mit selbstsigniertem Zertifikat (ADR 0044)
+
+Je SMTP-Verbindung kann die Zertifikatsprüfung abgeschaltet werden („Eigene/selbstsignierte Zertifikate erlauben“, `verifyCertificate:false`),
+auch im Produktivbetrieb und ohne `FORM_ALLOW_INSECURE_DEV`. Standard ist „prüfen“. Die Verbindung bleibt TLS/STARTTLS-verschlüsselt (kein Klartext-Rückfall;
+`security: plain` bleibt nur mit Entwicklungsschalter). Anlegen und Zurückschalten brauchen `system.manage` plus frische Anmeldung und werden im Audit
+protokolliert (`connection.tls-verification-off` / `connection.tls-verification-on`, nur mit Verbindungs-ID). Zurückschalten per PWA (Verbindungen, Menü der Zeile) oder
+`PUT /connections/{id}/tls-verification`. Beim Umstieg wird der Altwert `SMTPallowSelfSigned = 1` übernommen. Betrieb: ausgeschaltete Prüfungen in der
+Verbindungsliste („Zertifikat wird nicht geprüft“) regelmäßig durchsehen; wo möglich die CA des Mailservers statt der Abschaltung bevorzugen.
+
 ## Backup/Restore gegen die externe DB
 
 Skripte benötigen `FORM_DB_HOST`, `FORM_DB_PORT` (3306), `FORM_DB_USER` (form), `FORM_DB_NAME`

@@ -18,11 +18,14 @@ public enum MailConnection {
         let user = json["username"] as? String
         if let u = user, u.isEmpty || u.utf8.count > 255 || u.unicodeScalars.contains(where: { $0.value < 0x20 }) { throw Invalid(reason: "username") }
         if (user == nil) != (password == nil) { throw Invalid(reason: "username and password belong together") }
-        let verify = (json["verifyCertificate"] as? Bool) ?? true
+        // Decision 0044: switching certificate verification off is an explicit per-connection choice (self-signed server) and allowed in
+        // production; only a real boolean counts, anything else is invalid. TLS stays mandatory, so `plain` cannot combine with it.
+        var verify = true
+        if let raw = json["verifyCertificate"] {
+            guard let b = raw as? Bool else { throw Invalid(reason: "verifyCertificate") }
+            verify = b
+        }
         if !verify && sec == .plain { throw Invalid(reason: "verifyCertificate") }
-        // Switching certificate checks off is only possible together with the development release (same switch as `plain`); stored
-        // connections with `false` therefore also fail when the transport is built in production.
-        if !verify && !allowInsecure { throw Invalid(reason: "verifyCertificate off is not allowed") }
         let name = (json["clientName"] as? String) ?? "localhost"
         guard name.range(of: "^[A-Za-z0-9.-]{1,253}$", options: .regularExpression) != nil else { throw Invalid(reason: "clientName") }
         return SMTPConfig(host: host, port: port, security: sec, username: user, password: password, verifyCertificate: verify, clientName: name)

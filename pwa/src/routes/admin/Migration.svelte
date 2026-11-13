@@ -716,6 +716,10 @@
                       <code class="text-muted-foreground block font-mono text-xs break-all"
                         >{connection.id}</code
                       >
+                      {#if connection.verifyCertificateOff}<span
+                          class="mt-1 block text-xs font-medium text-amber-700 dark:text-amber-400"
+                          >{f.mapping.verifyOff}</span
+                        >{/if}
                     </span>
                     {#if customers.length > 1}
                       <Select

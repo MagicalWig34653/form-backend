@@ -57,6 +57,7 @@ final class SetupMigrationKeyTests: XCTestCase {
                     try await s.raw("INSERT INTO anfragen (ID,UUID,formularUUID,time,data,mailBody,removable) VALUES (\(bind: id),UUID(),\(bind: Self.form),1700000000,\(bind: data),\(bind: mail),0)").run()
                 }
                 try await s.raw("INSERT INTO outgoingMailServer (ID,UUID,name,SMTPHost,SMTPPassword,fromMail) VALUES (1,'44444444-4444-4444-8444-444444444444','Synthetischer Versand','smtp.example.invalid','never-in-response','test@example.invalid')").run()
+                try await s.raw("INSERT INTO outgoingMailServer (ID,UUID,name,SMTPHost,SMTPPassword,fromMail,SMTPallowSelfSigned) VALUES (2,'44444444-4444-4444-8444-444444444445','Eigenes Zertifikat','smtp2.example.invalid','never-in-response','test@example.invalid',1)").run()
                 try await s.raw("UPDATE formulare SET outgoingProductionServer='44444444-4444-4444-8444-444444444444'").run()
             }
             try await body(source)
@@ -121,6 +122,9 @@ final class SetupMigrationKeyTests: XCTestCase {
                     let connections = try XCTUnwrap(json["connections"] as? [[String: Any]])
                     XCTAssertEqual(connections.first?["name"] as? String, "Synthetischer Versand")
                     XCTAssertEqual(connections.first?["kind"] as? String, "smtp")
+                    // Decision 0044: a server the old system ran without certificate checks is flagged in the plan input; the others are not.
+                    XCTAssertNil(connections.first?["verifyCertificateOff"])
+                    XCTAssertEqual(connections.first { $0["name"] as? String == "Eigenes Zertifikat" }?["verifyCertificateOff"] as? Bool, true)
                     for secret in [source.password, "never-in-response", "smtp.example.invalid", "KUBUS-AEAD",
                                    source.active.publicKey.rawRepresentation.base64EncodedString(),
                                    source.active.publicKey.rawRepresentation.base64URLString,

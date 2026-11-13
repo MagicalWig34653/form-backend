@@ -118,10 +118,9 @@ public struct SMTPTransport: MailTransport {
 
     private func tlsContext() throws -> NIOSSLContext {
         var c = TLSConfiguration.makeClientConfiguration()
-        if !config.verifyCertificate {
-            guard allowInsecure else { throw MailTransportError("insecure_not_allowed", transient: false) }
-            c.certificateVerification = .none
-        }
+        // `verifyCertificate:false` is an explicit per-connection choice (decision 0044) and works in production; the channel stays encrypted
+        // (`.plain` is refused in `run`, STARTTLS is mandatory and never falls back to clear text).
+        if !config.verifyCertificate { c.certificateVerification = .none }
         // Otherwise `.fullVerification` stays: chain and host name are checked. For IP literals no server name is passed (NIOSSL refuses
         // IPs as SNI); NIOSSL then matches the connected address against the certificate's IP SANs only, never the CN.
         if let roots = trustRoots { c.trustRoots = .certificates(roots) }

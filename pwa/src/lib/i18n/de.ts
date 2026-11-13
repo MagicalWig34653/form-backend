@@ -1456,6 +1456,12 @@ try {
       acode: 'Zugangscode (ACODE)',
       create: 'Verbindung anlegen',
       created: 'Die Verbindung wurde angelegt.',
+      allowSelfSigned: 'Eigene/selbstsignierte Zertifikate erlauben',
+      selfSignedWarning:
+        'Das Zertifikat des Mailservers wird nicht geprüft; Mails können abgefangen werden. Nur für einen bekannten Server im eigenen Netz/mit selbstsigniertem Zertifikat verwenden.',
+      unverified: 'Zertifikat wird nicht geprüft',
+      verifyAgain: 'Zertifikatsprüfung wieder einschalten',
+      verifyAgainDone: 'Das Zertifikat dieses Mailservers wird wieder geprüft.',
       test: 'Testen',
       assign: 'Kunden zuweisen',
       assigned: 'Zugewiesen.',
@@ -2358,6 +2364,8 @@ try {
           customerFor: 'Kunde für {name}',
           choose: 'Bitte wählen',
           connectionsTitle: 'Mailverbindungen',
+          verifyOff:
+            'Zertifikatsprüfung für diesen Mailserver abgeschaltet übernommen (alte Einstellung „Eigene Zertifikate erlauben“). Mails können abgefangen werden; später unter Verbindungen wieder einschalten.',
           connectionsNone: 'Die Quelle enthält keine Mailverbindungen.',
           connectionsAll: 'Alle Verbindungen werden diesem Kunden zugeordnet.',
           connectionsDerived: 'Vorbelegt nach den Formularen, die die Verbindung verwenden.',

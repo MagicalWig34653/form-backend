@@ -77,7 +77,6 @@ final class SMTPTransportTests: XCTestCase {
         var o = FakeSMTPServer.Options(); o.implicitTLS = true
         try await withServer(o) { s in
             await expectError("tls_failed") { try await transport(s, .tls, verify: true).send(try msg()) }
-            await expectError("insecure_not_allowed") { try await transport(s, .tls, verify: false, insecure: false).send(try msg()) }   // production: refused
             try await transport(s, .tls, verify: false, insecure: true).send(try msg())
             XCTAssertEqual(s.mails.count, 1)
         }
@@ -180,24 +179,50 @@ final class SMTPTransportTests: XCTestCase {
         return j
     }
 
-    func testProductionRefusesVerifyCertificateOffOnCreateAndOnTransportBuild() throws {
-        XCTAssertThrowsError(try MailConnection.smtpConfig(smtpJSON(verify: false), password: nil, allowInsecure: false)) { XCTAssertEqual($0 as? MailConnection.Invalid, .init(reason: "verifyCertificate off is not allowed")) }
-        // A stored connection with `false` must not build a transport in production either.
-        XCTAssertThrowsError(try MailConnection.transport(kind: "smtp", safeConfig: smtpJSON(verify: false), secret: nil, allowedNets: [], allowInsecure: false))
-        // Default and explicit true stay fine; the development switch permits false.
+    func testVerifyCertificateOffIsAllowedInProductionOnlyWhenSetExplicitlyAndDefaultVerifies() throws {
+        // Production (allowInsecure false): the explicit per-connection choice is accepted on create and on transport build.
+        XCTAssertFalse(try MailConnection.smtpConfig(smtpJSON(verify: false), password: nil, allowInsecure: false).verifyCertificate)
+        XCTAssertNoThrow(try MailConnection.transport(kind: "smtp", safeConfig: smtpJSON(verify: false), secret: nil, allowedNets: [], allowInsecure: false))
+        // Default and explicit true verify.
         XCTAssertTrue(try MailConnection.smtpConfig(smtpJSON(verify: nil), password: nil, allowInsecure: false).verifyCertificate)
         XCTAssertTrue(try MailConnection.smtpConfig(smtpJSON(verify: true), password: nil, allowInsecure: false).verifyCertificate)
-        XCTAssertFalse(try MailConnection.smtpConfig(smtpJSON(verify: false), password: nil, allowInsecure: true).verifyCertificate)
-        XCTAssertNoThrow(try MailConnection.transport(kind: "smtp", safeConfig: smtpJSON(verify: false), secret: nil, allowedNets: [], allowInsecure: true))
+        // Not a boolean: refused, never read as "off" or "on" by accident.
+        var weird = smtpJSON(verify: nil); weird["verifyCertificate"] = 2
+        XCTAssertThrowsError(try MailConnection.smtpConfig(weird, password: nil, allowInsecure: false)) { XCTAssertEqual($0 as? MailConnection.Invalid, .init(reason: "verifyCertificate")) }
+        // Plain text stays development-only (and is a different thing than a self-signed certificate).
+        var plain = smtpJSON(verify: nil); plain["security"] = "plain"
+        XCTAssertThrowsError(try MailConnection.smtpConfig(plain, password: nil, allowInsecure: false)) { XCTAssertEqual($0 as? MailConnection.Invalid, .init(reason: "plain connections are not allowed")) }
+        plain["verifyCertificate"] = false
+        XCTAssertThrowsError(try MailConnection.smtpConfig(plain, password: nil, allowInsecure: true))
     }
 
-    func testTransportItselfRefusesUnverifiedTLSWithoutTheDevelopmentSwitch() async throws {
+    func testSelfSignedServerFailsWhenVerifyingAndSucceedsWithTheOptionInProduction() async throws {
         var o = FakeSMTPServer.Options(); o.startTLS = true
         try await withServer(o) { s in
-            await expectError("insecure_not_allowed", transient: false) { try await transport(s, .starttls, verify: false, insecure: false).send(try msg()) }
+            // Production: allowInsecure false. The fake server presents a self-signed certificate.
+            await expectError("tls_failed") { try await transport(s, .starttls, verify: true, insecure: false).send(try msg()) }
             XCTAssertTrue(s.mails.isEmpty)
-            try await transport(s, .starttls, verify: false, insecure: true).send(try msg())   // test mode permits it
+            try await transport(s, .starttls, verify: false, insecure: false).send(try msg())
             XCTAssertEqual(s.mails.count, 1)
+        }
+        var i = FakeSMTPServer.Options(); i.implicitTLS = true
+        try await withServer(i) { s in
+            await expectError("tls_failed") { try await transport(s, .tls, verify: true, insecure: false).send(try msg()) }
+            try await transport(s, .tls, verify: false, insecure: false).send(try msg())
+            XCTAssertEqual(s.mails.count, 1)
+        }
+    }
+
+    func testUnverifiedTLSNeverFallsBackToPlainText() async throws {
+        // STARTTLS is not offered: even with the option the transport refuses instead of sending in clear text.
+        try await withServer { s in
+            await expectError("starttls_unsupported", transient: false) { try await transport(s, .starttls, verify: false, insecure: false).send(try msg()) }
+            XCTAssertTrue(s.mails.isEmpty)
+        }
+        // `plain` is still refused in production, with or without the option.
+        try await withServer { s in
+            await expectError("insecure_not_allowed", transient: false) { try await transport(s, .plain, verify: false, insecure: false).send(try msg()) }
+            XCTAssertTrue(s.commands.isEmpty)
         }
     }
 

@@ -353,9 +353,16 @@ paths:
       responses: { '200': { description: Alle Verbindungen. } }
     post:
       operationId: createConnection
-      description: 'Recht system.manage. Body {kind, name, config, credential}; Zugangsdaten werden verschlüsselt abgelegt.'
+      description: 'Recht system.manage. Body {kind, name, config, credential}; Zugangsdaten werden verschlüsselt abgelegt. SMTP-config.verifyCertificate (Boolean, Standard true): false erlaubt ein selbstsigniertes Zertifikat dieser einen Verbindung, auch produktiv (ADR 0044); Audit connection.tls-verification-off. Nicht mit security=plain kombinierbar.'
       security: [{ Session: [] }]
       responses: { '201': { description: Angelegt. } }
+  /connections/{connectionId}/tls-verification:
+    put:
+      operationId: setConnectionTlsVerification
+      description: 'Recht system.manage, frische Anmeldung. Body {verifyCertificate: boolean}; nur SMTP-Verbindungen (sonst 422, unbekannt 404). Audit connection.tls-verification-off bzw. -on bei Wertänderung (ADR 0044).'
+      security: [{ Session: [] }]
+      parameters: [{ name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Gesetzt. } }
   /migration/test:
     post:
       operationId: testMigrationSource

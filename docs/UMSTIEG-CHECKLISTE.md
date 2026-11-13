@@ -40,6 +40,7 @@ Stand 13.11.2026 (Einmal-Snapshot, ADR 0043). Grundlage: Generalprobe gegen das 
 | Das Zertifikat der Quelle passt nicht zum Hostnamen | Adresse nicht im Zertifikat (SAN), Audit `source_cert_hostname` | Adresse wie im Zertifikat eintragen |
 | Das Zertifikat der Quelle stammt von einer unbekannten Stelle | CA nicht im Vertrauensspeicher des Dienstes, Audit `source_cert_untrusted` | Quell-CA in Image/Host eintragen (kein CA-Feld) |
 | Das Zertifikat der Quelle ist abgelaufen | Gültigkeit überschritten, Audit `source_cert_expired` | Zertifikat an der Quelle erneuern |
+| Im Schritt „Zuordnung“: „Zertifikatsprüfung für diesen Mailserver abgeschaltet übernommen“ | Der Mailserver hatte im Altsystem `SMTPallowSelfSigned = 1` („Eigene Zertifikate erlauben“, ADR 0044); nur der Wert 1 zählt, 0/2/leer/unbekannt übernehmen die Prüfung als eingeschaltet | Gewollt, wenn der Server ein selbstsigniertes Zertifikat nutzt. Sonst nach dem Import unter Verbindungen „Zertifikatsprüfung wieder einschalten“ (auditiert) |
 | Quelle konnte nicht sicher geprüft werden | sonstiger, nicht zuordenbarer Fehler (Audit `source_failed`) | Verbindung mit `openssl s_client` prüfen |
 | Es läuft bereits eine Quellprüfung (429) | höchstens eine Prüfung je Konto, zwei insgesamt | kurz warten |
 | `unknownKeyGeneration@kid` | Einsendung verwendet einen Schlüssel, der nicht im Plan/Altbestand steht | Warnung in der Zuordnung beachten; fehlenden Schlüssel in der Quelle ergänzen oder die Zeile klären, Prüflauf wiederholen |

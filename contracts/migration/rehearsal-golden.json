@@ -22,7 +22,8 @@
       {
         "id": "44444444-4444-4444-8444-444444444442",
         "kind": "smtp",
-        "name": "SMTP Test"
+        "name": "SMTP Test",
+        "verifyCertificateOff": true
       },
       {
         "id": "44444444-4444-4444-8444-444444444443",

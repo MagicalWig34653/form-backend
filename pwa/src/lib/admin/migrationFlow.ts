@@ -46,6 +46,8 @@ export interface SourceConnection {
   id: string;
   kind: string;
   name: string | null;
+  /** Old SMTPallowSelfSigned = 1: the import turns the certificate check off for this server (decision 0044). */
+  verifyCertificateOff?: boolean;
 }
 export interface SourceKey {
   kid: string;

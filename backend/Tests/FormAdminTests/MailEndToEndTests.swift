@@ -97,7 +97,8 @@ final class MailEndToEndTests: XCTestCase {
         try await w.f.app.test(.POST, "api/v2/submit/?f=\(w.form)", headers: h, body: ByteBuffer(string: body), afterResponse: check)
     }
 
-    private func until(_ timeout: TimeInterval = 8, _ cond: () async throws -> Bool) async throws {
+    // 30 s: delivery is asynchronous (outbox worker + SMTP); 8 s was too tight on a loaded machine (seen with load averages above 10, also before the SMTP change).
+    private func until(_ timeout: TimeInterval = 30, _ cond: () async throws -> Bool) async throws {
         let end = Date().addingTimeInterval(timeout)
         while Date() < end { if try await cond() { return }; try await Task.sleep(nanoseconds: 50_000_000) }
         XCTFail("condition not reached in time")
@@ -496,6 +497,52 @@ final class MailEndToEndTests: XCTestCase {
             // stale login is refused for connection changes
             try await f.sql.raw("UPDATE sessions SET authenticated_at = '2020-01-01 00:00:00.000000' WHERE state = 'authenticated'").run()
             try await w.sys.send(.POST, "connections", body: body([:])) { XCTAssertEqual(obj($0)["code"] as? String, "reauthentication_required") }
+        }
+    }
+
+    /// Self-signed certificates (decision 0044): a per-connection choice, allowed in production, audited without host or secrets.
+    func testTLSVerificationOffIsAnExplicitAuditedPerConnectionChoice() async throws {
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: defaultMail)
+            func create(_ extra: [String: Any]) -> String {
+                let cfg: [String: Any] = ["host": "mail.example.org", "port": 587, "security": "starttls", "username": "u"].merging(extra) { $1 }
+                return String(decoding: try! JSONSerialization.data(withJSONObject: ["kind": "smtp", "name": "n", "config": cfg, "credential": "synthetic-pw-Q7"].merging([:]) { $1 }), as: UTF8.self)
+            }
+            func auditCount(_ code: String, _ id: String) async throws -> Int {
+                try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code = \(bind: code) AND subject_id = UNHEX(REPLACE(\(bind: id), '-', ''))").first(decoding: C.self)?.c ?? -1
+            }
+            // without the option: verification stays on, no tls audit
+            var plainID = ""
+            try await w.sys.send(.POST, "connections", body: create([:])) { XCTAssertEqual($0.status, .created, text($0)); plainID = obj($0)["id"] as? String ?? "" }
+            let n1 = try await auditCount("connection.tls-verification-off", plainID); XCTAssertEqual(n1, 0)
+            // not a boolean: refused
+            try await w.sys.send(.POST, "connections", body: create(["verifyCertificate": "no"])) { XCTAssertEqual($0.status.code, 422) }
+            // a customer administrator cannot
+            try await w.user.send(.POST, "connections", body: create(["verifyCertificate": false])) { XCTAssertEqual($0.status, .notFound) }
+            // explicit option: created, audited with connection id, no host/secret in the audit details
+            var offID = ""
+            try await w.sys.send(.POST, "connections", body: create(["verifyCertificate": false])) { XCTAssertEqual($0.status, .created, text($0)); offID = obj($0)["id"] as? String ?? "" }
+            let n2 = try await auditCount("connection.tls-verification-off", offID); XCTAssertEqual(n2, 1)
+            struct D: Decodable { let safe_details_json: String }
+            let details = try await f.sql.raw("SELECT safe_details_json FROM audit_events WHERE action_code = 'connection.tls-verification-off'").first(decoding: D.self)?.safe_details_json ?? ""
+            XCTAssertFalse(details.contains("mail.example.org") || details.contains("synthetic-pw"), details)
+            try await w.sys.get("connections") { res async throws in
+                let items = obj(res)["items"] as? [[String: Any]] ?? []
+                let off = items.first { $0["id"] as? String == offID }
+                XCTAssertEqual((off?["config"] as? [String: Any])?["verifyCertificate"] as? Bool, false)
+            }
+            // switching back to verification: audited as well, needs system.manage and a fresh login
+            try await w.user.send(.PUT, "connections/\(offID)/tls-verification", body: #"{"verifyCertificate":true}"#) { XCTAssertEqual($0.status, .notFound) }
+            try await w.sys.send(.PUT, "connections/\(offID)/tls-verification", body: #"{"verifyCertificate":"x"}"#) { XCTAssertEqual($0.status.code, 422) }
+            try await w.sys.send(.PUT, "connections/\(offID)/tls-verification", body: #"{"verifyCertificate":true}"#) { XCTAssertEqual($0.status, .noContent, text($0)) }
+            let n3 = try await auditCount("connection.tls-verification-on", offID); XCTAssertEqual(n3, 1)
+            try await w.sys.send(.PUT, "connections/\(offID)/tls-verification", body: #"{"verifyCertificate":false}"#) { XCTAssertEqual($0.status, .noContent) }
+            let n4 = try await auditCount("connection.tls-verification-off", offID); XCTAssertEqual(n4, 2)
+            try await w.sys.send(.PUT, "connections/\(UUID().uuidString.lowercased())/tls-verification", body: #"{"verifyCertificate":false}"#) { XCTAssertEqual($0.status, .notFound) }
+            // only SMTP connections carry the option
+            var proxyID = ""
+            try await w.sys.send(.POST, "connections", body: #"{"kind":"mail-proxy","name":"p","config":{"url":"https://proxy.example.org/send"},"credential":"acode"}"#) { proxyID = obj($0)["id"] as? String ?? "" }
+            try await w.sys.send(.PUT, "connections/\(proxyID)/tls-verification", body: #"{"verifyCertificate":false}"#) { XCTAssertEqual($0.status.code, 422) }
         }
     }
 

@@ -93,7 +93,13 @@ public enum SetupMigrationRoutes {
                     connectionIds += rows.map { $0.id.lowercased() }
                     // Display name only (ADR 0040); host, user, password, proxy URL and auth stay in the source.
                     let names = try await Self.labels(source, table: table, idColumn: "UUID", labelColumn: "name", limit: 100)
-                    connections += rows.map { ["id": $0.id.lowercased(), "kind": table == "outgoingMailServer" ? "smtp" : "mail-proxy", "name": names[$0.id.lowercased()].map { $0 as Any } ?? NSNull()] }
+                    // Old SMTPallowSelfSigned = 1 (only that value, see LegacyMailServer): the import turns certificate checks off for this server; shown in the plan.
+                    let selfSigned = table == "outgoingMailServer" ? try await Self.labels(source, table: table, idColumn: "UUID", labelColumn: "SMTPallowSelfSigned", limit: 100) : [:]
+                    connections += rows.map { row in
+                        var item: [String: Any] = ["id": row.id.lowercased(), "kind": table == "outgoingMailServer" ? "smtp" : "mail-proxy", "name": names[row.id.lowercased()].map { $0 as Any } ?? NSNull()]
+                        if !LegacyMailServer.verifiesCertificate(allowSelfSigned: selfSigned[row.id.lowercased()]) { item["verifyCertificateOff"] = true }
+                        return item
+                    }
                 }
                 // Form display names and the referenced mail connections (only values that are UUIDs of a listed connection).
                 let formNames = try await Self.labels(source, table: "formulare", idColumn: "UUID", labelColumn: "name", limit: 1000)
