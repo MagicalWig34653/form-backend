@@ -72,13 +72,24 @@ async function openNewestEntry(page: Page, formName: string, retry = true): Prom
   const open = page.getByRole('menuitem', { name: 'Öffnen' });
   if (retry && (await open.isDisabled())) {
     // the browser holds no data key for this entry: reload + passkey unlock loads every access of the account again
-    finding(`entry not openable in the running session (no data key in the keyring); retried after reload + unlock`);
+    finding(
+      `entry not openable in the running session (no data key in the keyring); retried after reload + unlock`,
+    );
     resetBudget();
     await page.keyboard.press('Escape');
     await page.goto('/account');
     await expect(page.getByText('Schlüssel gesperrt').first()).toBeVisible();
     await unlockIfLocked(page);
-    note(`keyring after unlock: ${(await page.getByTestId('access-status').innerText().catch(() => '?')).replace(/\s+/g, ' ').slice(0, 200)}`);
+    note(
+      `keyring after unlock: ${(
+        await page
+          .getByTestId('access-status')
+          .innerText()
+          .catch(() => '?')
+      )
+        .replace(/\s+/g, ' ')
+        .slice(0, 200)}`,
+    );
     return openNewestEntry(page, formName, false);
   }
   await open.click();
@@ -223,7 +234,9 @@ export async function postImport(page: Page, recovery: string) {
     const field = page.locator(`#legacy-key-${tenant}`);
     if (!(await field.isVisible({ timeout: 15_000 }).catch(() => false))) {
       // the session's customer list is loaded at login: a customer the import just created appears after a reload (keyring locked again)
-      finding('adoption: the imported customer appears in Konto/Erweitert only after a reload (session customer list from the login)');
+      finding(
+        'adoption: the imported customer appears in Konto/Erweitert only after a reload (session customer list from the login)',
+      );
       resetBudget();
       await page.goto('/account?legacy=1');
       await expect(page.getByText('Schlüssel gesperrt').first()).toBeVisible();
