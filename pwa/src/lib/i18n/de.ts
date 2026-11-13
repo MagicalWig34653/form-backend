@@ -2581,6 +2581,13 @@ try {
           draftHint:
             'Erzeugt inaktive Entwurfsvorschläge aus den Altformularen samt Konverterbericht.',
           draftStart: 'Entwürfe und Konverterbericht erstellen',
+          releaseTitle: 'Importierte Einsendungen freigeben',
+          releaseHint:
+            'Macht die importierten Einsendungen in der Einsendungsliste sichtbar. Einsendungen mit offenem Prüffall (nicht übernehmbare Pakete, Anhänge, Fehlerhinweise) bleiben in der Prüfung. Es werden weder Mails noch Webhooks ausgelöst; die Pakete bleiben unverändert. Lesbar sind die Einsendungen erst, wenn der Altschlüssel übernommen ist.',
+          releaseButton: 'Importierte Einsendungen freigeben',
+          releaseNeedsProbe:
+            'Erst nach bestandener Entschlüsselungsprobe möglich. Laden und bestätigen Sie zuerst die Probe.',
+          releaseResult: '{released} freigegeben, {kept} bleiben in der Prüfung.',
           adoptTitle: 'Altschlüssel übernehmen',
           adoptHint:
             'Der Import überträgt die Einsendungen und die öffentlichen Schlüsselgenerationen, aber keine Zugänge. Bis der alte Datenschlüssel übernommen ist, lassen sich die importierten Einsendungen im normalen Betrieb nicht öffnen. Übernehmen Sie ihn im Konto mit dem alten privaten X25519-Schlüssel oder, falls die Recovery-Hülle importiert wurde, mit dem alten Recovery-Code.',

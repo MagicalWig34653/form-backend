@@ -14,7 +14,8 @@ import XCTVapor
 /// The fake server below speaks the MariaDB greeting, offers TLS and presents a synthetic certificate (TestSupport/Fixtures); it counts
 /// what the client sends in plain text (only the 36-byte SSLRequest is allowed) and after TLS (nothing: no credentials ever).
 /// Needs P4A_DB_PORT/P4A_DB_PASSWORD like ImportRehearsalTests (backend/integration-test.sh).
-final class SourceCertificateTests: XCTestCase {
+/// An extension of ImportRehearsalTests (like the other Import*Tests): XCTestCase cannot be instantiated by hand on Linux, so the harness is reached through self.
+extension ImportRehearsalTests {
     // MARK: classify (pure)
 
     func testClassifyNamesCertificateCauses() {
@@ -37,7 +38,7 @@ final class SourceCertificateTests: XCTestCase {
 
     func testUntrustedCertificateIsNamedAndNoCredentialIsSent() async throws {
         let fake = try await FakeTLSMySQL(certificate: "test-cert.pem")
-        let (status, text) = try await check(fake)
+        let (status, text) = try await certificateCheck(fake)
         XCTAssertEqual(status, .unprocessableEntity, text)
         XCTAssertTrue(text.contains("unbekannten Stelle"), text)
         XCTAssertEqual(fake.tlsConnections, 2, "real connection plus the diagnosis connection")
@@ -47,7 +48,7 @@ final class SourceCertificateTests: XCTestCase {
 
     func testExpiredCertificateIsNamedByTheDiagnosis() async throws {
         let fake = try await FakeTLSMySQL(certificate: "test-cert-expired.pem")
-        let (status, text) = try await check(fake)
+        let (status, text) = try await certificateCheck(fake)
         XCTAssertEqual(status, .unprocessableEntity, text)
         XCTAssertTrue(text.contains("abgelaufen"), text)
         XCTAssertEqual(fake.tlsConnections, 2)
@@ -57,16 +58,16 @@ final class SourceCertificateTests: XCTestCase {
 
     func testFailedDiagnosisStaysUntrusted() async throws {
         let fake = try await FakeTLSMySQL(certificate: "test-cert-expired.pem", refuseTLSFrom: 2)  // the diagnosis (second TLS attempt) gets cut
-        let (status, text) = try await check(fake)
+        let (status, text) = try await certificateCheck(fake)
         XCTAssertEqual(status, .unprocessableEntity, text)
         XCTAssertTrue(text.contains("unbekannten Stelle"), text)
         await fake.assertNoCredentials()
         await fake.stop()
     }
 
-    private func check(_ fake: FakeTLSMySQL) async throws -> (HTTPStatus, String) {
+    private func certificateCheck(_ fake: FakeTLSMySQL) async throws -> (HTTPStatus, String) {
         var result: (HTTPStatus, String) = (.ok, "")
-        try await ImportRehearsalTests().withHarness(perForm: 1, statistics: 0) { h in
+        try await withHarness(perForm: 1, statistics: 0) { h in
             var body = h.sourceBody(user: "srcuser-geheim", password: "pw-geheim", database: "alt", port: fake.port, host: "127.0.0.1")
             body["tls"] = "verify"
             let (status, _, text) = try await h.test(body)

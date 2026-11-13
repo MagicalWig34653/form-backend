@@ -1,5 +1,10 @@
 # Tatsächlicher Stand
 
+## Freigabe importierter Einsendungen (13.11.2026, Todolino 2DC195BE, Branch `worktree-agent-a85ba50d422815162`, lokal committet, ungemergt, nicht gepusht)
+
+- Neu: Knopf „Importierte Einsendungen freigeben“ im Umstieg-Schritt „Prüfung“ (`POST migration/jobs/{id}/release-submissions`): `migration-review` -> `accepted` für Einsendungen ohne offenen Prüffall mit bereitem `:2`-Paket, erst nach bestandener Probe (`test_hash` nicht verlangt), Ledger-Nachweis (`target_hmac`) in derselben Transaktion fortgeschrieben, keine neuen Effekte. Entscheidung kam als Brain-Kommentar, Bestätigung durch Lino in der App offen. Übergabe `docs/handoffs/Freigabe-importierter-Einsendungen.md`, ADR 0014, Checkliste, Lücke 15.
+- Geprüft: Swift ROT ohne Route (17 Failures, 404), GRÜN 4/4, Mutation ohne Ledger-Fortschreibung rot (`conflict`); Echtlauf `e2e-migration.sh` rc=0 (falsche Erwartung rc=1), verify/existing/setup-umstieg rc=0; vitest 517/517. Das Echt-E2E hatte einen Race (Schlüsselanlage des Kunden per Poll abgewartet). Offen: Review, Merge.
+
 ## Einmal-Snapshot mit Schreibpause-Prüfung (13.11.2026, Todolino 48E3D133, Branch `worktree-agent-a92464679b4ae5a6d`, lokal committet, ungemergt, nicht gepusht)
 
 - Nutzerentscheidung „B: Einmal-Snapshot, Quiesce-Prüfung im Code, kein Delta“ umgesetzt (ADR 0043, ersetzt den Delta-Teil von ADR 0033): Aktion `delta` entfällt (404), anderer Dump-Hash auf bestehendem Namespace = `snapshot_changed`, Quellen-Fingerabdruck (`CHECKSUM TABLE` + `COUNT(*)`, SHA-256) im Prüflauf-Bericht, Import prüft vor dem Schreiben (`source_changed`, nichts geschrieben) und nach dem letzten Objekt (`source_not_quiesced`, Lauf `failed`). Neue Job-Aktion `rehearse` („Prüflauf wiederholen“), `import` verlangt den Fingerabdruck (409 `source_fingerprint_missing` bei alten Jobs). CLI: `--expect-source-fingerprint`, Prüflauf druckt `source-fingerprint:`. 409 der Jobaktionen tragen Code und deutschen Text.

@@ -29,7 +29,12 @@ e2e_reap_stale
 [ "$APP_MODE" = host ] && [ "${E2E_INSTALL_CA:-0}" != 1 ] && { echo "ENV: APP_MODE=host installs a throw-away CA into the system trust store (sudo); set E2E_INSTALL_CA=1 on a disposable runner"; exit 2; }
 if [ "$APP_MODE" = docker ]; then "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1 || { echo "ENV: image $IMAGE missing (scripts/docker-build.sh)"; exit 2; }; fi
 
-"$DOCKER" network create "${E2E_LABEL_ARGS[@]}" "$NET" >/dev/null || { echo "ENV: network"; exit 2; }
+# An explicit subnet is required for `docker run --ip` on Linux (a default network is "not user configured"); random /24 per run, retried on a clash.
+made=0
+for _ in 1 2 3 4 5 6; do
+  "$DOCKER" network create "${E2E_LABEL_ARGS[@]}" --subnet "10.$((100 + RANDOM % 120)).$((RANDOM % 256)).0/24" "$NET" >/dev/null 2>&1 && { made=1; break; }
+done
+[ "$made" = 1 ] || { echo "ENV: network"; exit 2; }
 SUBNET=$("$DOCKER" network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$NET")
 IFS=. read -r n1 n2 n3 n4 <<<"${SUBNET%/*}"; SRC_IP=$n1.$n2.$n3.$((n4+50))  # fixed address of the TLS source: the certificate carries it as an IP SAN
 # --- throw-away CAs and server certificates (the server key never leaves $TMP and is never printed) ---

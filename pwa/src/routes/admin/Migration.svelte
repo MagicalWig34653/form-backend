@@ -299,6 +299,20 @@
     await request('POST', `/migration/jobs/${id}/${action}`);
     await load();
   }
+  let released = $state<{ released: number; kept: number }>();
+  async function releaseSubmissions(job: Job) {
+    error = '';
+    notice = '';
+    released = undefined;
+    busy = true;
+    const r = await request<{ released: number; kept: number }>(
+      'POST',
+      `/migration/jobs/${job.id}/release-submissions`,
+    );
+    busy = false;
+    if (r) released = { released: r.released, kept: r.kept };
+    await load();
+  }
   async function getProbe(job: Job) {
     error = '';
     privateKey = '';
@@ -1123,6 +1137,31 @@
                 >
               </div>
             {/if}
+          </section>
+          <section
+            class="flex flex-col gap-3 rounded-lg border p-4"
+            data-testid="migration-release"
+          >
+            <h3 class="m-0 text-base font-semibold">{f.review.releaseTitle}</h3>
+            <p class="m-0 text-sm">{f.review.releaseHint}</p>
+            <div>
+              <Button
+                variant="outline"
+                disabled={busy || !importJob.probeConfirmed}
+                onclick={() => releaseSubmissions(importJob)}>{f.review.releaseButton}</Button
+              >
+            </div>
+            {#if !importJob.probeConfirmed}<p
+                class="text-muted-foreground m-0 text-sm"
+                role="status"
+              >
+                {f.review.releaseNeedsProbe}
+              </p>{/if}
+            {#if released}<p class="m-0 text-sm" role="status" data-testid="migration-released">
+                {f.review.releaseResult
+                  .replace('{released}', String(released.released))
+                  .replace('{kept}', String(released.kept))}
+              </p>{/if}
           </section>
           <section class="flex flex-col gap-3 rounded-lg border p-4" data-testid="migration-adopt">
             <h3 class="m-0 text-base font-semibold">{f.review.adoptTitle}</h3>

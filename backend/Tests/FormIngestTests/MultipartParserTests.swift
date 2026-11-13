@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import FormCrypto
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking  // URLRequest/URLSession live here on Linux
+#endif
 import Vapor
 import XCTest
 @testable import FormIngest

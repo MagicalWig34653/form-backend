@@ -47,11 +47,14 @@ test('migration: source check, real conflict, resume, import, repetition, key ad
 
   // The target customer exists already and has its own active key generation (created in the browser with the passkey).
   const tenant = await createCustomer(page, CUSTOMER);
-  expect(
-    target(
-      `SELECT COUNT(*) FROM customer_key_generations WHERE customer_id=${uuidBin(tenant)} AND state='active'`,
-    ),
-  ).toBe('1');
+  // the browser creates the key after opening the customer: wait for it instead of counting once
+  await expect
+    .poll(() =>
+      target(
+        `SELECT COUNT(*) FROM customer_key_generations WHERE customer_id=${uuidBin(tenant)} AND state='active'`,
+      ),
+    )
+    .toBe('1');
   resetBudget();
 
   // 1. source check and mapping
@@ -153,9 +156,66 @@ test('migration: source check, real conflict, resume, import, repetition, key ad
   expect(counts()).toEqual(first);
   expect(target('SELECT COUNT(*) FROM migration_runs')).toBe('1'); // same snapshot: the same run, no second one
 
-  // 7. chain to the data: the old key is adopted in the account (browser only), then a submission opens in clear text
+  // 7. chain to the data: decryption probe -> release of the imported submissions -> list -> old key adopted in the account -> detail
   resetBudget();
-  await page.getByRole('button', { name: 'Weiter' }).click(); // review step
+  // the page lands on the step "Prüfung" by itself once the repeated import waits for review
+  await expect(page.getByRole('heading', { name: 'Prüfung', exact: true }).first()).toBeVisible();
+  // 7a. the release button is locked until the decryption probe passed; the server agrees (409), nothing is released
+  await expect(
+    page.getByRole('button', { name: 'Importierte Einsendungen freigeben' }),
+  ).toBeDisabled();
+  await expect(page.getByText(/Erst nach bestandener Entschlüsselungsprobe/)).toBeVisible();
+  expect(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'")).toBe('0');
+  // 7b. probe with the synthetic old key named by the sample (browser-local decryption, human confirmation)
+  const probeResponse = page.waitForResponse((r) =>
+    /\/migration\/jobs\/[^/]+\/probe$/.test(r.url()),
+  );
+  await page.getByRole('button', { name: 'Entschlüsselungsprobe laden' }).click();
+  const sampleKid = ((await (await probeResponse).json()) as { wire: string }).wire.split('|')[1];
+  const probeKey = { a6077815bba8b14c: 0x10, d19bf3f082782c87: 0x11 }[sampleKid];
+  expect(probeKey, `sample key id ${sampleKid} is a synthetic old key`).toBeTruthy();
+  await page
+    .getByLabel('Privater Altschlüssel')
+    .fill(Buffer.alloc(32, probeKey).toString('base64url'));
+  await page.getByRole('button', { name: 'Probe lokal entschlüsseln' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Bestätigen' }).click();
+  await expect(page.getByText(/Lokale Entschlüsselung bestätigt/)).toBeVisible();
+  // 7c. release: clean submissions become accepted, the ones with an open review case stay in migration-review
+  await expect(
+    page.getByRole('button', { name: 'Importierte Einsendungen freigeben' }),
+  ).toBeEnabled();
+  expect(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'")).toBe('0');
+  const effects = () => [
+    target('SELECT COUNT(*) FROM mail_deliveries'),
+    target('SELECT COUNT(*) FROM webhook_outbox'),
+    target('SELECT COUNT(*) FROM stored_objects'),
+    target('SELECT MD5(GROUP_CONCAT(HEX(ciphertext_sha256) ORDER BY id)) FROM stored_objects'),
+  ];
+  const effectsBefore = effects();
+  await page.getByRole('button', { name: 'Importierte Einsendungen freigeben' }).click();
+  await expect(page.getByTestId('migration-released')).toBeVisible(); // the click is asynchronous: wait for the answer before counting
+  const released = Number(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'"));
+  const kept = Number(target("SELECT COUNT(*) FROM submissions WHERE state='migration-review'"));
+  expect(released).toBeGreaterThan(0);
+  expect(kept).toBeGreaterThan(0); // the synthetic dump holds submissions that cannot be taken over (unsupported content)
+  expect(released + kept).toBe(Number(first.submissions));
+  await expect(page.getByTestId('migration-released')).toHaveText(
+    `${released} freigegeben, ${kept} bleiben in der Prüfung.`,
+  );
+  // no open review case was released, no new effect, packages byte-identical
+  expect(
+    target(
+      "SELECT COUNT(*) FROM submissions s JOIN migration_objects m ON m.source_table='anfragen' AND m.target_table='submissions' AND m.target_key LIKE CONCAT('%',HEX(s.id),'%') JOIN migration_issues i ON i.source_table='anfragen' AND i.source_key=m.source_key AND i.state='open' WHERE s.state='accepted'",
+    ),
+  ).toBe('0');
+  expect(effects()).toEqual(effectsBefore);
+  // ledger consistent: the same click again releases nothing more (idempotent)
+  await page.getByRole('button', { name: 'Importierte Einsendungen freigeben' }).click();
+  await expect(page.getByTestId('migration-released')).toHaveText(
+    `${released} freigegeben, ${kept} bleiben in der Prüfung.`,
+  );
+  expect(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'")).toBe(String(released));
+  // 7d. the old key is adopted in the account (browser only), then a released submission opens in clear text
   await page.getByRole('button', { name: 'Zur Übernahme im Konto' }).click();
   await expect(page).toHaveURL(/\/account\?legacy=1/);
   await page.locator(`#legacy-key-${tenant}`).fill(SYNTHETIC_ACTIVE_KEY);
@@ -164,17 +224,6 @@ test('migration: source check, real conflict, resume, import, repetition, key ad
   expect(
     target(`SELECT COUNT(*) FROM data_key_access WHERE customer_id=${uuidBin(tenant)}`),
   ).not.toBe('0');
-  // OPEN PRODUCT FINDING (reported, not hidden): the importer writes every submission as state 'migration-review' (Transform.swift) and no
-  // code ever turns it into 'accepted'; the entries routes only serve 'accepted'. Without the next statement the list stays empty
-  // ("Noch keine Einsendungen") although key adoption worked. The statement stands in for the missing product decision (who accepts
-  // imported submissions, and when) so that the rest of the chain, decryption in the browser with the adopted key, is still proven.
-  expect(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'")).toBe('0');
-  test.info().annotations.push({
-    type: 'finding',
-    description:
-      'imported submissions stay in state migration-review and are not listed or readable (no transition to accepted)',
-  });
-  target("UPDATE submissions SET state='accepted' WHERE state='migration-review'");
   await page.getByRole('link', { name: 'Kunden', exact: true }).first().click();
   await page.getByRole('link', { name: `Öffnen: ${CUSTOMER}` }).click();
   await page
@@ -182,6 +231,8 @@ test('migration: source check, real conflict, resume, import, repetition, key ad
     .first()
     .click();
   await page.getByRole('link', { name: 'Einsendungen', exact: true }).last().click();
+  // the released submissions are listed (before the release this page showed "Noch keine Einsendungen")
+  await expect(page.getByText('Noch keine Einsendungen')).toHaveCount(0);
   await page
     .getByRole('button', { name: /^Aktionen für Einsendung/ })
     .first()

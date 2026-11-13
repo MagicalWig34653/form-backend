@@ -170,7 +170,9 @@ public enum SetupMigrationRoutes {
         root.post("jobs", ":jobId", ":action") { req async throws -> Response in
             let actor = try await authorize(req, mutation: true, fresh: true)
             let id = try FormAdmin.uuidParam(req, "jobId"), action = req.parameters.get("action") ?? ""
-            guard ["pause", "resume", "import", "rehearse", "remove-source"].contains(action) else { throw Abort(.notFound) }
+            guard ["pause", "resume", "import", "rehearse", "remove-source", "release-submissions"].contains(action) else { throw Abort(.notFound) }
+            let hmac = action == "release-submissions" ? try await service.key() : Data()
+            var release: SubmissionRelease?
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 guard let job = try await tx.raw("SELECT * FROM migration_jobs WHERE id=\(bind: DB.bin(id)) FOR UPDATE").first(decoding: MigrationJob.self) else { throw Abort(.notFound) }
@@ -187,6 +189,14 @@ public enum SetupMigrationRoutes {
                     // Same plan and snapshot hash again as a rehearsal (ADR 0043): a new fingerprint of the quiet legacy system is taken.
                     guard (job.state == "review" && job.dry_run == 1) || (job.state == "failed" && job.error_code == "source_changed") else { throw MigrationActionRefused.rehearseNotAllowed }
                     try await tx.raw("UPDATE migration_jobs SET state='queued',dry_run=1,actor_id=\(bind: DB.bin(actor)),cancel_requested=0,error_code=NULL,probe_hash=NULL,test_hash=NULL WHERE id=\(bind: DB.bin(id))").run()
+                case "release-submissions":
+                    // Gate: real import in review (closed jobs are refused) and the decryption probe passed (probe_hash). The test message
+                    // (test_hash) concerns mail delivery, not reading entries, and is not required here.
+                    guard job.state == "review", job.dry_run == 0 else { throw Abort(.conflict, reason: "job-not-releasable") }
+                    guard job.probe_hash != nil else { throw Abort(.conflict, reason: "probe-required") }
+                    let plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
+                    do { release = try await LegacyImporter(source: tx, target: tx, secrets: secrets, hmacKey: hmac).releaseSubmissions(namespace: plan.namespace) }
+                    catch ImportFailure.lock { throw Abort(.conflict, reason: "import-running") }
                 case "import":
                     guard job.state == "review", job.dry_run == 1 else { throw MigrationActionRefused.importNeedsRehearsal }
                     // The import compares the legacy data with the fingerprint of the rehearsal; jobs from before that have none.
@@ -204,8 +214,10 @@ public enum SetupMigrationRoutes {
                     }
                     try await tx.raw("UPDATE migration_jobs SET state='closed',source_json='{}' WHERE id=\(bind: DB.bin(id))").run()
                 }
-                try await service.audit(tx, actor: actor, action: "migration.job." + action)
+                try await service.audit(tx, actor: actor, action: "migration.job." + action,
+                                        details: release.map { "{\"released\":\($0.released),\"newlyReleased\":\($0.newlyReleased),\"kept\":\($0.kept)}" } ?? "{}")
             }
+            if let release { return try response(["status": "accepted", "released": release.released, "newlyReleased": release.newlyReleased, "kept": release.kept]) }
             return try response(["status": "accepted"])
         }
     }
