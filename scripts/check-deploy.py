@@ -392,6 +392,8 @@ render_swarm | "$REAL_DOCKER" stack config -c - | "$REAL_DOCKER" compose -f - co
             for exclude in ('', 'reserved'):
                 render_env = dict(env, REAL_DOCKER=REAL_DOCKER, RENDER_ENV_FILE=str(base / 'absent.env'),
                                   FORM_PINNED_NODE=node, FORM_PINNED_REPLICAS='2', FORM_EXCLUDE_LABEL=exclude,
+                                  # Defaults publish both listeners (commit 260a255); this case checks the unpublished layout.
+                                  FORM_PUBLISH_PORT='', FORM_PUBLIC_PUBLISH_PORT='',
                                   FORM_PLACEMENT_CONSTRAINTS='node.role == worker,node.labels.disk==ssd',
                                   FORM_PLACEMENT_PREFERENCES='spread=node.labels.zone')
                 model = json.loads(run(['bash', '-c', render_script], render_env).stdout)
@@ -423,7 +425,7 @@ render_swarm | "$REAL_DOCKER" stack config -c - | "$REAL_DOCKER" compose -f - co
         ]
         for app_port, pinned_port, publish_mode, node in publish_cases:
             render_env = dict(env, REAL_DOCKER=REAL_DOCKER, RENDER_ENV_FILE=str(base / 'absent.env'),
-                              FORM_PUBLISH_PORT=app_port, FORM_PINNED_PUBLISH_PORT=pinned_port,
+                              FORM_PUBLISH_PORT=app_port, FORM_PINNED_PUBLISH_PORT=pinned_port, FORM_PUBLIC_PUBLISH_PORT='',
                               PUBLISH_MODE=publish_mode, FORM_PINNED_NODE=node, FORM_EXCLUDE_LABEL='reserved',
                               FORM_PUBLISH_BIND='0.0.0.0', FORM_PINNED_REPLICAS='1',
                               UPDATE_ORDER='stop-first', ROLLBACK_ORDER='stop-first')
