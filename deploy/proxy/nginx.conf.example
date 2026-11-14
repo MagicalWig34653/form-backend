@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Ausschnitt für nginx im selben Docker-Netz (in den http-Kontext einbinden);
+# TLS-Zertifikate und DNS-Erneuerung betreiberseitig ergänzen. STACK=form,
+# Containerports unverändert (8080/8081).
+# Aliasse sind KEINE Netztrennung. Direkten Zugriff auf 8081 per Netz/Firewall sperren.
+# FORM_ADMIN_ORIGIN=https://admin.example.org; FORM_RP_ID=admin.example.org
+# FORM_PUBLIC_DASHBOARD=0
+# FORM_PUBLIC_TRUSTED_PROXIES / FORM_INTERNAL_TRUSTED_PROXIES auf die tatsächlich
+# sichtbaren Socket-Peer-CIDRs dieses Proxys begrenzen (keine Clientnetze, kein /0).
+# Alternativ beide Variablen weglassen und FORM_TRUSTED_PROXIES nutzen.
+# Zertifikatpfade sind Platzhalter, keine mitgelieferten Secrets.
+
+# --- Log-Aufbewahrung: IP-Kürzung im Access-Log (IPv4 letztes Oktett, IPv6 auf /48) ---
+# Die Weiterleitung an das Backend (X-Forwarded-For) bleibt ungekürzt: Drosselung und
+# Missbrauchsschutz brauchen die echte Peer-IP. Frist 7 Tage: siehe logrotate.example.
+map $remote_addr $form_log_ip {
+    default "-";
+    ~^(?P<a>\d+\.\d+\.\d+)\.\d+$ "$a.0";
+    "~^(?P<a>[0-9a-fA-F]{1,4}):(?P<b>[0-9a-fA-F]{1,4}):(?P<c>[0-9a-fA-F]{1,4}):" "$a:$b:$c::";
+    ~^(?P<a>[0-9a-fA-F:]*):: "$a::";
+}
+# $uri statt $request, kein Referer: Query-Strings (Tokens, OAuth-Codes) gelangen nicht ins Log.
+log_format form_anon '$form_log_ip - [$time_local] "$request_method $uri" $status $body_bytes_sent "$http_user_agent" rt=$request_time';
+access_log /var/log/nginx/form-access.log form_anon;
+error_log /var/log/nginx/form-error.log warn;
+
+# Fehlt der Backend-Antwort eine CSP (API/JSON), wird Framing trotzdem verboten. Die App-Shell
+# (HTML) bringt ihre eigene CSP mit frame-ancestors 'none' mit; dann ist der Wert leer und
+# add_header sendet nichts (kein doppelter Header).
+map $upstream_http_content_security_policy $form_csp_fallback {
+    default "";
+    ""      "frame-ancestors 'none'";
+}
+
+# Gleichzeitige Verbindungen je Client begrenzen (zusätzlich zum Byte-Budget des Backends, FORM_BODY_BUDGET_MB):
+# nginx puffert große Bodies, das Backend hält höchstens das Budget gleichzeitig im Speicher.
+limit_conn_zone $binary_remote_addr zone=form_conn:10m;
+
+server {
+    listen 443 ssl;
+    server_name forms.example.org;
+    ssl_certificate /etc/nginx/tls/forms/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/forms/privkey.pem;
+    # Sicherheitsheader. Das Backend setzt X-Content-Type-Options und Referrer-Policy selbst;
+    # sie werden hier verborgen und einmal neu gesetzt (nichts doppelt). Die CSP der App-Shell
+    # kommt vom Backend. Kein add_header in location-Blöcken: es würde diese Zeilen verdrängen.
+    # HSTS ohne preload (bewusst); includeSubDomains setzt voraus, dass alle Subdomains HTTPS können.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" always;
+    add_header Content-Security-Policy $form_csp_fallback always;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header Referrer-Policy;
+    # Eingang: Backend-Limit 32 MiB (Anhänge unter 20 MB, Base64 und Felder inklusive). nginx-Standard wäre 1 MiB
+    # und lehnt größere Einsendungen mit 413 ab. Muss >= Ingest-Limit sein, sonst scheitern Uploads am Proxy.
+    client_max_body_size 33m;
+    limit_conn form_conn 20;
+    location / {
+        # Der Eingang sammelt Bodies selbst. nginx puffert den Body vollständig, bevor er weitergegeben wird;
+        # langsame Clients (Slowloris) binden dann nur nginx, nicht das Backend. client_body_timeout begrenzt
+        # die Pause zwischen zwei Lesevorgängen.
+        proxy_request_buffering on;
+        client_body_timeout 15s;
+        proxy_pass http://form-public:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Forwarded "";
+    }
+    # Nur bei FORM_PUBLIC_DASHBOARD=1: Ersatzpakete der Schlüsselrotation und Hold-Rewrap bis 64 MiB (angemeldet, Backend
+    # prüft Sitzung und Berechtigung vor dem Body). Ohne öffentliches Dashboard nicht einbinden.
+    # location ~ ^/admin/api/v1/tenants/[^/]+/(key-rotation/objects/[^/]+|forms/[^/]+/entries/[^/]+/hold)$ {
+    #     client_max_body_size 65m;
+    #     proxy_request_buffering on;
+    #     client_body_timeout 15s;
+    #     proxy_pass http://form-public:8080;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Forwarded-Host $host;
+    #     proxy_set_header X-Forwarded-Proto https;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $remote_addr;
+    #     proxy_set_header Forwarded "";
+    # }
+}
+server {
+    # Interne Adresse einsetzen; Zugang zusätzlich über VPN/Firewall begrenzen.
+    listen 10.20.0.10:443 ssl;
+    server_name admin.example.org;
+    ssl_certificate /etc/nginx/tls/admin/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/admin/privkey.pem;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" always;
+    add_header Content-Security-Policy $form_csp_fallback always;
+    proxy_hide_header X-Content-Type-Options;
+    proxy_hide_header Referrer-Policy;
+    # Admin-API: Ersatzpakete/Hold-Rewrap bis 64 MiB (Backend-Grenze), Rest klein.
+    client_max_body_size 65m;
+    limit_conn form_conn 20;
+    location / {
+        proxy_request_buffering on;
+        client_body_timeout 15s;
+        proxy_pass http://form-internal:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Forwarded "";
+    }
+}
+# Proxy auf Compose-Host: z.B. FORM_PUBLIC_PUBLISH_PORT=18080,
+# PUBLISHED_PORT=18081, BIND_ADDR=127.0.0.1 und Upstreams
+# http://127.0.0.1:18080 bzw. http://127.0.0.1:18081 einsetzen.
+# Swarm veröffentlicht auf allen Host-IPs: Zugriff auf interne Ports strikt begrenzen.
+# Bei weiteren Proxy-Stufen zuerst verifizierte Real-IP-Regeln konfigurieren;
+# eingehende Forwarded-Header am äußeren Rand stets überschreiben.
