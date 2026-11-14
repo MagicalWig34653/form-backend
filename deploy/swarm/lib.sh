@@ -735,7 +735,7 @@ wait_job() {
 check_db() {
   # Standard: keine Vorprüfung mit dem MariaDB-Client-Image (kein zusätzlicher Pull). Der Migrationslauf mit dem App-Image
   # verbindet sich mit denselben Zugangsdaten und bricht bei falschem Host, Benutzer, Passwort oder TLS vor dem Rollout ab.
-  if [[ "${DB_PRECHECK:-0}" != 1 ]]; then say 'DB-Zugang wird beim Migrationslauf mit dem App-Image geprüft (Vorprüfung mit MariaDB-Client: DB_PRECHECK=1).'; return; fi
+  if [[ "${DB_PRECHECK:-0}" != 1 ]]; then say 'DB-Zugang wird beim Migrationslauf mit dem App-Image geprüft (Vorprüfung mit MariaDB-Client: DB_PRECHECK=1). Die DB braucht max_allowed_packet >= 256M (docs/BETRIEB.md); DB_PRECHECK=1 prüft das im Compose-Modus.'; return; fi
   if [[ "$MODE" == swarm ]]; then
     local ca_config ca_rev
     ca_args=()
@@ -760,6 +760,8 @@ check_db() {
     source "$BASE/../../scripts/db-common.sh"
     db_init
     db_tool mariadb "$FORM_DB_NAME" -Nse 'SELECT 1' >/dev/null
+    # Decision B1106052: DB max_allowed_packet >= 256M is required (32 MiB sealed objects, ~80 MiB hex-dump lines on restore).
+    db_require_packet "$DB_RECOMMENDED_PACKET"
   fi
 }
 wait_rollout() {

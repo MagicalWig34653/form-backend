@@ -505,7 +505,7 @@ render_swarm | "$REAL_DOCKER" stack config -c - | "$REAL_DOCKER" compose -f - co
     (state / 'commands').unlink()
     run([restore_script, str(backup), 'restore_probe'], dict(db_env, RESTORE_EXISTS='1'), ok=False)
     log = commands(state)
-    assert len(log) == 1 and 'CREATE DATABASE' in log[0][-1]
+    assert len(log) == 2 and 'max_allowed_packet' in log[0][-1] and 'CREATE DATABASE' in log[1][-1]
     (state / 'commands').unlink()
     (backup / 'database.sql').write_text('corrupted')
     run([restore_script, str(backup), 'restore_other'], db_env, ok=False)
@@ -557,6 +557,14 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
             if probe.returncode == 0:
                 return cand
         return None
+
+    # Karte 14BCA75F: jede FORM_*-Variable, die compose.yaml durchreicht, steht in der Compose-Vorlage (sonst "Unbekannte Variable").
+    import re as _re
+    _cy = (ROOT / 'deploy/compose/compose.yaml').read_text()
+    _ce = (ROOT / 'deploy/compose/.env.example').read_text()
+    _passed = set(_re.findall(r'^\s+(FORM_[A-Z0-9_]+):', _cy, _re.M))
+    _missing = sorted(v for v in _passed if not _re.search(r'^#?\s*' + v + r'=', _ce, _re.M) and not v.endswith('_FILE'))
+    assert not _missing, ('Compose reicht durch, aber .env.example kennt nicht', _missing)
 
     def table_rows(name):
         rows = {}

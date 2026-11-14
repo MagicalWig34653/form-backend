@@ -162,6 +162,12 @@ Extern vorab bereitstellen:
   beim Senden, höchstens 2 Sendungen mit Anhang gleichzeitig, höchstens 64 MiB Anhangsbytes in der Warteschlange, danach `waiting-manual` (`busy`). Klartext
   nur im Speicher: nie in Tabellen, Logs oder auf Platte. Mail-Proxy: Altprotokoll (`mailAttachment`/`mailAttachmentName`, Base64), ein Anhang je Mail. Belege:
   `MailEndToEndTests.testTeamMailCarriesTheUploadByteForByteUpTo19Point9MB`, `…testFilesBeyondTheMailLimit…`, `MailAttachmentTests`, E2E `backend/e2e-mail-attachment.sh` (Mailpit, SHA-256).
+- **`max_allowed_packet` der DB mindestens 256M** (`--max-allowed-packet=256M` bzw. `max_allowed_packet=256M`
+  in der Serverkonfiguration, auch auf dem Restore-Server). Grund: Versiegelte Objekte bis 32 MiB
+  (Ingest-Limit) werden im Backup mit `--hex-blob` zu Dump-Zeilen von rund 80 MiB; bei 64M bricht
+  der Restore mitten im Import ab (Todolino B1106052). `DB_PRECHECK=1` (Compose) prüft den Wert
+  im Setup und bricht darunter ab; Swarm prüft ihn nicht, dort selbst per
+  `SELECT @@max_allowed_packet` kontrollieren.
 - DB-Netzwerkzugriff von allen App-/Migrations-Nodes und vom Client für Backup/Restore.
   DB-Host muss im Container auflösbar sein; `localhost` bezeichnet dort den Container.
 - TLS-Reverse-Proxy, öffentliche HTTPS-Origin und passende Passkey-RP-ID. Proxy-Anforderungen unten.
@@ -534,7 +540,9 @@ für die Drosselung maßgeblich (`FORM_*_TRUSTED_PROXIES` auf den Proxy begrenze
 Im Backend gilt ein gemeinsames Byte-Budget für alle Bodies der Routen mit großen Anfragen (Einsende-API,
 `PUT .../key-rotation/objects/{id}`, `PUT .../entries/{id}/hold`, beide Listener): Eine Anfrage reserviert das
 Dreifache ihrer Content-Length (Body, Kopie, Verarbeitung), **bevor** ein Byte gesammelt wird. Passt sie nicht mehr,
-antwortet das Backend `503 body_budget_exhausted` mit `Retry-After: 1` (der SDK-Client wiederholt), liegt die
+wartet sie ohne Pufferung bis zu 20 s in Ankunftsreihenfolge auf freies Budget (Karte B0D216F2: drei parallele 19,5-MB-Uploads
+brauchen je 58,5 MiB, im Standardbudget laufen zwei, der dritte wartet statt zu scheitern); erst danach
+antwortet das Backend `503 body_budget_exhausted` mit `Retry-After: 1` (der SDK-Client wartet die Retry-After-Zeit und wiederholt), liegt die
 Content-Length über dem Routenlimit `413 payload_too_large`. Ohne Content-Length (chunked) wird das Routenlimit voll
 reserviert. Eine einzelne größere Anfrage als das Budget läuft allein. Die Admin-Routen prüfen Sitzung, Origin/CSRF und
 Request-Budget **vor** dem Body: anonyme Anfragen enden mit `401`, ohne dass der Body gepuffert wird. Einstellung:
@@ -737,6 +745,13 @@ Standard `~/.gnupg`). Entschlüsselung per Pipe ohne Klartextdatei; ein falscher
 bricht vor `CREATE DATABASE` ab. Privaten Schlüssel getrennt vom Server und vom Offsite-Ziel
 sichern (mindestens zwei Aufbewahrungsorte); ohne ihn sind alle Backups wertlos.
 
+Restore liest vor dem `CREATE DATABASE` das `max_allowed_packet` des Zielservers und bricht
+mit klarer Meldung ab, wenn es kleiner ist als die längste Dump-Zeile plus 1 MiB; unter 256M
+warnt es. Ist der Wert nicht lesbar, warnt es nur. Der Importclient läuft mit
+`--max-allowed-packet=1G`. Dann nichts halb geschrieben: erst Limit anheben
+(`SET GLOBAL max_allowed_packet=268435456`, dauerhaft in der Serverkonfiguration), dann Restore.
+Prüfung ohne DB: `scripts/test-restore-packet.sh`.
+
 Restore prüft die Prüfsummen, verlangt `restore_*`, führt `CREATE DATABASE` ohne
 `IF NOT EXISTS` aus und importiert erst danach in diese neue DB. Existiert sie bereits,
 endet das Skript vor dem Import. Kein DROP oder Überschreiben vorhandener DBs. Bei Fehlern
@@ -874,3 +889,13 @@ Alte Websites, die das PHP-SDK des bisherigen Backends nutzen (`Backend.php`/`Ba
 Statuscodes wie im Altsystem: Feldfehler **412** (neu 422), Turnstile fehlend 412 / fehlgeschlagen 406, Malware 451, Rate-Limit 429 mit `Retry-After`. Formulare ohne hinterlegten Signaturschlüssel nehmen auf diesen Pfaden unsignierte Anfragen an (wie früher; die Alt-Schlüssel werden nicht importiert). Hat das Formular einen Schlüssel, gilt die Signaturpflicht auch hier.
 
 Schalter: `FORM_COMPAT_LEGACY` bzw. Einstellung `compat.legacy` (Standard `true`, ohne Neustart). Nach dem Umbau aller Websites auf das neue SDK auf `false` stellen: dann antworten alle Legacy-Pfade 404. Das v1-SDK hat den Hostnamen `alt-backend.example.invalid` fest im Code, der Name muss auf das neue Backend zeigen. Details und Grenzen: ADR 0047.
+
+## Team-Mail bei sehr großen Einsendungen (Todolino 80EF8B1E)
+
+Überschreitet eine gerenderte Mail 10 MiB (z. B. 30-MiB-Textfeld), wird sie nicht mehr verworfen:
+jeder Feldwert wird auf 256 KiB, dann 16 KiB, dann 1 KiB gekürzt und erhält den Hinweis
+„gekürzt, vollständiger Inhalt im Backend“. Das Log enthält dann `mail body shortened` mit
+Einsendungs-ID und Art (ohne Inhalte). Passt die Mail auch dann nicht, steht die Zustellung auf
+`abandoned` mit `last_error_code=message_too_large` (sonstige Formfehler: `message_invalid`),
+und das Log enthält `mail abandoned` mit Einsendungs-ID, Art und Code. Der Code erscheint im
+Mail-Status der Admin-API (`errorCode`); eine eigene Anzeige in der PWA ist nicht Teil dieses Pakets.
