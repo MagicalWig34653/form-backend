@@ -4,7 +4,7 @@ import FormAuth
 import FormCore
 import FormIngest
 @testable import FormCrypto
-import FormMail
+@testable import FormMail
 import FormPersistence
 import Foundation
 import SQLKit
@@ -298,6 +298,32 @@ final class MailEndToEndTests: XCTestCase {
             }
         }
     }
+    /// Regression (Flake, belegt): `DB.time` has millisecond resolution; two lease renewals within the same millisecond write identical values,
+    /// MariaDB then reports 0 changed rows. That used to count as "lease lost" and the delivery was dropped silently (row stuck `leased`).
+    /// A frozen clock makes the collision deterministic.
+    func testLeaseRenewalWithIdenticalTimestampStillCountsAsOwned() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: defaultMail)
+            try await submit(w, pairs) { XCTAssertEqual($0.status, .ok) }   // no connection: rows end `waiting-manual`, nothing is sent
+            struct Id: Decodable { let id: Blob }
+            let idRow = try await f.sql.raw("SELECT id FROM mail_deliveries LIMIT 1").first(decoding: Id.self)
+            let rowID = try XCTUnwrap(idRow).id
+            let token = UUID()
+            try await f.sql.raw("UPDATE mail_deliveries SET state='leased', lease_token=\(bind: DB.bin(token)), lease_until='2030-01-01 00:00:00.000000' WHERE id=\(bind: rowID)").run()
+            let frozen = Date(timeIntervalSince1970: 1_800_000_000)
+            let dispatcher = MailDispatcher(db: f.app.db(.mysql), secrets: NoSecrets(), allowedNets: [], allowInsecure: true, logger: f.app.logger, now: { frozen })
+            let message = try MailMessage(fromAddress: "info@example.org", to: ["a@example.org"], subject: "s", body: "b", isHTML: false, date: frozen)
+            let mine = PreparedMail(deliveryID: try XCTUnwrap(DB.uuid(rowID.data)), leaseToken: token, message: message, connection: nil)
+            let first = await dispatcher.renewLease(mine), second = await dispatcher.renewLease(mine), third = await dispatcher.renewLease(mine)
+            XCTAssertTrue(first); XCTAssertTrue(second, "identical timestamps must not look like a lost lease"); XCTAssertTrue(third)
+            let foreign = PreparedMail(deliveryID: mine.deliveryID, leaseToken: UUID(), message: message, connection: nil)
+            let lost = await dispatcher.renewLease(foreign)
+            XCTAssertFalse(lost, "a foreign token must still be refused")
+        }
+    }
+    private struct NoSecrets: MailSecretProvider { func secret(ref: String) async throws -> String? { nil } }
     private struct ColName: Decodable { let n: String }
 
     func testFailuresAreVisibleStatesAndNeverFailTheSubmission() async throws {

@@ -270,6 +270,10 @@ public struct MailDispatcher: Sendable {
 
     static let sendLeaseSeconds: TimeInterval = 300
 
+    /// Extends the lease and reports whether the row is still ours (state `leased`, our token).
+    /// Ownership is read back instead of derived from `ROW_COUNT()`: MariaDB reports *changed* rows, and `DB.time` has millisecond
+    /// resolution, so a second renewal within the same millisecond writes identical values (0 rows) although the lease is intact.
+    /// Counting that as "lost" silently dropped the delivery (row stuck `leased`, no mail, no log).
     func renewLease(_ m: PreparedMail) async -> Bool {
         struct N: Decodable { let n: Int }
         do {
@@ -278,7 +282,10 @@ public struct MailDispatcher: Sendable {
                     UPDATE mail_deliveries SET lease_until = \(bind: DB.time(now().addingTimeInterval(Self.sendLeaseSeconds))), updated_at = \(bind: DB.time(now()))
                     WHERE id = \(bind: DB.bin(m.deliveryID)) AND lease_token = \(bind: DB.bin(m.leaseToken)) AND state = 'leased'
                     """).run()
-                return try await s.raw("SELECT ROW_COUNT() AS n").first(decoding: N.self)?.n ?? 0 > 0
+                return try await s.raw("""
+                    SELECT COUNT(*) AS n FROM mail_deliveries
+                    WHERE id = \(bind: DB.bin(m.deliveryID)) AND lease_token = \(bind: DB.bin(m.leaseToken)) AND state = 'leased'
+                    """).first(decoding: N.self)?.n ?? 0 > 0
             }
         } catch { logger.warning("mail lease not renewed", metadata: ["type": "\(type(of: error))"]); return false }
     }
