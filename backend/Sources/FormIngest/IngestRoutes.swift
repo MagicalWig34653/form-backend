@@ -29,6 +29,11 @@ public struct IngestConfig: Sendable {
     public var clientIP: @Sendable (Request) -> String = { $0.remoteAddress?.ipAddress ?? "unknown" }
     /// Throttle identity: `clientIP`, IPv6 reduced to its /64 (`IPAddr.quotaKey`). Every per-client counter of the public submit path uses this.
     func clientKey(_ req: Request) -> String { IPAddr.quotaKey(clientIP(req)) }
+    /// Visitor address named by the SDK, set by the submit handler ONLY after the Ed25519 claim was verified against the
+    /// form's key (`VisitorIP`, ADR 0047). Nothing else ever writes it, so a header alone cannot move a request there.
+    func visitorIP(_ req: Request) -> String { req.storage[VerifiedVisitorIPKey.self] ?? clientIP(req) }
+    /// Identity of the abuse ban and the per-visitor budget: the verified visitor if present, otherwise the peer (`clientKey`).
+    func visitorKey(_ req: Request) -> String { IPAddr.quotaKey(visitorIP(req)) }
     /// `X-Forwarded-For` is only believed when the socket peer is inside `trusted` (`ClientIPResolver`: read from the right,
     /// all header lines joined, first non-trusted hop wins). Empty `trusted` = peer only, so a header can never spoof the identity.
     public static func proxiedClientIP(trusted: [CIDR]) -> @Sendable (Request) -> String {
@@ -83,6 +88,9 @@ public enum IngestSetup {
     }
 }
 
+/// Request storage for the visitor address that passed `ClientIPSignature` verification (ADR 0047).
+struct VerifiedVisitorIPKey: StorageKey { typealias Value = String }
+
 struct SubmitHandler: Sendable {
     let config: IngestConfig
 
@@ -95,13 +103,46 @@ struct SubmitHandler: Sendable {
         let digest_evidence: String; let state: String; let result_state: String
     }
 
-    /// `ingest.requestsPerMinute` (0 = off). Counters live in `auth_throttles` as HMAC only; the IP is never stored in clear.
+    /// Upper bound per (form, peer = customer web server), independent of any visitor claim: a leaked signing key can name
+    /// arbitrary visitor addresses but never exceeds this. Counted BEFORE the claim is verified (no key lookup for floods).
+    /// Only requests that carry a claim are counted here; unsigned requests are already bounded by the stricter visitor budget.
+    func enforcePeerCap(_ req: Request, sql: SQLDatabase, form: UUID) async throws {
+        guard let throttle = config.throttle, req.headers.first(name: ClientIPSignature.ipHeader) != nil else { return }
+        let limit = Int(try await SystemSettings.value("ingest.peerRequestsPerMinute", sql: sql))!
+        guard limit > 0 else { return }
+        do { try await throttle.consume(.adminRoute, "ingest-peer|\(form.uuidString.lowercased())|\(config.clientKey(req))", limit: limit, window: 60) }
+        catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
+    }
+
+    /// Accepts the SDK's visitor address only with a valid Ed25519 claim of the form's current/previous key over
+    /// (form, address, timestamp, request signature). Anything else (no header, malformed, bad signature, stale, unknown
+    /// key, unparseable address) silently leaves the peer as identity: the old behaviour, never an error, never a spoofable value.
+    fileprivate func resolveVisitor(_ req: Request, sql: SQLDatabase, form: FormRow, formUUID: UUID, formID: String) async throws {
+        guard let ip = req.headers.first(name: ClientIPSignature.ipHeader), req.headers[ClientIPSignature.ipHeader].count == 1,
+              let claimB64 = req.headers.first(name: ClientIPSignature.signatureHeader), claimB64.utf8.count == 88,
+              let claim = Data(base64Encoded: claimB64), claim.base64EncodedString() == claimB64,
+              let ts = req.headers.first(name: "X-Kubus-Timestamp"), let requestSig = req.headers.first(name: "X-Kubus-Signature"),
+              let address = IPAddr(ip)   // the signature covers the raw header text; the identity is the parsed (canonical) address
+        else { return }
+        let now = config.now()
+        let keys = try await sql.raw("""
+            SELECT public_key FROM form_protocol_keys
+            WHERE customer_id = \(bind: form.customer_id) AND form_id = \(bind: Self.bin(formUUID)) AND purpose = 'ed25519'
+              AND (state = 'current' OR (state = 'previous' AND valid_until >= \(bind: Self.dbTime(now))))
+            """).all(decoding: KeyRow.self)
+        let nowSeconds = Int64(now.timeIntervalSince1970)
+        if keys.contains(where: { k in k.public_key.map { ClientIPSignature.verify(signature: claim, formID: formID, ip: ip, timestamp: ts, requestSignature: requestSig, publicKey: $0.data, now: nowSeconds) } ?? false }) {
+            req.storage[VerifiedVisitorIPKey.self] = address.text
+        }
+    }
+
+    /// `ingest.requestsPerMinute` (0 = off), per (form, visitor): the verified visitor if the SDK named one, else the peer.
+    /// Counters live in `auth_throttles` as HMAC only; the IP is never stored in clear.
     func enforceBudget(_ req: Request, sql: SQLDatabase, form: UUID, scope: String = "ingest") async throws {
         guard let throttle = config.throttle else { return }
         let limit = Int(try await SystemSettings.value("ingest.requestsPerMinute", sql: sql))!
         guard limit > 0 else { return }
-        let ip = config.clientKey(req)
-        do { try await throttle.consume(.adminRoute, "\(scope)|\(form.uuidString.lowercased())|\(ip)", limit: limit, window: 60) }
+        do { try await throttle.consume(.adminRoute, "\(scope)|\(form.uuidString.lowercased())|\(config.visitorKey(req))", limit: limit, window: 60) }
         catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
     }
 
@@ -123,6 +164,8 @@ struct SubmitHandler: Sendable {
             """).first(decoding: FormRow.self), form.active == 1, form.cstate == "active" else { throw Abort(.notFound) }
 
         // 1b. Budget per (form, client IP) before any parsing/hashing/sealing; replays with the same key count too (FA-015).
+        try await enforcePeerCap(req, sql: sql, form: formUUID)
+        try await resolveVisitor(req, sql: sql, form: form, formUUID: formUUID, formID: f)
         try await enforceBudget(req, sql: sql, form: formUUID)
 
         // 2. Only urlencoded and multipart are read (decided after the body).

@@ -60,9 +60,15 @@ Statistik-/Ingest-Hostvertrag zusätzlich `X-Real-IP` aus dem verifizierten Clie
 `FORM_PUBLIC_TRUSTED_PROXIES` (bzw. `FORM_TRUSTED_PROXIES`), gilt der erste nicht vertrauenswürdige Eintrag von rechts in
 `X-Forwarded-For`; sonst der Peer, Header werden ignoriert. IPv6 zählt je /64. **Ohne gesetzte Proxy-CIDRs sieht das Backend
 nur die Proxy-Adresse, und alle Besucher teilen eine Sperre und ein Budget.** Der Proxy muss `X-Forwarded-For` auf
-`$remote_addr` überschreiben (Vorlage tut das). Grenze: Ruft ein Kunden-Webserver (PHP-SDK) das Backend auf, ist dessen
-Adresse der Client, nicht der Besucher; dafür braucht es eine signierte Besucherkennung im SDK (offen, Karte 1BEEDE0F). Bis dahin
-Turnstile und `abuse.blockedNets` nicht aktivieren oder `abuse.threshold` hoch setzen.
+`$remote_addr` überschreiben (Vorlage tut das). Ruft ein Kunden-Webserver (PHP-SDK) das Backend auf, sendet das SDK seit
+ADR 0048 die Besucher-IP signiert mit (`X-Kubus-Client-IP` + Ed25519 des Formularschlüssels, gebunden an die Request-Signatur).
+Nur bei gültiger Signatur zählen Sperre, `abuse.blockedNets` und Budget den Besucher (IPv6 je /64); sonst gilt wie bisher die
+Peer-Adresse. `ingest.peerRequestsPerMinute` (Standard 1200, 0 = aus) deckelt die Anfragen je (Formular, Webserver) mit
+Besucheranspruch, damit ein erbeuteter Schlüssel nicht mit wechselnden Fantasie-IPs jede Grenze umgeht.
+**Turnstile und `abuse.blockedNets` erst aktivieren, wenn die Website das SDK ab dieser Version nutzt** (`VERSION` des SDK-Bundles
+prüfen; im SDK hinter einem Proxy `trustedProxies` setzen, sonst sieht es nur die Proxy-Adresse). Mit Alt-SDK oder ohne
+`trustedProxies` bleibt das alte Verhalten (ein Zähler für die ganze Website): dort `abuse.threshold` hoch lassen. Prüfen:
+`ingest_abuse_ips` füllt sich pro Besucher, nicht mit einer Zeile je Webserver.
 
 Beide Proxy-Aliase zeigen auf dieselben Tasks, sind **keine Netzwerk-Isolation**:
 `<stack>-public:8080` und `<stack>-internal:8081` (geänderte ENV-Ports entsprechend verwenden).

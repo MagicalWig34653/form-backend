@@ -34,6 +34,7 @@ final class SettingsRegistryTSVTests: XCTestCase {
         "webhook.backlog": "Maximale offene Webhook-Zustellungen je Kunde; Einstellung webhook.backlog.",
         "mcp.requestsPerMinute": "MCP-Anfragen je Token und Minute; Einstellung mcp.requestsPerMinute.",
         "ingest.requestsPerMinute": "Einsendungen je Minute und Quelle (0 = aus); Einstellung ingest.requestsPerMinute.",
+        "ingest.peerRequestsPerMinute": "Obergrenze je Minute und Webserver bei signierter Besucher-IP (0 = aus); Einstellung ingest.peerRequestsPerMinute.",
         "oauth.authorizeBaseURL": "Öffentliche Basis-Origin der OAuth-Autorisierung (https, leer = Admin-Origin); Einstellung oauth.authorizeBaseURL.",
         "oauth.registrationsPerHour": "OAuth-Client-Registrierungen je Stunde; Einstellung oauth.registrationsPerHour.",
         "oauth.maxUnusedClients": "Höchstzahl unbenutzter OAuth-Clients; Einstellung oauth.maxUnusedClients.",

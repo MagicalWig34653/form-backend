@@ -73,9 +73,9 @@ enum AbuseProtection {
         let sql = req.db(.mysql) as! SQLDatabase
         let stored = try await SystemSettings.read(sql)
         func setting(_ key: String) throws -> String { try SettingsRegistry.resolve(SettingsRegistry.entries.first { $0.key == key }!, env: ProcessInfo.processInfo.environment, stored: stored).value! }
-        let ip = config.clientIP(req)
+        let ip = config.visitorIP(req)   // verified visitor (ADR 0047) or the peer
         // Separate purpose and form scope; no raw addresses, UAs or hashes in audit.
-        let identity = IPAddr(ip).map { _ in config.clientKey(req) }.flatMap { subject in config.abuseKey.map { key in Blob(Data(HMAC<SHA256>.authenticationCode(for: Data("abuse-ip-v1|\(form.uuidString)|\(subject)".utf8), using: SymmetricKey(data: key)))) } }
+        let identity = IPAddr(ip).map { _ in config.visitorKey(req) }.flatMap { subject in config.abuseKey.map { key in Blob(Data(HMAC<SHA256>.authenticationCode(for: Data("abuse-ip-v1|\(form.uuidString)|\(subject)".utf8), using: SymmetricKey(data: key)))) } }
         if let identity, !policy.testMode {
             struct Ban: Decodable { let c: Int }
             if try await sql.raw("SELECT COUNT(*) AS c FROM ingest_abuse_ips WHERE form_id=\(bind: DB.bin(form)) AND ip_digest=\(bind: identity) AND blocked_until>\(bind: DB.time(now))").first(decoding: Ban.self)?.c == 1 { throw Abort(.tooManyRequests) }

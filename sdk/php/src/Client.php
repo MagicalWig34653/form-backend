@@ -40,6 +40,13 @@ final class Client
         ?float $totalBudget = null,
         private readonly int $failoverTtl = 60,
         private readonly bool $sessionStart = false,
+        /** Visitor address source (ADR 0048). null = REMOTE_ADDR (plus a forwarding header from $trustedProxies, see VisitorIp). */
+        private readonly ?\Closure $visitorIp = null,
+        /** @var list<string> CIDR ranges of YOUR reverse proxies/CDN; only then $forwardedHeader is believed */
+        private readonly array $trustedProxies = [],
+        private readonly string $forwardedHeader = 'X-Forwarded-For',
+        /** false = never send the visitor address (the backend then counts this server as one client). */
+        private readonly bool $sendVisitorIp = true,
     ) {
         if ($totalTimeoutMs < 1 || $maxAttempts < 1 || $maxAttempts > 100) {
             throw new ConfigurationException('positive time budget and 1-100 attempts required');
@@ -89,6 +96,15 @@ final class Client
             'X-Kubus-Signature' => base64_encode($this->credentials->sign($this->signingText($ts, $built['canonical']))),
             'Idempotency-Key' => $key, 'User-Agent' => 'form-backend-php-sdk/0.3',
         ];
+        $visitor = $this->sendVisitorIp
+            ? VisitorIp::normalize($this->visitorIp ? ($this->visitorIp)() : VisitorIp::fromServer($_SERVER, $this->trustedProxies, $this->forwardedHeader))
+            : null;
+        if ($visitor !== null) {
+            // Signed with the form key and bound to this request's signature: the backend believes it only if valid; old backends ignore it.
+            $headers['X-Kubus-Client-IP'] = $visitor;
+            $headers['X-Kubus-Client-IP-Signature'] = base64_encode($this->credentials->sign(
+                "KUBUS-CLIENT-IP-V1\n" . $this->credentials->formId . "\n" . $visitor . "\n" . $ts . "\n" . $headers['X-Kubus-Signature']));
+        }
         $order = $this->endpointOrder();
         $last = null;
         for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {

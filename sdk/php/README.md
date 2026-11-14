@@ -39,6 +39,20 @@ try {
 }
 ```
 
+### Besucher-IP (Missbrauchsschutz)
+
+Das SDK sendet die Adresse des Website-Besuchers mit (`REMOTE_ADDR`), signiert mit dem Formularschlüssel und an die jeweilige Einsendung gebunden (ADR 0048). Das Backend zählt Sperre und Anfragebudget dann je Besucher statt für Ihren ganzen Webserver; ohne gültige Signatur oder mit einem älteren Backend gilt wie bisher Ihre Server-Adresse. Es werden nie `X-Forwarded-For` oder andere Header des Besuchers geglaubt, außer `REMOTE_ADDR` liegt in Ihren `trustedProxies`:
+
+```php
+$client = new Client('https://admin.example.org', $credentials,
+    trustedProxies: ['10.0.0.0/8', '2001:db8:1::/48'],   // NUR die Adressen Ihres eigenen Reverse-Proxys/CDN
+    forwardedHeader: 'X-Forwarded-For');                  // oder 'CF-Connecting-IP' (einzelne Adresse)
+// $client = new Client(..., sendVisitorIp: false);       // Besucher-IP nicht senden
+// $client = new Client(..., visitorIp: fn() => $meineAdresse); // eigene Quelle (z. B. Framework-Request)
+```
+
+`X-Forwarded-For` wird von rechts gelesen (erster nicht vertrauter Hop); ein ungültiger Eintrag ergibt die Peer-Adresse. Ohne `trustedProxies` hinter einem Reverse-Proxy sieht das SDK nur dessen Adresse (alle Besucher teilen dann einen Zähler). Datenschutz: Die Adresse wird nur als HMAC gezählt, nicht gespeichert oder protokolliert.
+
 ### Regeln für Felder
 
 - Werte sind Zeichenketten oder ganze Zahlen, auch verschachtelt in Arrays. Wahrheitswerte, Kommazahlen und `null` wandeln Sie bewusst selbst um; sonst wirft das SDK `InvalidInputException`, **bevor** etwas gesendet wird.

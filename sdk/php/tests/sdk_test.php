@@ -185,5 +185,55 @@ try {
     ok($t->requests[0]['body'] === $t->requests[1]['body'] && $t->requests[0]['headers'] === $t->requests[1]['headers'], 'multipart boundary and bytes stable');
 } finally { unlink($file); }
 
+// --- visitor address (ADR 0048): signed claim bound to the request signature; REMOTE_ADDR only unless a trusted proxy forwards
+use FormBackend\VisitorIp;
+function claimOk(array $h, string $formId, string $pub, string $ip): bool {
+    $text = "KUBUS-CLIENT-IP-V1\n$formId\n$ip\n" . $h['X-Kubus-Timestamp'] . "\n" . $h['X-Kubus-Signature'];
+    $sig = base64_decode($h['X-Kubus-Client-IP-Signature'] ?? '', true);
+    return ($h['X-Kubus-Client-IP'] ?? null) === $ip && $sig !== false && strlen($sig) === 64 && sodium_crypto_sign_verify_detached($sig, $text, $pub);
+}
+$t = new Fake([$accepted]);
+(new Client('https://h.example', $creds, $t, clock: fn() => 1793012400, visitorIp: fn() => '203.0.113.7'))->submit(['a' => '1'], 'v1');
+$h = $t->requests[0]['headers'];
+ok(claimOk($h, $formId, $pub, '203.0.113.7'), 'visitor claim verifies over form, address, timestamp and request signature');
+$bad = $h; $bad['X-Kubus-Client-IP'] = '203.0.113.8';
+ok(!claimOk($bad, $formId, $pub, '203.0.113.8'), 'claim does not verify for another address');
+$bad = $h; $bad['X-Kubus-Signature'] = base64_encode(str_repeat('x', 64));
+ok(!claimOk($bad, $formId, $pub, '203.0.113.7'), 'claim does not verify against another request signature');
+$bad = $h; $bad['X-Kubus-Timestamp'] = '1793012401';
+ok(!claimOk($bad, $formId, $pub, '203.0.113.7'), 'claim does not verify for another timestamp');
+// retries and failover resend the identical claim
+$t = new Fake([new TransportException('reset'), $accepted]);
+(new Client(null, $multi, $t, clock: fn() => 1793012400, visitorIp: fn() => '2001:db8::1'))->submit(['a' => '1'], 'v2');
+ok($t->requests[0]['headers'] === $t->requests[1]['headers'] && isset($t->requests[1]['headers']['X-Kubus-Client-IP-Signature']), 'claim is built once per submission');
+// no address / switched off / garbage: no headers at all (old behaviour)
+foreach ([['closure' => fn() => null], ['closure' => fn() => 'not-an-ip'], ['closure' => fn() => "1.2.3.4\r\nX-Evil: 1"], ['closure' => fn() => '203.0.113.7', 'off' => true]] as $i => $case) {
+    $t = new Fake([$accepted]);
+    (new Client('https://h.example', $creds, $t, visitorIp: $case['closure'], sendVisitorIp: !isset($case['off'])))->submit(['a' => '1']);
+    ok(!isset($t->requests[0]['headers']['X-Kubus-Client-IP']) && !isset($t->requests[0]['headers']['X-Kubus-Client-IP-Signature']), "no visitor headers #$i");
+}
+// default source is REMOTE_ADDR of the web server request
+$save = $_SERVER;
+$_SERVER['REMOTE_ADDR'] = '198.51.100.20'; $_SERVER['HTTP_X_FORWARDED_FOR'] = '6.6.6.6';
+$t = new Fake([$accepted]);
+(new Client('https://h.example', $creds, $t, clock: fn() => 1793012400))->submit(['a' => '1']);
+ok(claimOk($t->requests[0]['headers'], $formId, $pub, '198.51.100.20'), 'default: REMOTE_ADDR, header of the visitor is ignored');
+$_SERVER = $save;
+// VisitorIp rules
+$srv = fn(string $peer, ?string $xff = null, array $more = []) => ['REMOTE_ADDR' => $peer] + ($xff === null ? [] : ['HTTP_X_FORWARDED_FOR' => $xff]) + $more;
+ok(VisitorIp::fromServer($srv('203.0.113.9', '1.2.3.4')) === '203.0.113.9', 'untrusted: header ignored without trusted proxies');
+ok(VisitorIp::fromServer($srv('203.0.113.9', '1.2.3.4'), ['10.0.0.0/8']) === '203.0.113.9', 'peer outside the trusted range: header ignored');
+ok(VisitorIp::fromServer($srv('10.0.0.5', '1.2.3.4, 203.0.113.50'), ['10.0.0.0/8']) === '203.0.113.50', 'trusted proxy: rightmost non-proxy hop, visitor-controlled left part ignored');
+ok(VisitorIp::fromServer($srv('10.0.0.5', '203.0.113.50, 10.0.0.6'), ['10.0.0.0/8']) === '203.0.113.50', 'chain of trusted proxies is skipped');
+ok(VisitorIp::fromServer($srv('10.0.0.5', 'garbage, 203.0.113.50'), ['10.0.0.0/8']) === '203.0.113.50', 'garbage left of a real hop is never reached');
+ok(VisitorIp::fromServer($srv('10.0.0.5', '203.0.113.50, garbage'), ['10.0.0.0/8']) === '10.0.0.5', 'malformed hop falls back to the peer');
+ok(VisitorIp::fromServer($srv('10.0.0.5', null), ['10.0.0.0/8']) === '10.0.0.5', 'trusted proxy without header: peer');
+ok(VisitorIp::fromServer($srv('10.0.0.5', null, ['HTTP_CF_CONNECTING_IP' => '203.0.113.60']), ['10.0.0.0/8'], 'CF-Connecting-IP') === '203.0.113.60', 'single-address header from a trusted proxy');
+ok(VisitorIp::fromServer($srv('203.0.113.9', null, ['HTTP_CF_CONNECTING_IP' => '1.1.1.1']), ['10.0.0.0/8'], 'CF-Connecting-IP') === '203.0.113.9', 'single-address header from an untrusted peer ignored');
+ok(VisitorIp::fromServer($srv('::ffff:203.0.113.9')) === '203.0.113.9', 'IPv4-mapped IPv6 is written as dotted quad (backend canonical form)');
+ok(VisitorIp::fromServer($srv('2001:DB8:0:0:0:0:0:1')) === '2001:db8::1', 'IPv6 compressed');
+ok(VisitorIp::fromServer(['REMOTE_ADDR' => 'fe80::1%eth0']) === null && VisitorIp::fromServer([]) === null, 'zone ids and CLI yield no address');
+ok(VisitorIp::fromServer($srv('2001:db8:1::5', '2001:db8:99::1'), ['2001:db8:1::/48']) === '2001:db8:99::1', 'IPv6 trusted range');
+
 echo $failures === 0 ? "PASS sdk: $passed checks\n" : "FAILED sdk: $failures of " . ($passed + $failures) . " checks\n";
 exit($failures === 0 ? 0 : 1);

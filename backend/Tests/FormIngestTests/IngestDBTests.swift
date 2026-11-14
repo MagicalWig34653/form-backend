@@ -185,6 +185,14 @@ final class IngestDBTests: XCTestCase {
         if let key { h["Idempotency-Key"] = key }
         return h
     }
+    /// Request headers plus the SDK's signed visitor claim (ADR 0047). `claimSeed`/`claimIP`/`bindTo` let tests forge it.
+    private func visitorHeaders(_ pairs: [(String, String)], ip: String, key: String? = nil, ts: Int64? = nil, claimSeed: Data? = nil, claimIP: String? = nil, bindTo: String? = nil) throws -> [String: String] {
+        var h = try signedHeaders(pairs, key: key, ts: ts)
+        let sig = try ClientIPSignature.sign(formID: formID, ip: claimIP ?? ip, timestamp: h["X-Kubus-Timestamp"]!, requestSignature: bindTo ?? h["X-Kubus-Signature"]!, seed: claimSeed ?? sigSeed)
+        h[ClientIPSignature.ipHeader] = ip
+        h[ClientIPSignature.signatureHeader] = sig.base64EncodedString()
+        return h
+    }
     private func count(_ sql: SQLDatabase, _ table: String) async throws -> Int {
         try await sql.raw("SELECT COUNT(*) AS c FROM \(ident: table)").first(decoding: C.self)?.c ?? -1
     }
@@ -310,6 +318,114 @@ final class IngestDBTests: XCTestCase {
             // /64: rotating the host part does not buy a fresh budget
             for i in 0..<2 { let s = try await go("v\(i)", xff: "2001:db8:9:9::\(i + 1)"); XCTAssertEqual(s, .ok) }
             let rotated = try await go("v2", xff: "2001:db8:9:9:aaaa::1"); XCTAssertEqual(rotated, .tooManyRequests)
+        }
+    }
+
+    // MARK: signed visitor address (ADR 0047, card 1BEEDE0F)
+
+    private func abuseFixtureSetup(_ fx: Fixture, threshold: Int = 2) async throws {
+        try await fx.sql.raw("UPDATE form_versions SET definition_json='{\"security\":{\"abuse\":{\"siteKey\":\"synthetic\"}}}'").run()
+        try await SystemSettings.write(fx.sql, key: "abuse.threshold", value: "\(threshold)", at: SubmitHandler.dbTime(now))
+    }
+    private let badClaim = String(repeating: "A", count: 86) + "=="
+
+    func testBotBehindOneWebServerIsBannedAloneAndOtherVisitorsAndTheServerKeepWorking() async throws {
+        try await withFixture { fx in
+            try await abuseFixtureSetup(fx)
+            func go(_ ip: String?) async throws -> HTTPResponseStatus {
+                let h = try ip.map { try visitorHeaders(pairs, ip: $0) } ?? signedHeaders(pairs)
+                return try await send(fx.app, headers: h, body: body(pairs)).status
+            }
+            for expected in [HTTPResponseStatus.preconditionFailed, .preconditionFailed, .tooManyRequests] { let s = try await go("203.0.113.50"); XCTAssertEqual(s, expected) }
+            // the same web server, another visitor, and an old SDK without a claim: not banned
+            let other = try await go("203.0.113.51"); XCTAssertEqual(other, .preconditionFailed)
+            let old = try await go(nil); XCTAssertEqual(old, .preconditionFailed, "peer identity is separate from the banned visitor")
+            // IPv6: the whole /64 of the bot shares the ban, a neighbouring /64 does not
+            for _ in 0..<2 { _ = try await go("2001:db8:1:2::1") }
+            let same = try await go("2001:db8:1:2:ffff::9"); XCTAssertEqual(same, .tooManyRequests)
+            let next = try await go("2001:db8:1:3::1"); XCTAssertEqual(next, .preconditionFailed)
+            // no clear address in the ban table
+            struct H: Decodable { let c: Int }
+            let clear = try await fx.sql.raw("SELECT COUNT(*) AS c FROM ingest_abuse_ips WHERE ip_digest = \(bind: Blob(Data("203.0.113.50".utf8)))").first(decoding: H.self)?.c
+            XCTAssertEqual(clear, 0)
+        }
+    }
+
+    func testForgedOrUnboundVisitorClaimsFallBackToThePeerAndNeverFrameAnotherVisitor() async throws {
+        try await withFixture { fx in
+            try await abuseFixtureSetup(fx, threshold: 100)
+            let other = Data((0..<32).map { UInt8($0 + 100) })
+            var noSig = try signedHeaders(pairs); noSig[ClientIPSignature.ipHeader] = "203.0.113.60"
+            var badSig = noSig; badSig[ClientIPSignature.signatureHeader] = badClaim
+            let forgeries: [[String: String]] = [
+                try visitorHeaders(pairs, ip: "203.0.113.60", claimSeed: other),            // wrong key
+                try visitorHeaders(pairs, ip: "203.0.113.60", claimIP: "203.0.113.61"),     // signed for another address
+                try visitorHeaders(pairs, ip: "203.0.113.60", bindTo: badClaim),            // bound to another request
+                noSig, badSig,                                                              // claim without / with garbage signature
+                try visitorHeaders(pairs, ip: "not-an-ip"),
+            ]
+            for h in forgeries { let r = try await send(fx.app, headers: h, body: body(pairs)); XCTAssertEqual(r.status, .preconditionFailed, "forged claim = peer behaviour, no error") }
+            // a claim cannot be moved to another body: the request signature fails
+            let moved = try await send(fx.app, headers: try visitorHeaders(pairs, ip: "203.0.113.70"), body: body([("a", "other")])); XCTAssertEqual(moved.status, .forbidden)
+            struct H: Decodable { let c: Int }
+            let rows = try await fx.sql.raw("SELECT COUNT(*) AS c FROM ingest_abuse_ips").first(decoding: H.self)?.c
+            XCTAssertEqual(rows, 1, "all forgeries share the single peer identity; none created an identity for a claimed address")
+        }
+    }
+
+    func testExpiredOrFutureRequestsDoNotCarryAnAcceptedClaim() async throws {
+        try await withFixture(rateLimited: true) { fx in
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "1", at: SubmitHandler.dbTime(now))
+            let t = Int64(now.timeIntervalSince1970)
+            // stale timestamp with a cryptographically valid claim: refused (403), and the claim is not believed (peer budget spent)
+            let stale = try await send(fx.app, headers: try visitorHeaders(pairs, ip: "203.0.113.80", ts: t - 301), body: body(pairs)); XCTAssertEqual(stale.status, .forbidden)
+            let fresh = try await send(fx.app, headers: try visitorHeaders(pairs, ip: "203.0.113.80", key: "f1"), body: body(pairs)); XCTAssertEqual(fresh.status, .ok)
+            let peerOnly = try await send(fx.app, headers: try signedHeaders(pairs, key: "p1"), body: body(pairs)); XCTAssertEqual(peerOnly.status, .tooManyRequests)
+            let future = try await send(fx.app, headers: try visitorHeaders(pairs, ip: "203.0.113.81", ts: t + 301), body: body(pairs)); XCTAssertEqual(future.status, .tooManyRequests, "claim not believed: counted against the exhausted peer")
+        }
+    }
+
+    func testRequestBudgetIsPerVisitorBehindOneWebServerAndReplayCountsToo() async throws {
+        try await withFixture(rateLimited: true) { fx in
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            func go(_ ip: String, _ key: String) async throws -> HTTPResponseStatus { try await send(fx.app, headers: visitorHeaders(pairs, ip: ip, key: key), body: body(pairs)).status }
+            let a1 = try await go("203.0.113.10", "k1"); XCTAssertEqual(a1, .ok)
+            let a2 = try await go("203.0.113.10", "k1"); XCTAssertEqual(a2, .ok)   // replay: same submission, still counted
+            let a3 = try await go("203.0.113.10", "k2"); XCTAssertEqual(a3, .tooManyRequests)
+            // two further visitors of the same server have their own budget
+            for ip in ["203.0.113.11", "203.0.113.12"] { for i in 0..<2 { let s = try await go(ip, "\(ip)-\(i)"); XCTAssertEqual(s, .ok) } }
+            // IPv6 /64: rotating the host part does not buy a fresh budget
+            for i in 0..<2 { let s = try await go("2001:db8:5:5::\(i + 1)", "v6-\(i)"); XCTAssertEqual(s, .ok) }
+            let rotated = try await go("2001:db8:5:5:aaaa::1", "v6-x"); XCTAssertEqual(rotated, .tooManyRequests)
+            try await eq(try await count(fx.sql, "submissions"), 7)   // k1 (replay shares it) + 4 + 2
+        }
+    }
+
+    func testPeerCapBoundsRotatingVisitorsOfOneKeyAndLeavesUnsignedAlone() async throws {
+        try await withFixture(rateLimited: true) { fx in
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "5", at: SubmitHandler.dbTime(now))
+            try await SystemSettings.write(fx.sql, key: "ingest.peerRequestsPerMinute", value: "4", at: SubmitHandler.dbTime(now))
+            // a leaked key naming a new visitor every time stays under the per-visitor budget but hits the cap of the web server
+            for i in 0..<4 { let r = try await send(fx.app, headers: visitorHeaders(pairs, ip: "198.51.100.\(i + 1)", key: "r\(i)"), body: body(pairs)); XCTAssertEqual(r.status, .ok) }
+            let capped = try await send(fx.app, headers: visitorHeaders(pairs, ip: "198.51.100.99", key: "r9"), body: body(pairs))
+            XCTAssertEqual(capped.status, .tooManyRequests); XCTAssertTrue(capped.text.contains("ingest_rate_limited"))
+            // forged claims count toward the cap too (counted before verification: no key lookup for a flood)
+            let forged = try await send(fx.app, headers: visitorHeaders(pairs, ip: "198.51.100.50", claimSeed: Data(repeating: 9, count: 32)), body: body(pairs)); XCTAssertEqual(forged.status, .tooManyRequests)
+            // requests without a claim are unaffected by the cap (old SDKs): visitor budget with the peer as identity
+            let old = try await send(fx.app, headers: signedHeaders(pairs, key: "old"), body: body(pairs)); XCTAssertEqual(old.status, .ok)
+            // 0 switches the cap off
+            try await SystemSettings.write(fx.sql, key: "ingest.peerRequestsPerMinute", value: "0", at: SubmitHandler.dbTime(now))
+            let free = try await send(fx.app, headers: visitorHeaders(pairs, ip: "198.51.100.77", key: "free"), body: body(pairs)); XCTAssertEqual(free.status, .ok)
+        }
+    }
+
+    func testForgedClaimsAccrueToThePeerAndDoNotFrameTheNamedAddress() async throws {
+        try await withFixture { fx in
+            try await abuseFixtureSetup(fx)
+            let other = Data((0..<32).map { UInt8($0 + 50) })
+            for _ in 0..<2 { _ = try await send(fx.app, headers: visitorHeaders(pairs, ip: "203.0.113.90", claimSeed: other), body: body(pairs)) }
+            let peer = try await send(fx.app, headers: signedHeaders(pairs), body: body(pairs)); XCTAssertEqual(peer.status, .tooManyRequests)
+            let real = try await send(fx.app, headers: visitorHeaders(pairs, ip: "203.0.113.90"), body: body(pairs)); XCTAssertEqual(real.status, .preconditionFailed)
         }
     }
 

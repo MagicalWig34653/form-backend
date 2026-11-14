@@ -2267,6 +2267,11 @@ try {
           hint: 'Höchstzahl der Anfragen je Absender an die Einsendeschnittstelle.',
           unit: 'perMinute',
         },
+        'ingest.peerRequestsPerMinute': {
+          title: 'Einsendungen je Webserver',
+          hint: 'Obergrenze der Anfragen je Kunden-Webserver, wenn das SDK die Besucher-IP signiert mitsendet.',
+          unit: 'perMinute',
+        },
         'oauth.authorizeBaseURL': {
           title: 'OAuth-Autorisierungsadresse',
           hint: 'Öffentliche Adresse (https) für die OAuth-Zustimmung.',

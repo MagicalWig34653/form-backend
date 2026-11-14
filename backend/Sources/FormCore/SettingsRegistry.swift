@@ -80,6 +80,7 @@ public enum SettingsRegistry {
         .init("webhook.backlog", "Webhook-Limits", "integer", "1000", "FORM_WEBHOOK_MAX_BACKLOG_PER_CUSTOMER", min: 0, max: 10000000, restart: false),
         .init("mcp.requestsPerMinute", "MCP-Token-Ratelimit", "integer", "60", "FORM_MCP_TOKEN_RATE_LIMIT", min: 1, max: 100000, restart: false),
         .init("ingest.requestsPerMinute", "Ingest-Ratelimit", "integer", "60", "FORM_INGEST_REQUESTS_PER_MINUTE", min: 0, max: 1000000, restart: false),
+        .init("ingest.peerRequestsPerMinute", "Ingest-Ratelimit", "integer", "1200", "FORM_INGEST_PEER_REQUESTS_PER_MINUTE", min: 0, max: 10000000, restart: false),
         .init("oauth.authorizeBaseURL", "MCP-OAuth", "origin", "", "FORM_OAUTH_AUTHORIZE_BASE_URL"),
         .init("oauth.registrationsPerHour", "MCP-OAuth", "integer", "200", "FORM_OAUTH_REGISTRATIONS_PER_HOUR", min: 1, max: 100000, restart: false),
         .init("oauth.maxUnusedClients", "MCP-OAuth", "integer", "1000", "FORM_OAUTH_MAX_UNUSED_CLIENTS", min: 1, max: 100000, restart: false),

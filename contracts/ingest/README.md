@@ -58,6 +58,7 @@ ambige doppelte Skalare und ungültiges UTF-8 mit 400 abzulehnen ist
 | `CLIENTUA-ENCRYPT`, `CLIENTIP-ENCRYPT` | SDK-Signale, bei key beide mit formularspezifischem Treffer zwingend |
 | `X-Kubus-Timestamp` | Dezimal-Unixsekunden, Signaturzeitfenster inklusive ±300 s |
 | `X-Kubus-Signature` | Standard-Base64 einer 64-Byte-Ed25519-Signatur; bei submit/form Pflicht, außer gültiger Ausnahme |
+| `X-Kubus-Client-IP`, `X-Kubus-Client-IP-Signature` | optional, nur Submit (ADR 0048): vom SDK benannte Besucher-Adresse (kanonischer Text) und Base64-Ed25519 des Formularschlüssels über `KUBUS-CLIENT-IP-V1\n<formId>\n<ip>\n<timestamp>\n<Base64 X-Kubus-Signature>`. Nur bei gültiger Signatur (Zeitfenster der Request-Signatur) zählen Sperre/Budget diese Adresse (IPv6 je /64); sonst, ohne Fehlercode, die Peer-Adresse. Obergrenze je Peer: `ingest.peerRequestsPerMinute` |
 | `Idempotency-Key` | optional, nur Submit; Regeln unten |
 | `CLIENTGCLID` | optionales Altsignal; keine Authentifizierung; SDK filtert `[A-Za-z0-9._-]` |
 | `Origin`, `Host` | Herkunft bzw. Zielhost; keine Ersatzsignatur |
