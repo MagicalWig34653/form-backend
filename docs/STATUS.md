@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## Sicherheitsbefunde mysql-nio-Review (S2-04b, S2-04c, Handshake-Timeout, SwiftPM-Konflikt) (14.11.2026, Worktree-Branch `worktree-agent-aa769c5a96d624821`, lokal committet, ungemergt, nicht gepusht; Todolino 26748F03, 8FA3A784, 927CCCEE)
+
+- Quelle: Codex-Review der Patches (`orchestrator/runtime/fb-sec-codex-mysqlnio.md`). Vendoring der ganzen Kette `fluent-mysql-driver -> mysql-kit -> mysql-nio` nach `backend/Vendor` (Pfadabhängigkeiten, Root bindet nur den Treiber ein; SwiftPM-Warnung "Conflicting identity" entfällt, `Package.resolved` ohne diese Pakete). Patches und Update-Hinweis: `backend/Vendor/README.md` (`LOCAL PATCH`).
+- S2-04b: MySQLKit reicht `queryLogLevel` in verschachtelten `withSession` weiter (MigrationService.tick -> LegacyImporter.run loggte Import-SQL samt Hex-Literalen). S2-04c: `MySQLQueryCommand.deinit` loggt/asserted kein SQL mehr. Handshake: `handshakeTimeout` (10 s) über Greeting/TLS/Auth, `channelInactive` schließt das Connect-Promise (Poolplatz wird frei).
+- Tests (rot gegen HEAD belegt, dann grün): `FormPersistenceTests/DBDriverHardeningTests` (5, Fehlerproxy), `MigrationTests/testImportRunInNestedSessionLogsNoStatementsOrValues` (echter Importlauf). Übergabe: `docs/handoffs/mysqlnio-review.md`.
+
 ## Sicherheitsbefunde fb-sec 1+2 / S2-02: Byte-Budget für Request-Bodies (14.11.2026, Worktree-Branch `worktree-agent-a49f8dcdc9dd53998`, lokal committet, ungemergt, nicht gepusht; Todolino 3D410B52, 7C9A46D1, 049CE353, C6FCE0A3 nginx-Teil)
 
 - Ursache (belegt): 16 parallele 30-MiB-Bodies ohne Login töteten den Container (512m) per OOM, an der Einsende-API (auch mit unbekanntem Formular: der Gate zählte nur Verbindungen, nicht Bytes) und an `PUT .../key-rotation/objects/{id}` sowie `PUT .../entries/{id}/hold` (Vapor sammelt `.collect(64mb)` vor dem Handler, also vor Anmeldung).

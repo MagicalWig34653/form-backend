@@ -1,5 +1,5 @@
 {
-  "originHash" : "becb26eea8ea56a67f7d7816170cb838e17f5f405341c920371650d683021d9a",
+  "originHash" : "bcffc7e2899753a1cd4a313893d165bd450e66e5312049395fab7cf5255f2bbb",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -47,30 +47,12 @@
       }
     },
     {
-      "identity" : "fluent-mysql-driver",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/vapor/fluent-mysql-driver.git",
-      "state" : {
-        "revision" : "4d8f31af2a84bdbb69fbf9f4acc12cbf2f47814b",
-        "version" : "4.8.0"
-      }
-    },
-    {
       "identity" : "multipart-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/multipart-kit.git",
       "state" : {
         "revision" : "3498e60218e6003894ff95192d756e238c01f44e",
         "version" : "4.7.1"
-      }
-    },
-    {
-      "identity" : "mysql-kit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/vapor/mysql-kit.git",
-      "state" : {
-        "revision" : "b361fb48935c7f6a4204245dd23518693d6afc37",
-        "version" : "4.10.2"
       }
     },
     {

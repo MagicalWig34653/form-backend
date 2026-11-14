@@ -492,6 +492,13 @@ final class MySQLConnectionHandler: ChannelDuplexHandler {
     }
     
     func channelInactive(context: ChannelHandlerContext) {
+        // LOCAL PATCH (form-backend, handshake timeout): a peer that closes before the handshake is complete must fail the
+        // connect promise (upstream left it pending). Completing an already completed promise is a no-op.
+        switch self.state {
+        case .handshake(let state): state.done.fail(MySQLError.closed)
+        case .authenticating(let state): state.done.fail(MySQLError.closed)
+        case .commandPhase: break
+        }
         while let next = self.queue.popLast() {
             next.promise.fail(MySQLError.closed)
         }

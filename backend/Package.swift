@@ -16,10 +16,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", exact: "4.122.3"),
         .package(url: "https://github.com/vapor/fluent.git", exact: "4.13.0"),
-        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", exact: "4.8.0"),
-        // Patched copy of vapor/mysql-nio 1.9.2 (TLS required = no plaintext fallback, no payload bytes in trace); overrides
-        // the transitive remote dependency of mysql-kit by identity. Patches: backend/Vendor/README.md.
-        .package(path: "Vendor/mysql-nio"),
+        // Patched copies of fluent-mysql-driver 4.8.0, mysql-kit 4.10.2 and mysql-nio 1.9.2 (TLS required, no payload/SQL
+        // logging, handshake timeout). fluent-mysql-driver -> mysql-kit -> mysql-nio are all local path packages (siblings), so every identity has exactly one source.
+        // Patches: backend/Vendor/README.md.
+        .package(path: "Vendor/fluent-mysql-driver"),
         .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
         // SSH transport for SFTP (ADR 0011); Apache-2.0.
         .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),

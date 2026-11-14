@@ -11,6 +11,7 @@ public final class MySQLConnection: MySQLDatabase, Sendable {
         password: String? = nil,
         tlsConfiguration: TLSConfiguration? = .makeClientConfiguration(),
         serverHostname: String? = nil,
+        handshakeTimeout: TimeAmount = .seconds(10),
         logger: Logger = .init(label: "codes.vapor.mysql"),
         on eventLoop: any EventLoop
     ) -> EventLoopFuture<MySQLConnection> {
@@ -25,6 +26,13 @@ public final class MySQLConnection: MySQLDatabase, Sendable {
             done.futureResult.whenFailure { _ in
                 channel.close(mode: .all, promise: nil)
             }
+            // LOCAL PATCH (form-backend, handshake timeout): upstream never completed `done` if the peer stayed silent or
+            // closed before the handshake finished, which kept the attempt (and a pool slot) alive forever. One timeout
+            // covers greeting, TLS and authentication; completing a promise twice is a no-op.
+            let timeout = channel.eventLoop.scheduleTask(in: handshakeTimeout) {
+                done.fail(MySQLError.handshakeTimeout)
+            }
+            done.futureResult.whenComplete { _ in timeout.cancel() }
             do {
                 try channel.pipeline.syncOperations.addHandlers([
                     ByteToMessageHandler(MySQLPacketDecoder(

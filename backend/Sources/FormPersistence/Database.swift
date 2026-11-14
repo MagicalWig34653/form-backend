@@ -3,6 +3,7 @@ import FormCore
 import Fluent
 import FluentMySQLDriver
 import Foundation
+import NIOCore
 import NIOSSL
 import SQLKit
 import Vapor
@@ -19,15 +20,17 @@ public enum Persistence {
 
     /// Registers the MariaDB/MySQL connection pool as the default database. No Fluent migrations.
     public static func configure(_ app: Application, _ config: AppConfig, maxConnectionsPerEventLoop: Int? = nil,
-                                 tlsConfiguration: TLSConfiguration? = nil) {
+                                 tlsConfiguration: TLSConfiguration? = nil, handshakeTimeout: TimeAmount? = nil) {
         let loops = app.eventLoopGroup.makeIterator().reduce(0) { n, _ in n + 1 }
         let maxConnectionsPerEventLoop = maxConnectionsPerEventLoop ?? defaultMaxConnectionsPerEventLoop(eventLoops: loops)
         // `tlsConfiguration` is a seam for tests (self-signed server certificate); production passes nil = system trust.
         var tls: TLSConfiguration? = tlsConfiguration ?? TLSConfiguration.makeClientConfiguration()
         if config.dbTLS == .disable { tls = nil }
-        let cfg = MySQLConfiguration(
+        var cfg = MySQLConfiguration(
             hostname: config.dbHost, port: config.dbPort, username: config.dbUser,
             password: config.dbPassword, database: config.dbName, tlsConfiguration: tls)
+        // Vendored driver patch: one timeout over greeting, TLS and authentication (default 10 s); `handshakeTimeout` is a test seam.
+        if let handshakeTimeout { cfg.handshakeTimeout = handshakeTimeout }
         // sqlLogLevel nil: Fluent/MySQLKit would log every statement with its stringified bind values (password hashes) at debug.
         // A non-nil TLS configuration is mandatory: the vendored driver aborts before authentication if the server lacks TLS.
         app.databases.use(.mysql(configuration: cfg, maxConnectionsPerEventLoop: maxConnectionsPerEventLoop, sqlLogLevel: nil), as: .mysql)

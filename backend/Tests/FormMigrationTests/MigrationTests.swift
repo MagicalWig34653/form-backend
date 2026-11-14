@@ -2,6 +2,7 @@
 import XCTest
 import Crypto
 import Foundation
+import Logging
 import Vapor
 import SQLKit
 import FluentMySQLDriver
@@ -15,16 +16,19 @@ import FormPersistence
 final class MigrationTests: XCTestCase {
     let form = "11111111-1111-4111-8111-111111111111"
     let customer = "33333333-3333-4333-8333-333333333333"
-    func withDatabases(_ body: (SQLDatabase,SQLDatabase,SecretStore) async throws -> Void) async throws {
+    func withDatabases(capture: MigrationLogSink? = nil, _ body: (SQLDatabase,SQLDatabase,SecretStore) async throws -> Void) async throws {
         let env = ProcessInfo.processInfo.environment
         guard let port = env["P4A_DB_PORT"], let password = env["P4A_DB_PASSWORD"] else { throw XCTSkip("Integration benötigt backend/integration-test.sh") }
         let app = try await Application.make(.testing)
         let suffix = UUID().uuidString.replacingOccurrences(of:"-",with:"").lowercased()
         let sourceName = "migration_old_" + suffix, targetName = "migration_new_" + suffix
         var logger = app.logger; logger.logLevel = .critical
+        // With a capture sink the databases log at trace into the sink and use the production setting sqlLogLevel nil.
+        if let capture { logger = Logger(label:"migration-capture",factory:{ _ in capture }); logger.logLevel = .trace; app.logger = logger }
         func register(_ name: String, _ id: DatabaseID) {
             let cfg = MySQLConfiguration(hostname:env["P4A_DB_HOST"] ?? "127.0.0.1",port:Int(port)!,username:"root",password:password,database:name,tlsConfiguration:nil)
-            app.databases.use(.mysql(configuration:cfg,maxConnectionsPerEventLoop:2),as:id)
+            if capture != nil { app.databases.use(.mysql(configuration:cfg,maxConnectionsPerEventLoop:2,sqlLogLevel:nil),as:id) }
+            else { app.databases.use(.mysql(configuration:cfg,maxConnectionsPerEventLoop:2),as:id) }
         }
         register("p4atest",.mysql)
         let admin = app.db(.mysql,logger:logger) as! SQLDatabase
@@ -92,6 +96,27 @@ final class MigrationTests: XCTestCase {
             XCTAssertEqual(try row.bytes("payload"),payload)
             XCTAssertEqual(try row.required("label"),"Grüße")
             XCTAssertNil(try row.text("optional"))
+        }
+    }
+    /// S2-04b: production nests the importer in `MigrationService.tick`'s lock session (`withSession` inside `withSession`).
+    /// MySQLKit used to drop `sqlLogLevel: nil` at the second level, so import statements (hex literals) reached the debug log.
+    func testImportRunInNestedSessionLogsNoStatementsOrValues() async throws {
+        let sink = MigrationLogSink()
+        try await withDatabases(capture:sink) { src,dst,secrets in
+            let marker = "Synthetisches Formular"
+            let markerHex = Data(marker.utf8).map { String(format:"%02x",$0) }.joined()
+            let plan = ImportPlan(namespace:"synthetic",dumpSHA256:String(repeating:"0",count:64),customers:[self.customer:"Testkunde"],formCustomers:[self.form:self.customer])
+            let report = try await dst.withSession { lock in
+                let importer = try LegacyImporter(source:src,target:lock,secrets:secrets,hmacKey:Data(repeating:8,count:32))
+                return try await importer.run(plan:plan,batchSize:1)
+            }
+            XCTAssertEqual(report.tables["anfragen"]?.importedCount,1,"the import really ran")
+            let text = sink.text
+            XCTAssertFalse(text.isEmpty,"logger was exercised")
+            XCTAssertFalse(text.contains("Executing query"),"a statement was logged")
+            XCTAssertFalse(text.lowercased().contains(markerHex),"hex literal of an imported value in the log")
+            XCTAssertFalse(text.contains("CONVERT(X'"),"import SQL in the log")
+            XCTAssertFalse(text.contains(marker),"imported value in the log")
         }
     }
     func testMigrationDryRunResumeIdempotencyAndParity() async throws {
@@ -503,4 +528,14 @@ extension MigrationTests {
 final class Counter: @unchecked Sendable {
     private let lock = NSLock(); private var n = 0
     func next() -> Int { lock.lock(); defer { lock.unlock() }; n += 1; return n }
+}
+
+final class MigrationLogSink: LogHandler, @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [String] = []
+    var metadata: Logger.Metadata = [:]
+    var logLevel: Logger.Level = .trace
+    subscript(metadataKey k: String) -> Logger.Metadata.Value? { get { metadata[k] } set { metadata[k] = newValue } }
+    func log(event: LogEvent) { lock.lock(); lines.append("\(event.message) \(event.metadata ?? [:])"); lock.unlock() }
+    var text: String { lock.lock(); defer { lock.unlock() }; return lines.joined(separator: "\n") }
 }

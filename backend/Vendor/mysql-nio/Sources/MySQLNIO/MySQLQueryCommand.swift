@@ -225,9 +225,10 @@ private final class MySQLQueryCommand: MySQLCommand, @unchecked Sendable { // th
     }
 
     deinit {
-        assert(self.statementID == nil, "Statement not closed: \(self.sql)")
-        if self.statementID != nil {
-            self.logger.error("Statement not closed: \(self.sql)")
+        // LOCAL PATCH (form-backend S2-04c): upstream asserted and logged the full SQL text (with literals) here. A connection
+        // aborted after PREPARE legitimately drops an open statement, so neither trap nor print the statement.
+        if let id = self.statementID {
+            self.logger.error("Statement not closed (statement id \(id)); the connection was most likely aborted")
         }
     }
 }
