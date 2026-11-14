@@ -611,6 +611,27 @@ print(json.dumps({'host': os.environ.get('FORM_DB_HOST'), 'bootstrap': os.enviro
     assert len(help_keys) == len(set(help_keys)), 'config-help.tsv: doppelte Schlüssel'
     assert all(k in tables for k in help_keys), [k for k in help_keys if k not in tables]
 
+    # Karte 93842F02: jede in der Vorlage/Settings-Tabelle gefuehrte FORM_*-Variable erreicht den Dienst `app` in compose.yaml UND stack.yaml
+    # (Fehlerfall: FORM_BODY_BUDGET_MB/FORM_MAIL_MAX_MB fehlten in compose app). Ausnahmen: Variablen der Bereitstellung selbst (Platzhalter in der YAML,
+    # Replikate, Port, Platzierung, Image), die nie in die Umgebung des Dienstes gehoeren.
+    deploy_only = {'FORM_REPLICAS', 'FORM_IMAGE', 'FORM_IMAGE_TAG', 'FORM_PUBLISH_PORT', 'FORM_PINNED_PUBLISH_PORT', 'FORM_PINNED_NODE', 'FORM_PINNED_REPLICAS',
+                   'FORM_EXCLUDE_LABEL', 'FORM_PLACEMENT_CONSTRAINTS', 'FORM_PLACEMENT_PREFERENCES', 'FORM_IMAGE_REPOSITORY', 'FORM_PUBLIC_PUBLISH_PORT',
+                   'FORM_PINNED_PUBLIC_PUBLISH_PORT', 'FORM_PUBLISH_BIND'}
+
+    def service_env_keys(yaml_text, service):
+        block = re.search(r'^  ' + re.escape(service) + r':[^\n]*\n((?:(?:   .*)?\n)*)', yaml_text, re.M)
+        assert block, f'Dienst {service} nicht gefunden'
+        return set(re.findall(r'^\s+(FORM_[A-Z0-9_]+):', block.group(1), re.M))
+
+    swarm_yaml = (ROOT / 'deploy/swarm/stack.yaml').read_text()
+    compose_yaml = (ROOT / 'deploy/compose/compose.yaml').read_text()
+    # stack.yaml: app: &app ist die Vorlage, app-pinned erbt per Merge-Key
+    assert '<<: *app' in swarm_yaml.split('  app-pinned:')[1], 'app-pinned erbt nicht von app'
+    passed = {'compose.yaml (app)': service_env_keys(compose_yaml, 'app'), 'stack.yaml (app)': service_env_keys(swarm_yaml, 'app')}
+    for key in sorted(k for k in tables if k.startswith('FORM_') and k not in deploy_only):
+        for label, keys in passed.items():
+            assert key in keys or (tables[key][9] == '1' and key + '_FILE' in keys), f'{key} steht in der Vorlage/Tabelle, wird aber in {label} nicht an den Dienst durchgereicht'
+
     bash44 = bash_44()
     if bash44 is None:
         print('Grenze: keine Bash 4.4+ gefunden; settings.sh (CLI/Menü) nicht ausgeführt, nur Tabellenkonsistenz geprüft.')
