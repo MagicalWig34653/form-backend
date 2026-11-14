@@ -186,7 +186,7 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             var ingest = IngestConfig(secrets: StoreDigestSecrets(store: secrets), mail: mail, externalHost: { req in try StatisticsCollector.proxyHost(req, trusted: config.publicTrustedProxies) })
             ingest.throttle = guardian.throttles
             ingest.abuseKey = abuseKey.withUnsafeBytes { Data($0) }
-            ingest.clientIP = { req in ClientIPResolver(trusted: config.publicTrustedProxies).resolve(peer: req.remoteAddress?.ipAddress, forwardedFor: req.headers[canonicalForm: "x-forwarded-for"].joined(separator: ", ")) }
+            ingest.clientIP = IngestConfig.proxiedClientIP(trusted: config.publicTrustedProxies)
             IngestSetup.register(app, config: ingest)
         }
         app.lifecycle.use(FlowMaintenance())

@@ -5,6 +5,12 @@
 - Ursache: `anfragen.formularUUID` ist im Altschema nullable; `owner()` warf `invalidSourceAt(missingValue)`, der Lauf brach ab. Änderung: Zeile wird übersprungen, Prüffall `orphan-row` (offen), `TableParity.orphanCount` im Bericht (Fallback-Formular verworfen: kein Kunde/Schlüssel zuordenbar; Daten bleiben im Quelldump).
 - Test: `testSubmissionWithoutFormIsReportedAsOrphanAndDoesNotAbortTheRun` (Probelauf, echter Lauf, Wiederholung); Mutationsprobe ohne Fix rot (`invalidSource ... column=formularUUID`). `FormMigrationTests` mit DB: 44 grün.
 - Grenzen: nur `anfragen` (die anderen Tabellen haben `formularUUID NOT NULL`); andere fehlende Pflichtspalten brechen weiter ab; der Lauf endet wegen des offenen Prüffalls als `failed`, bis der Fall bewusst angenommen wird.
+## Client-IP für Missbrauchssperre und Ingest-Budget (14.11.2026, Todolino 1BEEDE0F, Worktree-Branch `worktree-agent-a8b313f2a27af0a35`, lokal, nicht gepusht)
+
+- Befund (belegt): `main.swift` verdrahtete den `ClientIPResolver` für den Ingest bereits (vertrauter Peer, X-Forwarded-For von rechts). Lücken: Ban-Digest und Budget nutzten die volle IPv6-Adresse statt /64 (Rotation innerhalb eines /64 umging Sperre und Budget); die Auflösung stand als Inline-Closure ohne Test.
+- Fix: `IngestConfig.proxiedClientIP(trusted:)` (alle XFF-Zeilen, Auflösung nur bei vertrautem Peer) und `clientKey` (= `IPAddr.quotaKey`) für `AbuseProtection` (Ban-Digest) und `enforceBudget`. Roh-IP bleibt für `abuse.blockedNets`. Übrige `remoteAddress`-Stellen geprüft: Dashboard-Host/Statistik/Listener nutzen den Peer bewusst für die Vertrauensprüfung, Auth-Pfade nutzen schon den Resolver.
+- Tests (`IngestDBTests`, 20/20 grün, DB-Integration): zwei Clients hinter vertrautem Proxy getrennt gezählt (Ban und Budget), Spoof-Header von unvertrautem Peer ignoriert, linker XFF-Eintrag ignoriert, IPv6 /64 geteilt. Mutationsproben: (1) `clientKey` ohne /64 -> 2 Tests rot; (2) Vertrauen ignoriert (Resolver mit 0.0.0.0/0) -> Spoof-Assertions in 2 Tests rot.
+- Grenze: Das PHP-SDK sendet keine Besucher-IP; ruft ein Kundenserver das Backend auf, bleibt dessen Adresse der Client. Das eigentliche Kartenproblem (Bot sperrt Website) braucht die signierte Besucherkennung im SDK (offen). BETRIEB.md warnt, bis dahin Turnstile/Sperrlisten nicht zu aktivieren.
 
 ## S2-03 Nachbesserung nach Codex-Review (14.11.2026, Karten S2-03a 12CEEEFE, S2-03b 46B784C4, S2-03c 88B3E7CC; Branch wie unten, lokal, nicht gepusht)
 

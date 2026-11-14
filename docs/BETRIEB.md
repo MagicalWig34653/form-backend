@@ -55,6 +55,15 @@ Für das öffentliche Dashboard wird bei vertrauenswürdigem Peer genau ein `X-F
 und `X-Forwarded-Proto: https` verlangt, sonst der originale `Host` ausgewertet. Für den
 Statistik-/Ingest-Hostvertrag zusätzlich `X-Real-IP` aus dem verifizierten Client setzen.
 
+**Client-IP der Einsende-Sperren (Karte 1BEEDE0F).** Ban-Zähler (`ingest_abuse_ips`), `abuse.blockedNets` und das Budget
+`ingest.requestsPerMinute` zählen die Adresse, die `ClientIPResolver` am öffentlichen Listener liefert: Ist der TCP-Peer in
+`FORM_PUBLIC_TRUSTED_PROXIES` (bzw. `FORM_TRUSTED_PROXIES`), gilt der erste nicht vertrauenswürdige Eintrag von rechts in
+`X-Forwarded-For`; sonst der Peer, Header werden ignoriert. IPv6 zählt je /64. **Ohne gesetzte Proxy-CIDRs sieht das Backend
+nur die Proxy-Adresse, und alle Besucher teilen eine Sperre und ein Budget.** Der Proxy muss `X-Forwarded-For` auf
+`$remote_addr` überschreiben (Vorlage tut das). Grenze: Ruft ein Kunden-Webserver (PHP-SDK) das Backend auf, ist dessen
+Adresse der Client, nicht der Besucher; dafür braucht es eine signierte Besucherkennung im SDK (offen, Karte 1BEEDE0F). Bis dahin
+Turnstile und `abuse.blockedNets` nicht aktivieren oder `abuse.threshold` hoch setzen.
+
 Beide Proxy-Aliase zeigen auf dieselben Tasks, sind **keine Netzwerk-Isolation**:
 `<stack>-public:8080` und `<stack>-internal:8081` (geänderte ENV-Ports entsprechend verwenden).
 Öffentlichen Proxy ausschließlich zum öffentlichen Port verbinden; internen Proxy durch VPN,

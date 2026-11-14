@@ -24,7 +24,20 @@ public struct IngestConfig: Sendable {
     public var captcha: any CaptchaVerifier = TurnstileVerifier()
     public var malware: (any MalwareHashScanner)? = nil
     public var abuseKey: Data? = nil
+    /// Client address for abuse bans and request budgets. Default: the TCP peer only (no header is believed).
+    /// Behind a reverse proxy use `proxiedClientIP(trusted:)`.
     public var clientIP: @Sendable (Request) -> String = { $0.remoteAddress?.ipAddress ?? "unknown" }
+    /// Throttle identity: `clientIP`, IPv6 reduced to its /64 (`IPAddr.quotaKey`). Every per-client counter of the public submit path uses this.
+    func clientKey(_ req: Request) -> String { IPAddr.quotaKey(clientIP(req)) }
+    /// `X-Forwarded-For` is only believed when the socket peer is inside `trusted` (`ClientIPResolver`: read from the right,
+    /// all header lines joined, first non-trusted hop wins). Empty `trusted` = peer only, so a header can never spoof the identity.
+    public static func proxiedClientIP(trusted: [CIDR]) -> @Sendable (Request) -> String {
+        let resolver = ClientIPResolver(trusted: trusted)
+        return { req in
+            let lines = req.headers[canonicalForm: "x-forwarded-for"]
+            return resolver.resolve(peer: req.remoteAddress?.ipAddress, forwardedFor: lines.isEmpty ? nil : lines.joined(separator: ", "))
+        }
+    }
     /// Per-(form, client) request budget (FA-015). nil = no budget (tests, unconfigured deployments).
     public var throttle: ThrottleService? = nil
     public var secrets: DigestSecretProvider
@@ -84,8 +97,7 @@ struct SubmitHandler: Sendable {
         guard let throttle = config.throttle else { return }
         let limit = Int(try await SystemSettings.value("ingest.requestsPerMinute", sql: sql))!
         guard limit > 0 else { return }
-        let raw = config.clientIP(req)
-        let ip = IPAddr(raw)?.text ?? raw
+        let ip = config.clientKey(req)
         do { try await throttle.consume(.adminRoute, "ingest|\(form.uuidString.lowercased())|\(ip)", limit: limit, window: 60) }
         catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
     }

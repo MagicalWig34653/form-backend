@@ -7,6 +7,7 @@ import FormHTTP
 @testable import FormIngest
 import FormPersistence
 import Foundation
+import NIOCore
 import SQLKit
 import XCTest
 import XCTVapor
@@ -51,7 +52,7 @@ final class IngestDBTests: XCTestCase {
     private final class Box: @unchecked Sendable { var ip = "192.0.2.4"; var t = Date(timeIntervalSince1970: 1_793_012_400) }
     private let box = Box()
 
-    private func withFixture(seed: Bool = true, secrets: [String: Data]? = nil, rateLimited: Bool = false, _ body: (Fixture) async throws -> Void) async throws {
+    private func withFixture(seed: Bool = true, secrets: [String: Data]? = nil, rateLimited: Bool = false, clientIP: (@Sendable (Request) -> String)? = nil, _ body: (Fixture) async throws -> Void) async throws {
         guard let port = env("P4A_DB_PORT").flatMap(Int.init), let pw = env("P4A_DB_PASSWORD") else {
             throw XCTSkip("P4A_DB_PORT/P4A_DB_PASSWORD not set; run backend/integration-test.sh")
         }
@@ -68,7 +69,7 @@ final class IngestDBTests: XCTestCase {
             try HTTPSetup.configure(app)
             var config = IngestConfig(secrets: Secrets(table: secrets ?? ["ref-1": digestSecret]), now: { [now] in now })
             config.abuseKey = Data(repeating: 99, count: 32)
-            config.clientIP = { [box] _ in box.ip }
+            config.clientIP = clientIP ?? { [box] _ in box.ip }
             if rateLimited { config.throttle = ThrottleService(db: app.db(.mysql), keys: try StaticServerKey(Data(repeating: 5, count: 32)), now: { [box] in box.t }) }
             IngestSetup.register(app, config: config)
             let sql = Persistence.sql(app)
@@ -164,7 +165,7 @@ final class IngestDBTests: XCTestCase {
         return (t, try RequestSignature.sign(text, seed: seed ?? sigSeed).base64EncodedString())
     }
 
-    private func send(_ app: Application, method: HTTPMethod = .POST, path: String = "/api/v2/submit/", query: String? = nil, headers: [String: String] = [:],
+    private func send(_ app: Application, method: HTTPMethod = .POST, path: String = "/api/v2/submit/", query: String? = nil, headers: [String: String] = [:], peer: String? = nil,
                       body: String = "", contentType: String? = "application/x-www-form-urlencoded") async throws -> Response {
         var h = HTTPHeaders()
         for (k, v) in headers { h.add(name: k, value: v) }
@@ -172,7 +173,7 @@ final class IngestDBTests: XCTestCase {
         var buf = ByteBufferAllocator().buffer(capacity: body.utf8.count)
         buf.writeString(body)
         let uri = URI(path: path + (query.map { "?\($0)" } ?? "?f=\(formID)"))
-        let req = Request(application: app, method: method, url: uri, version: .http1_1, headers: h, collectedBody: buf, remoteAddress: nil,
+        let req = Request(application: app, method: method, url: uri, version: .http1_1, headers: h, collectedBody: buf, remoteAddress: try peer.map { try SocketAddress(ipAddress: $0, port: 4711) },
                           logger: app.logger, on: app.eventLoopGroup.next())
         return try await app.responder.respond(to: req).get()
     }
@@ -262,6 +263,52 @@ final class IngestDBTests: XCTestCase {
             // 0 switches the budget off
             try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "0", at: SubmitHandler.dbTime(now))
             for i in 0..<6 { let r7 = try await go("off\(i)"); XCTAssertEqual(r7.status, .ok) }
+        }
+    }
+
+    func testAbuseBanCountsClientsBehindTrustedProxySeparatelyAndIgnoresSpoofedHeaders() async throws {
+        try await withFixture(clientIP: IngestConfig.proxiedClientIP(trusted: [CIDR("10.0.0.0/8")!])) { fx in
+            try await fx.sql.raw("UPDATE form_versions SET definition_json='{\"security\":{\"abuse\":{\"siteKey\":\"synthetic\"}}}'").run()
+            try await SystemSettings.write(fx.sql, key: "abuse.threshold", value: "2", at: SubmitHandler.dbTime(now))
+            let pairs = [("a", "b")]
+            func go(peer: String, xff: String?) async throws -> HTTPResponseStatus {
+                var h = try signedHeaders(pairs)
+                if let xff { h["X-Forwarded-For"] = xff }
+                return try await send(fx.app, headers: h, peer: peer, body: body(pairs)).status
+            }
+            // bot behind the trusted proxy 10.0.0.5 is banned after the threshold
+            for expected in [HTTPResponseStatus.preconditionFailed, .preconditionFailed, .tooManyRequests] {
+                let s = try await go(peer: "10.0.0.5", xff: "203.0.113.50"); XCTAssertEqual(s, expected)
+            }
+            // a second visitor behind the SAME proxy is unaffected
+            let other = try await go(peer: "10.0.0.5", xff: "203.0.113.51"); XCTAssertEqual(other, .preconditionFailed)
+            // untrusted peer: X-Forwarded-For is ignored, the peer is the identity (cannot frame the bot's address)
+            let spoof = try await go(peer: "198.51.100.7", xff: "203.0.113.50"); XCTAssertEqual(spoof, .preconditionFailed, "spoofed XFF from an untrusted peer must not inherit the ban")
+            // a client's own (left) XFF entry is ignored, the proxy-appended hop counts
+            let dodge = try await go(peer: "10.0.0.5", xff: "1.2.3.4, 203.0.113.50"); XCTAssertEqual(dodge, .tooManyRequests)
+            // IPv6: all addresses of one /64 share the ban
+            for _ in 0..<2 { _ = try await go(peer: "10.0.0.5", xff: "2001:db8:1:2::1") }
+            let sameNet = try await go(peer: "10.0.0.5", xff: "2001:db8:1:2:ffff::9"); XCTAssertEqual(sameNet, .tooManyRequests)
+            let otherNet = try await go(peer: "10.0.0.5", xff: "2001:db8:1:3::1"); XCTAssertEqual(otherNet, .preconditionFailed)
+        }
+    }
+
+    func testRequestBudgetUsesResolvedClientNotTheProxyAndSharesAnIPv6Prefix() async throws {
+        try await withFixture(rateLimited: true, clientIP: IngestConfig.proxiedClientIP(trusted: [CIDR("10.0.0.0/8")!])) { fx in
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            func go(_ key: String, peer: String = "10.0.0.5", xff: String?) async throws -> HTTPResponseStatus {
+                var h = try signedHeaders(pairs, key: key)
+                if let xff { h["X-Forwarded-For"] = xff }
+                return try await send(fx.app, headers: h, peer: peer, body: body(pairs)).status
+            }
+            for i in 0..<2 { let s = try await go("a\(i)", xff: "203.0.113.50"); XCTAssertEqual(s, .ok) }
+            let limited = try await go("a2", xff: "203.0.113.50"); XCTAssertEqual(limited, .tooManyRequests)
+            // another visitor behind the same proxy is unaffected; so is a spoofed header from an untrusted peer
+            let b = try await go("b0", xff: "203.0.113.51"); XCTAssertEqual(b, .ok)
+            let spoof = try await go("s0", peer: "198.51.100.7", xff: "203.0.113.50"); XCTAssertEqual(spoof, .ok)
+            // /64: rotating the host part does not buy a fresh budget
+            for i in 0..<2 { let s = try await go("v\(i)", xff: "2001:db8:9:9::\(i + 1)"); XCTAssertEqual(s, .ok) }
+            let rotated = try await go("v2", xff: "2001:db8:9:9:aaaa::1"); XCTAssertEqual(rotated, .tooManyRequests)
         }
     }
 
