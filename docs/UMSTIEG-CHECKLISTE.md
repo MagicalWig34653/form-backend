@@ -62,6 +62,7 @@ Stand 13.11.2026 (Einmal-Snapshot, ADR 0043). Grundlage: Generalprobe gegen das 
 | `customer_name_mismatch` | Zielkunde heißt anders als im Plan | Namen in der Zuordnung an das Ziel anpassen |
 | `invalid_plan` | Plan passt nicht (Kunde/Formular fehlt, widersprüchliche Zuordnung) | Zuordnung prüfen |
 | `database` | Zielseite: Datenbankfehler | Server-Log (nur Fehlertyp, keine Werte) |
+| Prüffall `orphan-row` | Altanfrage ohne `formularUUID` (im Altschema erlaubt): kein Formular, kein Kunde, kein Schlüssel zuordenbar | Zeile wird nicht importiert und der Lauf bricht nicht ab; Anzahl im Bericht als `orphanCount` der Tabelle `anfragen` (Quelle = importiert + übersprungen). Daten bleiben im Quelldump. Vorab auf der Alt-DB zählen: `SELECT COUNT(*) FROM anfragen WHERE formularUUID IS NULL;` und Fälle bewusst annehmen oder von Hand zuordnen |
 | Prüffall `statistics-review-missing` | Statistikzeilen im Altbestand, der Plan enthält keine Statistik-Freigabe (`statisticsReview`) | Die Zeilen werden nicht geschrieben (Altbestand bleibt); Freigabe im Plan setzen und neu aufrufen, oder Fall bewusst annehmen |
 | Prüffall `statistics-key-unknown` | Der öffentliche Statistikschlüssel im Plan fehlt oder ist keine Schlüsselgeneration des Kunden | Die Zeilen werden nicht geschrieben, der übrige Import läuft weiter; Schlüssel der aktiven Altgeneration des Kunden eintragen und neu aufrufen |
 

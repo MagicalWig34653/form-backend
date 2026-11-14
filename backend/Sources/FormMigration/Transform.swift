@@ -114,6 +114,8 @@ extension LegacyImporter {
         }
     }
     func owner(_ p: ImportPlan, _ r: LegacyRow, form: String = "formularUUID") throws -> (String,String) {
+        // `anfragen.formularUUID` is nullable in the legacy schema (task 4E46E368): a row without a form is a review case, not an abort.
+        guard try r.text(form) != nil else { throw OrphanRow() }
         let f = try r.required(form); guard let c = p.formCustomers[f] else { throw ImportFailure.invalidPlan }; return (try uid(c),try r.uuid(form))
     }
     func timestamp(_ text: String?, table: String, column: String) throws -> String {

@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## Migration: Altanfrage ohne formularUUID (14.11.2026, Todolino 4E46E368, Branch `worktree-agent-a05104ab9c7aeb0e3`, lokal committet, nicht gepusht)
+
+- Ursache: `anfragen.formularUUID` ist im Altschema nullable; `owner()` warf `invalidSourceAt(missingValue)`, der Lauf brach ab. Änderung: Zeile wird übersprungen, Prüffall `orphan-row` (offen), `TableParity.orphanCount` im Bericht (Fallback-Formular verworfen: kein Kunde/Schlüssel zuordenbar; Daten bleiben im Quelldump).
+- Test: `testSubmissionWithoutFormIsReportedAsOrphanAndDoesNotAbortTheRun` (Probelauf, echter Lauf, Wiederholung); Mutationsprobe ohne Fix rot (`invalidSource ... column=formularUUID`). `FormMigrationTests` mit DB: 44 grün.
+- Grenzen: nur `anfragen` (die anderen Tabellen haben `formularUUID NOT NULL`); andere fehlende Pflichtspalten brechen weiter ab; der Lauf endet wegen des offenen Prüffalls als `failed`, bis der Fall bewusst angenommen wird.
+
 ## S2-03 Nachbesserung nach Codex-Review (14.11.2026, Karten S2-03a 12CEEEFE, S2-03b 46B784C4, S2-03c 88B3E7CC; Branch wie unten, lokal, nicht gepusht)
 
 - (a) Compiler-DoS: festes Arbeitsbudget (50 000 Besuche) + leere quantifizierte Gruppen werden beim Parsen verworfen. (b) Klassenoperatoren `&&`, `--`, `||`, verschachtelte/POSIX-Klassen, `[]` abgelehnt. (c) `\w`/`\d`/`\s` wie ICU; Differentialtest gegen ICU über U+0000..U+1FFFF (Private Use ausgenommen: Apple-ICU-Daten weichen dort ab, `\s` enthält U+000B/U+0085, gemessen).

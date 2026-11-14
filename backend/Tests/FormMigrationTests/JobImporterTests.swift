@@ -71,3 +71,29 @@ extension MigrationTests {
         }
     }
 }
+
+extension MigrationTests {
+    /// Task 4E46E368: `anfragen.formularUUID` is nullable in the legacy schema. A row without a form must not abort the run: it is
+    /// skipped, reported as review case `orphan-row` and counted (`orphanCount`); all other rows are imported.
+    func testSubmissionWithoutFormIsReportedAsOrphanAndDoesNotAbortTheRun() async throws {
+        try await withDatabases { source, target, secrets in
+            let importer = try LegacyImporter(source: source, target: target, secrets: secrets, hmacKey: Data(repeating: 22, count: 32))
+            try await source.raw("INSERT INTO anfragen (ID,UUID,formularUUID,time,data,removable) VALUES (2,'77777777-7777-4777-8777-777777777777',NULL,1700000001,'unsupported-synthetic-packet',0)").run()
+            let plan = ImportPlan(namespace: "orphan", dumpSHA256: String(repeating: "0", count: 64), customers: [self.customer: "Synthetisch"], formCustomers: [self.form: self.customer])
+            let dry = try await importer.run(plan: plan, dryRun: true)
+            XCTAssertEqual(dry.tables["anfragen"]?.orphanCount, 1)
+            let report = try await importer.run(plan: plan)
+            let parity = try XCTUnwrap(report.tables["anfragen"])
+            XCTAssertEqual(parity.sourceCount, 2)
+            XCTAssertEqual(parity.importedCount, 1)
+            XCTAssertEqual(parity.orphanCount, 1)
+            let subs = try await importer.scalar(target, "SELECT CAST(COUNT(*) AS CHAR) AS v FROM submissions")
+            XCTAssertEqual(subs, "1")
+            let issue = try await importer.scalar(target, "SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_issues WHERE source_table='anfragen' AND issue_code='orphan-row' AND state='open'")
+            XCTAssertEqual(issue, "1")
+            // Second run of the same snapshot stays stable.
+            let again = try await importer.run(plan: plan)
+            XCTAssertEqual(again.tables["anfragen"]?.orphanCount, 1)
+        }
+    }
+}

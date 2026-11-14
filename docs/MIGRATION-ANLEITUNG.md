@@ -77,6 +77,7 @@ Menü **Umstieg**:
    **Du siehst:** „Nur lesender Zugang geprüft“ und den Prüfbericht (bei dir: 3 Formulare, 4 Mailverbindungen, 0 Schlüssel, 794 Statistikzeilen).
 2. **Zuordnung:** nur den Kundennamen eintragen. **Du siehst:** „Der Plan ist vollständig.“ Der Hinweis zu den Statistikzeilen ist normal:
    ohne Statistikschlüssel werden sie nicht übernommen (Prüffall), der Rest läuft.
+   Altanfragen ohne `formularUUID` werden übersprungen und als Prüffall `orphan-row` gezählt (`orphanCount` im Bericht), der Lauf bricht nicht ab.
 3. **Prüflauf starten.** **Du siehst:** „Der Prüflauf ist abgeschlossen.“ Ab jetzt keine Änderungen mehr am Altsystem.
 4. **Import starten.** **Du siehst:** den Schritt „Prüfung“ mit dem Prüfbericht.
 5. **Prüfung:** Bei deinen Daten steht dort „Keine :2-Einsendungen importiert: Die Entschlüsselungsprobe entfällt“ und „10 Einsendungen im

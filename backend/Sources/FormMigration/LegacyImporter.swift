@@ -176,9 +176,21 @@ private func safeIdentifier(_ s: String) -> String {
         (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 95
     } ? s : "<identifier>"
 }
+/// A source row that belongs to no form (`anfragen.formularUUID` IS NULL, nullable in the legacy schema). It is not imported (there is no
+/// customer, form or key to attach it to), stays in the immutable source dump, and is reported as review case `orphan-row` and in `orphanCount`.
+struct OrphanRow: Error {}
 public struct TableParity: Codable {
     public var sourceCount = 0, importedCount = 0, reviewCount = 0
+    /// Rows without an owner (skipped, review case `orphan-row`). sourceCount = importedCount + skipped rows (orphanCount + other review cases).
+    public var orphanCount = 0
     public var sourceHMAC = "", targetHMAC = ""
+    public init() {}
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sourceCount = try c.decodeIfPresent(Int.self, forKey: .sourceCount) ?? 0; importedCount = try c.decodeIfPresent(Int.self, forKey: .importedCount) ?? 0
+        reviewCount = try c.decodeIfPresent(Int.self, forKey: .reviewCount) ?? 0; orphanCount = try c.decodeIfPresent(Int.self, forKey: .orphanCount) ?? 0
+        sourceHMAC = try c.decodeIfPresent(String.self, forKey: .sourceHMAC) ?? ""; targetHMAC = try c.decodeIfPresent(String.self, forKey: .targetHMAC) ?? ""
+    }
 }
 /// What the default retention period would do to the imported submissions (QA 13.11.): they stay WITHOUT a due date.
 public struct RetentionReport: Codable, Equatable {
@@ -515,7 +527,7 @@ public struct LegacyImporter {
                                 retention.importedWithoutDeadline += 1
                                 if let t = try row.text("time").flatMap({ Int64($0) }), t > 0, Date(timeIntervalSince1970:Double(t)).addingTimeInterval(Double(Retention.defaultDays) * 86_400) <= Date() { retention.dueNowAtDefault += 1 }
                             }
-                            parity.importedCount += 1; targetHashes.update(data:Data(digest.utf8)); if table == "anfragen" || mappingReview { parity.reviewCount += 1 } } else { parity.reviewCount += 1 }
+                            parity.importedCount += 1; targetHashes.update(data:Data(digest.utf8)); if table == "anfragen" || mappingReview { parity.reviewCount += 1 } } else { parity.reviewCount += 1; if table == "anfragen", try row.text("formularUUID") == nil { parity.orphanCount += 1 } }
                         processed += 1
                         try await checkpoint?(table, processed)
                         if let stop, processed == stop { throw ImportFailure.interrupted }
@@ -593,6 +605,10 @@ public struct LegacyImporter {
             return digest
         } catch {
             try? await exec(db,dry ? "ROLLBACK TO SAVEPOINT migration_object" : "ROLLBACK")
+            if error is OrphanRow {
+                if !dry { try await exec(db,"INSERT INTO migration_issues (id,run_id,source_table,source_key,issue_code,state,reported_at) VALUES (\(bin(DB.bin(UUID()).data)),\(run),\(val(table)),\(bin(Data(key.utf8))),'orphan-row','open',UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE issue_code=issue_code") }
+                return nil
+            }
             if let failure = error as? ImportFailure, case .invalidSourceAt = failure { throw failure }
             if let failure = error as? ImportFailure, case .keyConflict = failure { throw failure }
             if error is ImportFailure || error is SecretStore.Failure {
