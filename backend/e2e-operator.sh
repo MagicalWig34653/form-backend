@@ -187,6 +187,7 @@ services:
     volumes: ["$TMP/trust.pem:/etc/ssl/certs/ca-certificates.crt:ro"]
   app:
     labels: { e2e.run: "$E2E_RUN_ID", e2e.started: "$E2E_STARTED" }
+    environment: { FORM_RETENTION_INTERVAL_SECONDS: "2" }
     volumes: ["$TMP/trust.pem:/etc/ssl/certs/ca-certificates.crt:ro"]
 EOF
 }
@@ -259,7 +260,7 @@ export E2E_MAILPIT_HOST=$MP E2E_MAILPIT_API=$MPAPI E2E_CA=$TMP/ca/ca.pem E2E_TMP
 browser() {
   (cd pwa && npx playwright test -c e2e-real/real-operator.config.ts --reporter=line) > "$TMP/playwright.log" 2>&1
   local r=$?
-  grep -E '^(STEP|NOTE|FINDING)' "$TMP/playwright.log"
+  grep -E '^(STEP|NOTE|FINDING|HTTP|CONSOLE|PAGEERROR)' "$TMP/playwright.log"
   [ "$r" = 0 ] || tail -60 "$TMP/playwright.log"
   return $r
 }
@@ -277,6 +278,7 @@ backup_restore() {
     scripts/backup-db.sh "$bk" > "$TMP/backup.log" 2>&1; r=$?
   compose start app >/dev/null 2>&1; ready || { echo "app not ready after the backup pause"; return 1; }
   [ "$r" = 0 ] || { tail -5 "$TMP/backup.log"; return 1; }
+  scripts/backup-prune.sh "$TMP/backups" --dry-run > "$TMP/prune.log" 2>&1 || { tail -3 "$TMP/prune.log"; return 1; }   # Aufbewahrung der Backups (BETRIEB.md)
   ls "$bk" | tr '\n' ' '; echo
   grep -qi "BETRIEB-1" "$bk/database.sql.age" && { echo "clear text in the encrypted backup"; return 1; }
   rpw=$(openssl rand -hex 16); printf '%s' "$rpw" > "$TMP/restore_password"; chmod 400 "$TMP/restore_password"

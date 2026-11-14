@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { env } from './helpers';
-import { openAdvanced } from './unlock-helpers';
+import { openAdvanced, unlockWithRecoveryCode } from './unlock-helpers';
 import {
   ctl,
   finding,
@@ -70,6 +70,10 @@ async function openNewestEntry(page: Page, formName: string, retry = true): Prom
     .first()
     .click();
   const open = page.getByRole('menuitem', { name: 'Öffnen' });
+  // after an unlock the keyring loads the accesses in the background: give it a moment before calling the entry unopenable
+  await expect(open)
+    .toBeEnabled({ timeout: 10_000 })
+    .catch(() => {});
   if (retry && (await open.isDisabled())) {
     // the browser holds no data key for this entry: reload + passkey unlock loads every access of the account again
     finding(
@@ -96,11 +100,89 @@ async function openNewestEntry(page: Page, formName: string, retry = true): Prom
   return page.getByRole('dialog', { name: 'Einsendungsdetail' });
 }
 
+/** Opens the entries of the form one by one until a detail dialog shows text matching `re` (the imported entries are older than production ones). */
+async function openEntryContaining(page: Page, formName: string, re: RegExp): Promise<Locator> {
+  await openForm(page, formName);
+  await page.getByRole('link', { name: 'Einsendungen', exact: true }).last().click();
+  const rows = page.getByRole('button', { name: /^Aktionen für Einsendung/ });
+  await expect(rows.first()).toBeVisible();
+  const n = await rows.count();
+  let locked = 0;
+  for (let i = 0; i < n; i++) {
+    await rows.nth(i).click();
+    const open = page.getByRole('menuitem', { name: 'Öffnen' });
+    await expect(open)
+      .toBeEnabled({ timeout: 5_000 })
+      .catch(() => {});
+    if (await open.isDisabled()) {
+      locked++;
+      await page.keyboard.press('Escape');
+      continue;
+    }
+    await open.click();
+    const dialog = page.getByRole('dialog', { name: 'Einsendungsdetail' });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('heading', { name: 'Felder' })
+      .waitFor({ timeout: 5_000 })
+      .catch(() => {});
+    if (await dialog.getByText(re).count()) return dialog;
+    note(`entry ${i}: ${(await dialog.innerText()).replace(/\s+/g, ' ').slice(0, 120)}`);
+    await dialog.getByRole('button', { name: 'Schließen' }).click();
+  }
+  throw new Error(`no readable entry matches ${re} among ${n} (${locked} without data key)`);
+}
+
 async function unlockIfLocked(page: Page) {
+  // the lock state is shown once the session has loaded: do not judge before
+  await page
+    .getByText(/Schlüssel (gesperrt|entsperrt)/)
+    .first()
+    .waitFor({ timeout: 15_000 })
+    .catch(() => {});
   if (await page.getByText('Schlüssel gesperrt').first().isVisible()) {
-    await openAdvanced(page);
-    await page.getByRole('button', { name: 'Mit Passkey entsperren' }).first().click();
-    await expect(page.getByText('Schlüssel entsperrt')).toBeVisible();
+    // the account page re-renders while it loads and may fold the section again: open it again until the button is there
+    await expect(async () => {
+      const primary = page.getByRole('button', { name: 'Zugriff freigeben', exact: true }).first();
+      if (await primary.isVisible()) await primary.click({ timeout: 4_000 }); // opens the advanced section
+      await openAdvanced(page);
+      await page
+        .getByRole('button', { name: 'Mit Passkey entsperren' })
+        .first()
+        .click({ timeout: 4_000 });
+    })
+      .toPass({ timeout: 25_000 })
+      .catch(async (e) => {
+        note(
+          `advanced: ${(await page.locator('details').filter({ hasText: 'Erweitert: Zugriff auf Einsendungen' }).innerText()).replace(/\s+/g, ' ').slice(0, 600)}; url ${page.url()}`,
+        );
+        note(
+          `tenants api: ${await page
+            .evaluate(async () => {
+              const r = await fetch('/admin/api/v1/tenants', { credentials: 'include' }).catch(
+                (x) => x,
+              );
+              return r.status + ' ' + (await r.text()).slice(0, 200);
+            })
+            .catch((x) =>
+              String(x),
+            )}; customers=${target('SELECT COUNT(*) FROM customers')}; members=${target('SELECT COUNT(*) FROM customer_memberships')}`,
+        );
+        throw e;
+      });
+    await page
+      .getByText('Schlüssel entsperrt')
+      .waitFor({ timeout: 30_000 })
+      .catch(async () => {
+        await openAdvanced(page);
+        note(
+          `advanced: ${(await page.locator('details').filter({ hasText: 'Erweitert: Zugriff auf Einsendungen' }).innerText()).replace(/\s+/g, ' ').slice(0, 500)}`,
+        );
+        note(
+          `unlock failed; alerts: ${(await page.getByRole('alert').allInnerTexts()).join(' | ').slice(0, 300)}; status: ${(await page.getByRole('status').allInnerTexts()).join(' | ').slice(0, 300)}`,
+        );
+        throw new Error('unlock failed');
+      });
   }
 }
 
@@ -227,7 +309,10 @@ export async function postImport(page: Page, recovery: string) {
   if (!REAL) {
     resetBudget();
     // the way the review step offers (SPA navigation keeps the unlocked keyring; a reload would lock it)
-    if (process.env.E2E_UPDATE === '1') await unlockIfLocked(page);
+    if (process.env.E2E_UPDATE === '1') {
+      await page.goto('/account'); // the reload after the update locked the keyring
+      await unlockIfLocked(page);
+    }
     await toUmstieg(page);
     await page.getByRole('button', { name: 'Zur Übernahme im Konto' }).first().click();
     await expect(page).toHaveURL(/\/account\?legacy=1/);
@@ -269,12 +354,23 @@ export async function postImport(page: Page, recovery: string) {
     await detail.getByRole('button', { name: 'Schließen' }).click();
     stepDone('imported-entry-readable');
   } else {
-    await openCustomer(page);
+    // 0 old keys: the customer has no data key yet. The operator creates it in Konto > Erweitert (needs the reloaded session: the customer list
+    // is loaded at login); an unlocked keyring is required
+    finding(
+      'real dump (0 old keys): the new data key is created by hand in Konto > Erweitert after a reload + unlock',
+    );
+    resetBudget();
+    await page.goto('/account');
+    await expect(page.getByText('Schlüssel gesperrt').first()).toBeVisible();
+    await unlockIfLocked(page);
+    await openAdvanced(page);
+    await page.getByRole('button', { name: 'Datenschlüssel im Browser erzeugen' }).first().click();
+    await expect(page.getByText(/Datenschlüssel erzeugt/)).toBeVisible();
     const keys = () =>
       target(
         `SELECT COUNT(*) FROM customer_key_generations WHERE customer_id=${uuidBin(tenant)} AND state='active'`,
       );
-    await waitFor(() => keys() === '1', 'own key of the imported customer');
+    await waitFor(() => keys() === '1', 'own key of the imported customer', 90_000);
     stepDone('customer-key');
   }
 
@@ -397,23 +493,50 @@ export async function postImport(page: Page, recovery: string) {
   await expect(again.getByText(/BETRIEB-1/).first()).toBeVisible();
   await again.getByRole('button', { name: 'Schließen' }).click();
   stepDone('reload-unlock-passkey');
-  // the account recovery code (shown once at setup) must open the data access as well
+  // Card 7B5E1E8A: the operator reads IMPORTED submissions through the recovery-code way (shown once at setup): reload, no passkey unlock
+  resetBudget();
   await page.goto('/account');
-  const recoveryField = page.getByLabel('Wiederherstellungscode', { exact: true });
-  note(`recovery-code unlock field on the account page: ${await recoveryField.count()}`);
-  void recovery;
+  await expect(page.getByText('Schlüssel gesperrt').first()).toBeVisible();
+  await unlockWithRecoveryCode(page, recovery);
+  if (!REAL) {
+    const imported = await openEntryContaining(page, formName, /KLARTEXT-MARKER-\d+/);
+    await expect(imported.getByText(/Grüße 👋🏽/)).toBeVisible();
+    await imported.getByRole('button', { name: 'Schließen' }).click();
+    stepDone('imported-entry-readable-by-recovery-code');
+  } else {
+    const entry = await openNewestEntry(page, formName);
+    await expect(entry.getByText(/BETRIEB-1/).first()).toBeVisible();
+    await entry.getByRole('button', { name: 'Schließen' }).click();
+    stepDone('production-entry-readable-by-recovery-code');
+  }
 
   // R8. container restart and kill -9: the session and all data survive, new submissions keep working
   note(ctl('restart'));
   resetBudget();
-  await page.reload();
+  await page.goto('/account'); // the reload locks the keyring; the lock hint and unlock are on the account page
   await unlockIfLocked(page);
   await submitAndCheck('BETRIEB-2', 'after-restart');
   note(ctl('kill'));
   resetBudget();
-  await page.reload();
+  await page.goto('/account'); // the reload locks the keyring; the lock hint and unlock are on the account page
   await unlockIfLocked(page);
   await submitAndCheck('BETRIEB-3', 'after-kill');
+
+  // R8b. retention: the sweep (env knob FORM_RETENTION_INTERVAL_SECONDS=2 in the run's override) deletes a submission that is due and keeps the others
+  const due = target(
+    `SELECT HEX(id) FROM submissions WHERE received_at IS NOT NULL ORDER BY received_at DESC LIMIT 1`,
+  );
+  const before = Number(target('SELECT COUNT(*) FROM submissions'));
+  target(
+    `UPDATE submissions SET retention_due_at = NOW() - INTERVAL 1 HOUR WHERE id=UNHEX('${due}')`,
+  );
+  await waitFor(
+    () => target(`SELECT COUNT(*) FROM submissions WHERE id=UNHEX('${due}')`) === '0',
+    'retention sweep deletes the due submission',
+    60_000,
+  );
+  expect(Number(target('SELECT COUNT(*) FROM submissions'))).toBe(before - 1);
+  stepDone('retention-sweep', `${before} -> ${before - 1} submissions`);
 
   // R9. key rotation after the cutover (FF958178: "Umschaltung abschließen" is not built): document the actual state
   resetBudget();

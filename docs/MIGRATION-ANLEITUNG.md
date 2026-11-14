@@ -86,7 +86,8 @@ Menü **Umstieg**:
 
 ## 4. Kunde, Schlüssel, Mailverbindungen, Formulare
 
-1. **Kunden** öffnen: Der importierte Kunde steht in der Liste. Beim ersten Öffnen legt der Browser seinen neuen Datenschlüssel an.
+1. **Datenschlüssel anlegen:** Seite neu laden, entsperre mit dem Passkey, **Konto → Erweitert → „Datenschlüssel im Browser erzeugen“** beim importierten Kunden
+   (ohne Altschlüssel entsteht der Schlüssel nicht von selbst). **Du siehst:** „Datenschlüssel erzeugt (Kennung …)“. Danach **Kunden** öffnen: der Kunde steht in der Liste.
 2. **Verbindungen:** Deine alten SMTP-Server sind übernommen, aber **deaktiviert**. Je Verbindung „Testen“, dann im Menü der Zeile
    „Verbindung aktivieren“. **Du siehst:** „Die Verbindung ist aktiv …“. Server, bei denen im Altsystem „Eigene Zertifikate erlauben“ an war,
    tragen „Zertifikat wird nicht geprüft“.
@@ -108,7 +109,10 @@ Menü **Umstieg**:
 
 ## 6. Danach im Betrieb
 
-- Nach dem Neuladen der Seite ist der Schlüssel gesperrt: Konto → „Erweitert“ → „Mit Passkey entsperren“.
+- Nach dem Neuladen der Seite ist der Schlüssel gesperrt: Konto → „Erweitert“ → „Mit Passkey entsperren“. Geht der Passkey nicht, öffnet der
+  **Wiederherstellungscode** (Konto → „Wiederherstellungscode“ → „Datenzugang öffnen“) denselben Zugang, auch zu importierten Einsendungen.
+- Aufbewahrung: Einsendungen werden nach der am Formular eingestellten Frist automatisch gelöscht (stündlicher Lauf); die Frist steht unter Formular → Aufbewahrung.
+- Wiederherstellen (Probe oder Ernstfall): `scripts/restore-db.sh <Backup> restore_<name>` legt eine NEUE Datenbank an. Der Restore-Benutzer braucht nur Rechte auf `restore_%`; Trigger-DEFINER werden dabei entfernt.
 - Sicherung: `scripts/backup-db.sh` mit `FORM_BACKUP_AGE_RECIPIENTS_FILE` (verschlüsselt), siehe `docs/BETRIEB.md`. Den Server-Schlüssel
   getrennt sichern.
 - Update: `sudo deploy/compose/update.sh` (führt `migrate` aus und startet neu; Daten bleiben).
@@ -127,7 +131,11 @@ Menü **Umstieg**:
 
 ## Zurück (Rollback)
 
-- **Vor der Umschaltung:** Nichts tun. Das Altsystem läuft unverändert weiter. Wer das Neusystem ganz verwerfen will, stellt die Datenbank aus
-  der Sicherung vor dem Import wieder her (`scripts/restore-db.sh`).
-- **Nach der Umschaltung:** Website wieder auf das Altsystem zeigen lassen. Einsendungen, die inzwischen im Neusystem eingegangen sind, bleiben
-  dort und müssen von Hand nachgezogen werden.
+Grundsatz: Das Altsystem und sein Dump werden vom Import **nie verändert**. Du kannst jederzeit zurück.
+
+- **Vor „Altzugriff entfernen“:** Nichts tun. Website zeigt weiter auf das Altsystem. Das Neusystem kann verworfen oder der Import wiederholt werden.
+- **Neusystem auf den Stand vor dem Import zurücksetzen:** `scripts/restore-db.sh <Backup-Verzeichnis> restore_vorher` (Backup vorher mit `scripts/backup-db.sh`
+  gemacht, am besten direkt vor dem Import), dann `FORM_DB_NAME=restore_vorher` setzen und `update.sh`. Der Server-Schlüssel muss derselbe sein.
+- **Nach der Umschaltung:** DNS bzw. Website-Einbindung wieder auf das Altsystem (altes PHP-Skript) zurückstellen und das SDK entfernen. Einsendungen, die in der
+  Zwischenzeit im Neusystem eingegangen sind, bleiben dort (Formular → Einsendungen oder Export) und müssen von Hand nachgezogen werden.
+- Importierte Altdaten bleiben im Neusystem als „Prüfung“ stehen; ein Löschen ist nur über die Aufbewahrung oder den Kunden möglich.

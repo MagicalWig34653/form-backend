@@ -26,6 +26,13 @@ async function sourceCheck(page: Page) {
 }
 
 test('operator path: setup, Umstieg, production use', async ({ page, context }) => {
+  page.on('console', (m) => {
+    if (m.type() === 'error') console.log('CONSOLE', m.text().slice(0, 200));
+  });
+  page.on('response', (r) => {
+    if (r.status() >= 400)
+      console.log(`HTTP ${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+  });
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
   page.on('response', (r) => {
     if (r.status() >= 500)
