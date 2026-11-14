@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## QA-Runde 2: Wiederholungsimport, Kunden zuweisen, Version erhöhen (14.11.2026, Todolino D4D309F7 / 9F5CE5BD / 51C62CEB, Branch `worktree-agent-a29f57b966d098a2f`, lokal, nicht gepusht)
+
+- D4D309F7: `LegacyImporter.snapshotImportedElsewhere` (Namespace + Dump-Hash eines abgeschlossenen Laufs, `completed_at` gesetzt, anderes Mapping, z. B. neue Kunden-UUID) -> `ImportFailure.alreadyImported`, am Anfang von `perform` (Prüf- und echter Lauf) und beim Anlegen des Jobs (`POST jobs`, 409 `already_imported`, kein Job). Code `already_imported`, nur Info-Log. Gleiches Mapping bleibt Fortsetzung über das Ledger (ADR 0043, bestehende Tests). Ein `failed`-Job mit diesem Code lässt sich nicht mehr per "Altzugriff entfernen" schließen. PWA-Text und Anleitung "Wiederholung". Grenzen: unterbrochene/fehlgeschlagene Läufe ohne `completed_at` bleiben fortsetzbar; Wiederholung mit identischem Plan nach Abschluss ist weiter eine idempotente No-op-Fortsetzung (kein eigener Status).
+- 9F5CE5BD: Anleitung §4.2 um "Kunden zuweisen" ergänzt (Begriffe aus Connections.svelte/de.ts).
+- 51C62CEB: Release mit schon vergebener Versionsnummer liefert 409 `version_exists` (vorher generisch `conflict`); PWA zeigt "Versionsnummer erhöhen" statt "Stand hat sich geändert".
+
 ## Konverter übernimmt Altregeln (14.11.2026, Todolino 6E571834, Worktree-Branch `worktree-agent-a821c89579478f0c9`, lokal committet, nicht gepusht)
 
 - Änderung (`FormMigration/LegacyFormConverter.swift`): `regel`-JSON wird abgebildet: `minLaenge`/`maxLaenge` (nur echte Ganzzahlen, wie `is_int` im Alt) -> `minLength`/`maxLength`; `mussSein` (String) -> `enum` mit einem Wert, `required` bleibt (kein `fixedValue`/`locked`: das ließe fehlende Werte durch); `muster` (PCRE mit Begrenzern) -> `pattern` im linearen Dialekt (ADR 0046). Teiltreffer (Alt) vs. Volltreffer (neu): `^...$` ohne `|` wird entrankert, sonst `[\s\S]*(?:...)[\s\S]*`. Flags, andere Begrenzer, Konstrukte außerhalb des Dialekts, Muster >500 Byte: "nicht abbildbar" mit Pfad `formularFelder/<n>/regel/<name>`. `datei` -> Kind `file` (nur das erste, wie im Alt; weitere "nicht abbildbar"). Kaputte/unbekannte Regeln werden gemeldet. Berichte enthalten nie Werte.

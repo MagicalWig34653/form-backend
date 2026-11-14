@@ -889,6 +889,8 @@ try {
         'Bitte bestätigen Sie die Aktion mit Ihrem Passkey (die letzte Anmeldung ist länger als 5 Minuten her).',
       notFound: 'Nicht gefunden.',
       conflict: 'Der Stand hat sich geändert. Bitte neu laden und erneut versuchen.',
+      versionExists:
+        'Diese Versionsnummer ist schon veröffentlicht (mit anderem Inhalt). Erhöhen Sie die Versionsnummer („Versionsnummer erhöhen“) und veröffentlichen Sie erneut.',
       stale: 'Der Entwurf wurde zwischenzeitlich geändert. Bitte neu laden.',
       invalid: 'Die Eingabe ist ungültig.',
       tooMany: 'Zu viele Anfragen. Bitte kurz warten.',
@@ -2338,6 +2340,8 @@ try {
           'Die Verbindung wurde unterbrochen oder die Prüfung ist fehlgeschlagen. Der bestätigte Fortschritt bleibt erhalten. Bitte Phase prüfen und erneut versuchen.',
         conflict:
           'Das ist im aktuellen Zustand des Laufs nicht möglich. Die Ansicht wird aktualisiert, bitte Zustand prüfen.',
+        alreadyImported:
+          'Dieser Snapshot ist bereits importiert. Es wurde nichts geschrieben und kein neuer Lauf angelegt. Den Import nicht wiederholen; den vorhandenen Lauf unter „Zurück“ weiterbearbeiten.',
         planInvalid: 'Bitte Zuordnung und zusätzliche Planangaben prüfen.',
         source: {
           title: 'Quelle prüfen',
@@ -2525,6 +2529,8 @@ try {
             target_packet_too_small:
               'Die Ziel-Datenbank erlaubt nur {limit} MiB pro Datensatz; die größte Zelle der Quelle ist {largest} MiB. max_allowed_packet der Ziel-Datenbank auf mindestens {needed} MiB erhöhen (empfohlen: 64 MiB), den Dienst neu verbinden (neu starten) und den Prüflauf wiederholen. Es wurde nichts geschrieben.',
             conflict: 'Das Ziel enthält schon abweichende Daten für diese Quelle',
+            already_imported:
+              'Dieser Snapshot ist bereits importiert. Es wurde nichts geschrieben; der erste Import bleibt unverändert und wird nicht wiederholt.',
             snapshot_changed:
               'Für diese Quelle gibt es schon einen Import mit anderem Snapshot. Ein Nachimport (Delta) ist nicht vorgesehen: Ziel aus der Sicherung wiederherstellen und einmalig neu importieren.',
             source_changed:

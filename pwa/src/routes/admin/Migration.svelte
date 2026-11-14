@@ -237,7 +237,9 @@
         : r.error.status === 429
           ? f.busy
           : r.error.status === 409
-            ? f.conflict
+            ? r.error.code === 'already_imported'
+              ? f.alreadyImported
+              : f.conflict
             : r.error.status === 422 && r.error.detail
               ? r.error.detail
               : r.error.status === 422 && unprocessable

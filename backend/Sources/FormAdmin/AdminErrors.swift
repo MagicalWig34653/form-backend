@@ -21,6 +21,16 @@ public struct VersionConflict: PublicProblemError {
     public var message: String { "Die Version von \(kind) existiert bereits mit anderem Inhalt. Bitte die Version erhöhen." }
 }
 
+/// 409 at release time: the semantic version is already published with other content. Own code so that the UI can say
+/// "raise the version number" instead of the generic "state changed" text.
+public struct VersionExists: PublicProblemError {
+    let kind: String
+    init(kind: String) { self.kind = kind }
+    public var statusCode: UInt { 409 }
+    public var code: String { "version_exists" }
+    public var message: String { "Die Version von \(kind) existiert bereits mit anderem Inhalt. Bitte die Version erhöhen." }
+}
+
 /// 404 for a customer key generation without a recovery wrap (the migration left none, or the generation is not live). Thrown only
 /// AFTER the caller was authorised (key.manage), so it reveals nothing to outsiders; the browser uses the code to point to the
 /// legacy key adoption instead of reporting a generic failure.

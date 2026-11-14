@@ -204,7 +204,7 @@ enum ReleaseRoutes {
             SELECT version_no, content_sha256 FROM resource_versions
             WHERE customer_id = \(bind: DB.bin(tenant)) AND resource_kind = \(bind: kind) AND resource_id = \(bind: DB.bin(id)) AND semantic_version = \(bind: semver) FOR UPDATE
             """).first(decoding: R.self) {
-            guard r.content_sha256.data == hash else { throw VersionConflict(kind: kind == "workflow" ? "Ablauf" : kind == "view" ? "Ansicht" : "Formular") }
+            guard r.content_sha256.data == hash else { throw VersionExists(kind: kind == "workflow" ? "Ablauf" : kind == "view" ? "Ansicht" : "Formular") }
             return (r.version_no, false)
         }
         struct N: Decodable { let n: Int }

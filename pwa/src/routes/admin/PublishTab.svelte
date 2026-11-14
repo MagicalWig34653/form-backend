@@ -121,7 +121,7 @@
     }
     if (handleSessionError(e)) return;
     // A missing retention period is not a draft conflict: the reason is shown and the confirmation stays usable.
-    if (e.status === 409 && !e.code?.startsWith('retention_')) {
+    if (e.status === 409 && !e.code?.startsWith('retention_') && e.code !== 'version_exists') {
       conflict = true;
       confirmed = false;
     }

@@ -179,7 +179,7 @@ final class ReleaseFlowTests: XCTestCase {
             try await patch(consistentSameVersion, expect: .ok)
             try await confirm(c, tenant, form, draft, rev: rev, hash: curHash) { conf = jsonObject($0)["confirmationId"] as? String ?? "" }
             try await publish(c, tenant, form, key: "k2", draft: draft, rev: rev, hash: curHash, confirmation: conf) { res async throws in
-                XCTAssertEqual(res.status, .conflict); XCTAssertEqual(parse(res)["code"]?.string, "conflict")
+                XCTAssertEqual(res.status, .conflict); XCTAssertEqual(parse(res)["code"]?.string, "version_exists")
             }
             let n1 = try await f.sql.raw("SELECT COUNT(*) AS c FROM releases").first(decoding: C.self)?.c
             XCTAssertEqual(n1, 1)

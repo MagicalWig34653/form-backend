@@ -27,6 +27,7 @@ public struct MigrateLegacyCommand: AsyncCommand {
     /// Operator text of the quiesce failures (ADR 0043); the machine-readable description is printed as well.
     static func operatorText(_ failure: ImportFailure) -> String? {
         switch failure {
+        case .alreadyImported: return "Dieser Snapshot ist bereits importiert. Es wurde nichts geschrieben."
         case .snapshotChanged: return "Für diese Quelle gibt es schon einen Import mit anderem Snapshot. Ein Nachimport (Delta) ist nicht vorgesehen: Ziel aus der Sicherung wiederherstellen und einmalig neu importieren."
         case .sourceChanged: return "Die Altdaten wurden seit dem Prüflauf verändert. Altsystem in Schreibpause versetzen und den Prüflauf wiederholen."
         case .sourceNotQuiesced: return "Das Altsystem wurde während des Imports beschrieben. Ziel aus der Sicherung wiederherstellen, Schreibpause herstellen und neu importieren."

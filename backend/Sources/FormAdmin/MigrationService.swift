@@ -160,6 +160,7 @@ struct MigrationService {
             return String("\(reason.rawValue)@\(safe)".prefix(40))
         case .invalidSource: return "invalid_source"
         case .snapshotChanged: return "snapshot_changed"
+        case .alreadyImported: return "already_imported"
         case .sourceChanged: return "source_changed"
         case .sourceNotQuiesced: return "source_not_quiesced"
         case .invalidPlan, .invalidPlanField: return "invalid_plan"
@@ -248,7 +249,10 @@ struct MigrationService {
             let paused = (error as? ImportFailure).map { if case .interrupted = $0 { return true }; return false } ?? false
             let code = paused ? "interrupted" : Self.errorCode(for: error)
             // Importer failures describe themselves safely (no source values); anything else only by type (may contain SQL values).
-            if let failure = error as? ImportFailure { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "failure": "\(failure)"]) }
+            if let failure = error as? ImportFailure, case .alreadyImported = failure {
+                // Expected outcome of a repeated run, not a malfunction: no error line.
+                app.logger.info("migration job ended: snapshot already imported", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")"])
+            } else if let failure = error as? ImportFailure { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "failure": "\(failure)"]) }
             else if let failure = error as? SourceFailure { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "source": "\(failure.jobCode)"]) }
             else { app.logger.error("migration job failed", metadata: ["jobId": "\(DB.uuid(id.data)?.uuidString.lowercased() ?? "?")", "type": "\(type(of: error))"]) }
             try await sql.raw("UPDATE migration_jobs SET state=\(bind: paused ? "paused" : "failed"),error_code=\(bind: code),updated_at=UTC_TIMESTAMP(6) WHERE id=\(bind: id)").run()

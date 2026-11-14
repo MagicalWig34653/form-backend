@@ -43,3 +43,10 @@ describe('429', () => {
     );
   });
 });
+
+describe('409 Version existiert', () => {
+  it('nennt die Versionsnummer statt Stand geaendert', () => {
+    expect(describeError(err(409, 'version_exists'))).toMatch(/Versionsnummer/);
+    expect(describeError(err(409, 'conflict'))).toMatch(/Stand hat sich/);
+  });
+});

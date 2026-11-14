@@ -219,7 +219,8 @@ struct MigrationActionRefused: PublicProblemError {
     var extraHeaders: [(name: String, value: String)] { [] }
     static let rehearseNotAllowed = MigrationActionRefused(code: "rehearse_not_allowed", message: "Ein Prüflauf lässt sich nur aus einem fertigen Prüflauf oder nach „Die Altdaten wurden verändert“ wiederholen.")
     static let importNeedsRehearsal = MigrationActionRefused(code: "import_needs_rehearsal", message: "Der Import setzt einen fertigen Prüflauf voraus.")
-    static let notResumable: Set<String> = ["source_changed", "source_not_quiesced", "snapshot_changed"]
+    static let alreadyImported = MigrationActionRefused(code: "already_imported", message: "Dieser Snapshot ist bereits importiert. Es wurde nichts geschrieben.")
+    static let notResumable: Set<String> = ["source_changed", "source_not_quiesced", "snapshot_changed", "already_imported"]
     static let resumeNotPossible = MigrationActionRefused(code: "resume_not_possible", message: "Fortsetzen hilft hier nicht: Altdaten oder Snapshot haben sich geändert. Prüflauf wiederholen oder das Ziel aus der Sicherung wiederherstellen.")
     static let fingerprintMissing = MigrationActionRefused(code: "source_fingerprint_missing", message: "Zu diesem Prüflauf fehlt der Quellen-Fingerabdruck. Prüflauf wiederholen.")
 }

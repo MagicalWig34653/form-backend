@@ -97,3 +97,28 @@ extension MigrationTests {
         }
     }
 }
+
+extension MigrationTests {
+    /// Task D4D309F7: a second run of the same snapshot under another mapping (new customer id, as the browser proposes after a completed
+    /// import) ends as `alreadyImported`, rehearsal and real run alike, without any write.
+    func testCompletedSnapshotUnderOtherMappingEndsAsAlreadyImportedWithoutWrites() async throws {
+        try await withDatabases { source, target, secrets in
+            let importer = try LegacyImporter(source: source, target: target, secrets: secrets, hmacKey: Data(repeating: 22, count: 32))
+            let hash = String(repeating: "0", count: 64)
+            let plan = ImportPlan(namespace: "again", dumpSHA256: hash, customers: [self.customer: "Synthetisch"], formCustomers: [self.form: self.customer])
+            _ = try await importer.run(plan: plan)
+            let before = try await self.fingerprint(importer, target, ignoring: [])
+            let other = "99999999-9999-4999-8999-999999999999"
+            let again = ImportPlan(namespace: "again", dumpSHA256: hash, customers: [other: "Synthetisch"], formCustomers: [self.form: other])
+            for dry in [true, false] {
+                do { _ = try await importer.run(plan: again, dryRun: dry); XCTFail("Second import of the same snapshot accepted") }
+                catch ImportFailure.alreadyImported { }
+            }
+            let after = try await self.fingerprint(importer, target, ignoring: [])
+            XCTAssertEqual(before, after)
+            let isOther = try await LegacyImporter.snapshotImportedElsewhere(target, plan: again)
+            let isSame = try await LegacyImporter.snapshotImportedElsewhere(target, plan: plan)
+            XCTAssertTrue(isOther); XCTAssertFalse(isSame)
+        }
+    }
+}

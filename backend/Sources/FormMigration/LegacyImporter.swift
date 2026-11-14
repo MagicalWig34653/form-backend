@@ -79,6 +79,8 @@ public enum ImportFailure: Error, CustomStringConvertible {
     case invalidPlan, conflict, missingTarget, database, interrupted, lock, invalidSource
     /// The namespace already holds an import of another snapshot (ADR 0043: one snapshot, no delta); nothing is written.
     case snapshotChanged
+    /// This exact snapshot (namespace and dump hash) was already imported to the end: nothing is written, the run ends at once.
+    case alreadyImported
     /// The legacy data changed since the rehearsal (source fingerprint differs from the expected one); nothing is written.
     case sourceChanged
     /// The legacy data changed while the import was running (fingerprint at the end differs from the one at the start); the run is failed.
@@ -122,6 +124,7 @@ public enum ImportFailure: Error, CustomStringConvertible {
         case let .customerNameMismatch(ids): return "migration: customerNameMismatch count=\(ids.count) customers=\(ids.prefix(10).joined(separator: ","))"
         case let .targetPacketTooSmall(limit, largest): return "migration: targetPacketTooSmall limit=\(limit) largestCell=\(largest)"
         case .snapshotChanged: return "migration: snapshotChanged"
+        case .alreadyImported: return "migration: alreadyImported"
         case .sourceChanged: return "migration: sourceChanged"
         case .sourceNotQuiesced: return "migration: sourceNotQuiesced"
         case .interrupted: return "migration: interrupted"
@@ -415,6 +418,13 @@ public struct LegacyImporter {
         let n = try await scalar(target,"SELECT CAST(COUNT(DISTINCT i.source_table,i.source_key) AS CHAR) AS v FROM migration_issues i JOIN migration_runs r ON r.id=i.run_id WHERE r.source_namespace=\(val(namespace)) AND i.state='open'")
         return Int(n ?? "0") ?? 0
     }
+    /// True when this snapshot (namespace and dump hash) was already imported to the end under another mapping (e.g. a new customer id
+    /// chosen in the browser). The same mapping stays a resume (ledger, ADR 0043). Read only.
+    public static func snapshotImportedElsewhere(_ db: SQLDatabase, plan p: ImportPlan) async throws -> Bool {
+        let mapping = hex(Data(SHA256.hash(data:Data(try json(p).utf8))))
+        let n = try await db.raw(query("SELECT CAST(COUNT(*) AS CHAR) AS v FROM migration_runs WHERE source_namespace=\(val(p.namespace)) AND dump_sha256=\(bin(try unhex(p.dumpSHA256))) AND completed_at IS NOT NULL AND mapping_sha256<>\(bin(try unhex(mapping))) AND NOT EXISTS (SELECT 1 FROM migration_runs m WHERE m.source_namespace=\(val(p.namespace)) AND m.dump_sha256=\(bin(try unhex(p.dumpSHA256))) AND m.mapping_sha256=\(bin(try unhex(mapping))))")).first(decoding:TextRow.self)?.v
+        return (Int(n ?? "0") ?? 0) > 0
+    }
     public func run(plan: ImportPlan, dryRun: Bool = false, batchSize: Int = 100, stopAfter: Int? = nil, expectedSchema: String? = nil, expectedSourceFingerprint: String? = nil, checkpoint: ((String, Int) async throws -> Void)? = nil) async throws -> ImportReport {
         // Named before the first write (ADR 0014: nothing is written for a plan that is wrong in itself).
         guard !plan.namespace.isEmpty, plan.namespace.utf8.count <= 64, plan.namespace.utf8.allSatisfy({ $0 >= 33 && $0 < 127 }) else { throw ImportFailure.invalidPlanField("namespace") }
@@ -442,6 +452,9 @@ public struct LegacyImporter {
         }
     }
     func perform(_ src: SQLDatabase, _ dst: SQLDatabase, _ p: ImportPlan, _ dry: Bool, _ batch: Int, _ stop: Int?, _ expectedSchema: String?, _ checkpoint: ((String, Int) async throws -> Void)?, startFingerprint: String, expectedFingerprint: String?) async throws -> ImportReport {
+        // Same snapshot already imported to the end under another mapping (the QA case: new customer id): idempotent end without any write,
+        // for rehearsal and real run alike. The same mapping resumes via the ledger; interrupted or failed runs have no completed_at.
+        if try await Self.snapshotImportedElsewhere(dst, plan: p) { throw ImportFailure.alreadyImported }
         // Target preconditions, named before anything is written (rehearsal included, no run row is created). Ids only, never names.
         let live = try await dst.raw("SELECT LOWER(HEX(id)) AS v FROM forms WHERE active=1 OR current_release_id IS NOT NULL ORDER BY id LIMIT 50").all(decoding:TextRow.self)
         guard live.isEmpty else { throw ImportFailure.targetFormsLive(ids:live.map(\.v)) }

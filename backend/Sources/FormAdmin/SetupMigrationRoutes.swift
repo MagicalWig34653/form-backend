@@ -158,6 +158,8 @@ public enum SetupMigrationRoutes {
                 let ids = try await source.raw("SELECT CAST(UUID AS CHAR) AS id FROM formulare ORDER BY ID").all(decoding: F.self)
                 guard Set(ids.map { $0.id.lowercased() }) == Set(input.plan.formCustomers.keys) else { throw Abort(.unprocessableEntity) }
             }
+            // The same snapshot was already imported to the end: say so now instead of creating a job that would fail.
+            guard try await !LegacyImporter.snapshotImportedElsewhere(sql, plan: input.plan) else { throw MigrationActionRefused.alreadyImported }
             let id = UUID(), at = DB.time(Date())
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
@@ -223,6 +225,8 @@ public enum SetupMigrationRoutes {
                     try await tx.raw("UPDATE migration_jobs SET state='queued',dry_run=0,actor_id=\(bind: DB.bin(actor)),cancel_requested=0 WHERE id=\(bind: DB.bin(id))").run()
                 default:
                     guard ["review", "paused", "failed"].contains(job.state) else { throw Abort(.conflict) }
+                    // A run that ended because the snapshot was imported before is no cutover: closing it would say "completed" while the real import is untouched.
+                    if job.state == "failed", job.error_code == "already_imported" { throw MigrationActionRefused.alreadyImported }
                     // Removing the source after a real import requires both browser confirmations (probe decryption and test message);
                     // aborting a dry run, a paused or a failed job stays possible.
                     // Exception: the import holds no :2 package at all (probePackages == 0), so there is nothing a probe could open.

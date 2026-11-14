@@ -83,6 +83,9 @@ Menü **Umstieg**:
 5. **Prüfung:** Bei deinen Daten steht dort „Keine :2-Einsendungen importiert: Die Entschlüsselungsprobe entfällt“ und „10 Einsendungen im
    Altformat (:1/CBC) sind nicht übernehmbar und bleiben in der Prüfung“. Das ist erwartet. Die Entwürfe der Formulare sind schon erzeugt.
 
+**Wiederholung:** Ein Import, der bis zum Ende gelaufen ist, wird nicht wiederholt. Ein zweiter Lauf mit demselben Snapshot meldet
+„Dieser Snapshot ist bereits importiert“ und schreibt nichts (keine Duplikate). Ein unterbrochener Lauf wird dagegen über „Fortsetzen“ weitergeführt.
+
 **Kontrolle (optional, auf der Ziel-Datenbank):** gleiche Anzahl Formulare (3) und Einsendungen (10) wie im Altsystem.
 
 ## 4. Kunde, Schlüssel, Mailverbindungen, Formulare
@@ -92,11 +95,16 @@ Menü **Umstieg**:
 2. **Verbindungen:** Deine alten SMTP-Server sind übernommen, aber **deaktiviert**. Je Verbindung „Testen“, dann im Menü der Zeile
    „Verbindung aktivieren“. **Du siehst:** „Die Verbindung ist aktiv …“. Server, bei denen im Altsystem „Eigene Zertifikate erlauben“ an war,
    tragen „Zertifikat wird nicht geprüft“.
+   Danach **jede Verbindung dem Kunden zuweisen** (sonst bleibt sie „Zugewiesen: keine Kunden“ und im Formular lässt sich kein Versandweg wählen):
+   in der Zeile Menü **„Aktionen für <Name>“ → „Kunden zuweisen“**, im Dialog den importierten Kunden ankreuzen, **„Zuweisen“**.
+   **Du siehst:** „Zugewiesen.“ und in der Zeile „Zugewiesen: <Kundenname>“.
 3. **Formular** öffnen (Kunde → Formular):
    - Reiter **Mail:** Versandverbindung wählen, „Versandweg zuweisen“, Absender und Empfänger eintragen, „Speichern“. Die Empfänger kommen
      nicht automatisch aus dem Altsystem; trage sie ein, wie sie dort standen.
    - Reiter **Felder:** prüfen (die alten Feldnamen sind übernommen).
    - **Veröffentlichen:** „Ich habe die Änderungen geprüft.“ → „Jetzt veröffentlichen“.
+     Meldet die Oberfläche, die Versionsnummer sei schon veröffentlicht, zuerst **„Versionsnummer erhöhen“** und dann erneut veröffentlichen
+     (Der importierte Stand trägt schon die Nummer 1; nach jeder späteren Änderung ist das wieder nötig.)
    - **Einbindung:** „Zugangsdatei ausstellen“ und die Datei für das PHP-SDK auf der Website ablegen.
 
 Altregeln werden je Feld übernommen: Mindest-/Höchstlänge, `mussSein` (Einwilligung, als einziger erlaubter Wert; Pflicht bleibt) und Muster, sofern es im einfachen Regex-Dialekt liegt (kein Lookaround, keine Rückreferenz, kein `\b`, keine Flags wie `/i`). Das Altsystem prüfte Muster als Teiltreffer, das neue als Volltreffer; der Konverter umschließt unverankerte Muster entsprechend. Der erste Dateifeld-Typ wird als Dateifeld übernommen (erlaubt: PDF, PNG, JPG, HEIC, unter 20 MB, höchstens 5 Dateien). Was nicht abbildbar ist (Muster mit Flags oder außerhalb des Dialekts, unbekannte Regeln, weitere Dateifelder), steht im Prüfbericht als „nicht abbildbar“ mit Feldnummer und Regelname (`formularFelder/<n>/regel/<name>`); diese Regeln im Editor neu setzen. Im Editor neu gesetzte Muster müssen zum Dialekt passen; `App migrate` meldet Abweichungen vor dem Umschalten.

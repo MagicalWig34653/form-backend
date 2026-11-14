@@ -26,6 +26,7 @@ export function describeError(e: ApiError): string {
     case 404:
       return a.notFound;
     case 409:
+      if (e.code === 'version_exists') return a.versionExists;
       // Retention problems carry their own fixed German reason (server: retention_missing / retention_import_running).
       return e.code?.startsWith('retention_') && e.detail ? e.detail : a.conflict;
     case 412:
