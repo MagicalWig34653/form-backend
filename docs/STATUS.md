@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## Große Anhänge in Rotation, Hold, Flow, Verifikation (14.11.2026, Worktree-Branch `worktree-agent-a2bbe3d8ce2321e43`, lokal committet, ungemergt; Todolino C4D13F4D, 14298EC0)
+
+- Lücke aus 985BC399 geschlossen (Prod-Blocker: Schlüsselrotation bei Anhang über ca. 12 MB scheiterte): `RotationRoutes` (Liste, Ersatzpaket-Schreiben), `HoldRewrapRoutes`, `FlowRunRoutes` (Kontext, Checkpoint-Read, Resume-Beweis), `FlowEngine` (Checkpoint-Insert/-Update), `MigrationVerificationRoutes` (Entschlüsselungsprobe) lesen/schreiben Objektzellen nur noch über `ChunkedBlob`; Zeilenabfragen laden `ciphertext` nicht mehr (`RotationRoutes.objectColumns`). `GET key-rotation/objects` begrenzt eine Seite auf ca. 32 MiB Pakete (mind. 1 Objekt, `next` wie bisher). Keine Vertrags-/Schema-Änderung.
+- Tests (neu): `LargeObjectOperationsTests` (Rotation komplett inkl. Abschluss und Entschlüsselung mit neuem Schlüssel, Hold setzen/aufheben, Flow-Kontext und Resume-Beweis), `ImportRehearsalTests.testDecryptionProbeDeliversImportedPackageAbove16MiBWhole`, `MailEndToEndTests.testFullMailForSubmissionWithAttachmentAbove16MiB…`. Rot gegen HEAD (500 bzw. leere Listen), grün nach Fix. Alle mit 19,9-MB-Anhang (Paket 26,5 MB), Länge und SHA-256 der ganzen Zelle in der Datenbank geprüft.
+- Mail (14298EC0): Mails tragen keine Anhänge (ADR 0041); Test belegt, dass ein 19,9-MB-Anhang Zustellung und Mailgröße nicht berührt. Kein SMTP-Größenlimit erreichbar. Doku `docs/BETRIEB.md`.
+- Grenzen: Resume-Beweis hält alle Objekte einer Einsendung gleichzeitig im Speicher (nicht gemessen); Flow-Checkpoint über 16 MiB nur per Code, nicht per Test (Katalog begrenzt den Zustand auf 1 MiB); externer Speicher (S3/SFTP) nicht berührt. Übergabe `docs/handoffs/Grosse-Anhaenge-Wartung.md`.
+
 ## Sicherheitsbefunde mysql-nio-Review (S2-04b, S2-04c, Handshake-Timeout, SwiftPM-Konflikt) (14.11.2026, Worktree-Branch `worktree-agent-aa769c5a96d624821`, lokal committet, ungemergt, nicht gepusht; Todolino 26748F03, 8FA3A784, 927CCCEE)
 
 - Quelle: Codex-Review der Patches (`orchestrator/runtime/fb-sec-codex-mysqlnio.md`). Vendoring der ganzen Kette `fluent-mysql-driver -> mysql-kit -> mysql-nio` nach `backend/Vendor` (Pfadabhängigkeiten, Root bindet nur den Treiber ein; SwiftPM-Warnung "Conflicting identity" entfällt, `Package.resolved` ohne diese Pakete). Patches und Update-Hinweis: `backend/Vendor/README.md` (`LOCAL PATCH`).

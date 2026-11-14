@@ -55,8 +55,10 @@ public struct FlowEngine {
         let wire = Data(sealed.wire.utf8), hash = Data(SHA256.hash(data: wire))
         try await tx.raw("""
             INSERT INTO stored_objects (id,customer_id,form_id,submission_id,object_role,ordinal_no,revision,backend,ciphertext,packet_format,wrap_kind,kid,content_encoding,ciphertext_sha256,payload_sha256,byte_count,state)
-            VALUES (\(bind: DB.bin(object)),\(bind: customer),\(bind: form),\(bind: DB.bin(submission)),'checkpoint',0,0,'db',\(bind: Blob(wire)),'KUBUS-AEAD:2','hpke',\(bind: sealed.kid),'raw',\(bind: Blob(hash)),\(bind: Blob(Data(SHA256.hash(data: sealed.iv + sealed.ciphertext + sealed.tag)))),\(bind: wire.count),'ready')
+            VALUES (\(bind: DB.bin(object)),\(bind: customer),\(bind: form),\(bind: DB.bin(submission)),'checkpoint',0,0,'db',\(bind: ChunkedBlob.head(wire)),'KUBUS-AEAD:2','hpke',\(bind: sealed.kid),'raw',\(bind: Blob(hash)),\(bind: Blob(Data(SHA256.hash(data: sealed.iv + sealed.ciphertext + sealed.tag)))),\(bind: wire.count),'ready')
             """).run()
+        // State is capped by maxStateBytes (1 MiB in the catalog), but a definition may raise it: above the driver packet limit the cell is appended in pieces.
+        try await ChunkedBlob.append(wire, to: .objectCiphertext, key: DB.bin(object), on: tx)
         return try await FlowStore(db: db).create(tx: tx, customer: customer, form: form, submission: submission, release: release, checkpointObject: object, checkpointHash: hash, budgetJSON: "{\"maxSteps\":\(definition.limits.maxSteps),\"activeTimeoutMs\":\(definition.limits.activeTimeoutMs)}", digest: digest, digestGeneration: digestGeneration, deadline: now.addingTimeInterval(Double(definition.limits.maxElapsedMs)/1000), now: now)
     }
     struct Context: Decodable { let submission_id: Blob; let release_id: Blob; let checkpoint_object_id: Blob; let public_key: Blob; let active_time_ms: UInt64 }
@@ -84,9 +86,10 @@ public struct FlowEngine {
                 try await store.assertLease(tx, lease: lease, now: Date())
                 try await tx.raw("UPDATE workflow_runs SET active_time_ms=\(bind: c.active_time_ms + UInt64(max(0, Date().timeIntervalSince(started)*1000))) WHERE id=\(bind: DB.bin(lease.run))").run()
                 try await tx.raw("""
-                    UPDATE stored_objects SET ciphertext=\(bind: Blob(wire)),ciphertext_sha256=\(bind: Blob(hash)),payload_sha256=\(bind: Blob(Data(SHA256.hash(data: package.iv + package.ciphertext + package.tag)))),byte_count=\(bind: wire.count),revision=revision+1
+                    UPDATE stored_objects SET ciphertext=\(bind: ChunkedBlob.head(wire)),ciphertext_sha256=\(bind: Blob(hash)),payload_sha256=\(bind: Blob(Data(SHA256.hash(data: package.iv + package.ciphertext + package.tag)))),byte_count=\(bind: wire.count),revision=revision+1
                     WHERE id=\(bind: DB.bin(object)) AND customer_id=\(bind: lease.customer) AND form_id=\(bind: lease.form)
                     """).run()
+                try await ChunkedBlob.append(wire, to: .objectCiphertext, key: DB.bin(object), on: tx)
                 try await store.checkpoint(tx: tx, lease: lease, object: object, hash: hash, state: status, steps: UInt64(state.steps), now: Date(), wakeAt: wakeAt, suspensionKind: suspension)
                 struct DebugRefs: Decodable { let definition_json: String; let definition_sha256: Blob; let manifest_sha256: Blob; let release_version_no: UInt64 }
                 if let tenantID = DB.uuid(lease.customer.data), let formID = DB.uuid(lease.form.data), let releaseID = DB.uuid(c.release_id.data),

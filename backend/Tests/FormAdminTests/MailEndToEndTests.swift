@@ -2,6 +2,7 @@
 import Crypto
 import FormAuth
 import FormCore
+import FormIngest
 @testable import FormCrypto
 import FormMail
 import FormPersistence
@@ -643,6 +644,51 @@ final class MailEndToEndTests: XCTestCase {
             try await w.sys.send(.PUT, "connections/\(cid)/enabled", body: #"{"enabled":false}"#) { XCTAssertEqual($0.status, .noContent) }
             let off = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code='connection.disable'").first(decoding: C.self)?.c
             XCTAssertEqual(off, 1)
+        }
+    }
+    /// Card 14298EC0 (ADR 0041, standard "full"): a submission with an attachment of 19.9 MB (sealed package about 27 MB, above the driver packet limit).
+    /// Mails carry the field values and NO attachment (ADR 0041, "Anhänge existieren in Mails noch nicht"; the proxy transport sends empty attachment fields).
+    /// What must hold: the upload is accepted and stored completely, the organisation and confirmation mails are delivered with all values, they stay small
+    /// (the attachment bytes must not leak into or inflate a mail), and delivery states are clean. Needs P3B_DB_ARGS=--max-allowed-packet=67108864.
+    func testFullMailForSubmissionWithAttachmentAbove16MiBIsDeliveredWithoutTheAttachment() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            struct V: Decodable { let v: String }
+            let limit = Int(try await f.sql.raw("SELECT CAST(@@global.max_allowed_packet AS CHAR) AS v").first(decoding: V.self)?.v ?? "0") ?? 0
+            try XCTSkipIf(limit < 60_000_000, "needs max_allowed_packet >= 64 MiB (got \(limit))")
+            let w = try await world(f, mail: defaultMail)
+            try await connect(w, smtp)
+            var content = Data("%PDF-1.4\n".utf8) + Data(count: 19_900_000 - 9)
+            for i in stride(from: 9, to: content.count, by: 4093) { content[i] = UInt8(truncatingIfNeeded: i / 4093) }
+            let signed = FileField.single(SignedFile(name: "antrag.pdf", type: "application/pdf", error: 0, size: Int64(content.count), content: content))
+            let fields = PHPValue.array(pairs.map { ($0.0, PHPValue.string($0.1)) })
+            let canonical = try RequestSignature.canonical(fields: fields, files: [("antrag", signed)])
+            let ts = String(Int64(Date().timeIntervalSince1970))
+            let sig = try RequestSignature.sign(try RequestSignature.signingText(route: .submit, formID: w.form, timestamp: ts, canonical: canonical), seed: w.seed)
+            var h = HTTPHeaders(); h.replaceOrAdd(name: .contentType, value: "multipart/form-data; boundary=XBOUNDX")
+            h.add(name: "X-Kubus-Timestamp", value: ts); h.add(name: "X-Kubus-Signature", value: sig.base64EncodedString()); h.add(name: "Idempotency-Key", value: "mail-big")
+            var body = Data()
+            for (k, v) in pairs { body += Data("--XBOUNDX\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".utf8) }
+            body += Data("--XBOUNDX\r\nContent-Disposition: form-data; name=\"antrag\"; filename=\"antrag.pdf\"\r\nContent-Type: application/pdf\r\n\r\n".utf8) + content + Data("\r\n--XBOUNDX--\r\n".utf8)
+            try await w.f.app.test(.POST, "api/v2/submit/?f=\(w.form)", headers: h, body: ByteBuffer(data: body)) { XCTAssertEqual($0.status, .ok, String(text($0).prefix(300))) }
+            try await until(60) { smtp.mails.count == 2 }
+            let org = try XCTUnwrap(smtp.mails.first { $0.rcpts.contains("empfang@example.org") })
+            let o = decoded(org.data)
+            XCTAssertEqual(o.body, "<p>Grüße &amp; &lt;b&gt;Hallo&lt;/b&gt; MAIL-MARKER-4711</p><p>a</p>", "all values are in the mail")
+            for mail in smtp.mails {
+                XCTAssertLessThan(mail.data.utf8.count, 100_000, "the 19.9 MB attachment must not be part of a mail")
+                XCTAssertFalse(mail.data.contains("antrag.pdf")); XCTAssertFalse(mail.data.lowercased().contains("multipart/"))
+            }
+            try await until { try await deliveries(f).allSatisfy { $0.state == "smtp-accepted" } }
+            let rows = try await deliveries(f)
+            XCTAssertEqual(rows.map(\.mail_kind), ["confirmation", "organisation"]); XCTAssertTrue(rows.allSatisfy { $0.attempts == 1 && $0.last_error_code == nil })
+            // the attachment itself is stored completely and byte-exact in the database (length and hash over the whole cell)
+            struct Cell: Decodable { let n: Int; let h: Blob; let sha: Blob }
+            let cell = try await f.sql.raw("SELECT CAST(OCTET_LENGTH(ciphertext) AS SIGNED) AS n, UNHEX(SHA2(ciphertext, 256)) AS h, ciphertext_sha256 AS sha FROM stored_objects WHERE object_role = 'attachment'").first(decoding: Cell.self)
+            let c = try XCTUnwrap(cell)
+            XCTAssertGreaterThan(c.n, 16_777_215); XCTAssertEqual(c.h.data, c.sha.data)
+            print("MEASURE mail with 19.9 MB attachment: organisation mail \(org.data.utf8.count) bytes, attachment object \(c.n) bytes")
         }
     }
 }

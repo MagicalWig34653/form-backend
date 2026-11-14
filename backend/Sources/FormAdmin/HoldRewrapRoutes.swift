@@ -36,7 +36,7 @@ enum HoldRewrapRoutes {
         return result
     }
     static func object(_ tx: SQLDatabase, tenant: UUID, id: Blob) async throws -> RotationRoutes.Object {
-        guard let r = try await tx.raw("SELECT id, form_id, kid, revision, ciphertext_sha256, payload_sha256, ciphertext, backend, wrap_kind FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND id = \(bind: id) FOR UPDATE").first(decoding: RotationRoutes.Object.self) else { throw Abort(.conflict) }; return r
+        guard let r = try await tx.raw("SELECT \(RotationRoutes.objectColumns) FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND id = \(bind: id) FOR UPDATE").first(decoding: RotationRoutes.Object.self) else { throw Abort(.conflict) }; return r
     }
     static func apply(_ tx: SQLDatabase, tenant: UUID, form: UUID, entry: UUID, account: UUID, input: Input) async throws {
         let rows = try await inventory(tx, tenant: tenant, form: form, entry: entry)
@@ -52,7 +52,7 @@ enum HoldRewrapRoutes {
                 try await PermissionService(sql: tx).authorize(account: account, "content.decrypt", on: .form(customer: tenant, form: form))
                 try await RotationRoutes.requireAccess(tx, tenant: tenant, account: account, kid: o.kid)
                 let b = RotationRoutes.Replacement(expectedRevision: p.expectedRevision, expectedSha256: p.expectedSha256, package: replacement)
-                try await RotationRoutes.store(tx, tenant: tenant, row: o, package: RotationRoutes.replacement(o, b, target: o.kid, hold: true))
+                try await RotationRoutes.store(tx, tenant: tenant, row: o, package: RotationRoutes.replacement(o, wire: try await RotationRoutes.wire(tx, o), b, target: o.kid, hold: true))
             } else if input.held && o.wrap_kind != "sym" { throw Abort(.conflict, reason: "HPKE-Objekt benötigt sym-Nachschutz") }
         }
     }
@@ -72,7 +72,7 @@ enum HoldRewrapRoutes {
                 for r in try await inventory(tx, tenant: tenant, form: form, entry: entry) {
                     let o = try await object(tx, tenant: tenant, id: r.id)
                     let canDecrypt = try await PermissionService(sql: tx).can(account: s.accountID!, "content.decrypt", on: .form(customer: tenant, form: form))
-                    items.append(["id": DB.uuid(r.id.data)!.uuidString.lowercased(), "kid": o.kid, "revision": o.revision, "ciphertext_sha256": RotationRoutes.hex(o.ciphertext_sha256.data), "package": (canDecrypt ? o.ciphertext : nil).map { String(decoding: $0.data, as: UTF8.self) } as Any? ?? NSNull(), "formId": form.uuidString.lowercased(), "wrapKind": o.wrap_kind, "sourceGenerationId": DB.uuid(r.generation_id.data)!.uuidString.lowercased()])
+                    items.append(["id": DB.uuid(r.id.data)!.uuidString.lowercased(), "kid": o.kid, "revision": o.revision, "ciphertext_sha256": RotationRoutes.hex(o.ciphertext_sha256.data), "package": (canDecrypt ? try await RotationRoutes.wire(tx, o) : nil).map { String(decoding: $0, as: UTF8.self) } as Any? ?? NSNull(), "formId": form.uuidString.lowercased(), "wrapKind": o.wrap_kind, "sourceGenerationId": DB.uuid(r.generation_id.data)!.uuidString.lowercased()])
                 }
                 return items
             }

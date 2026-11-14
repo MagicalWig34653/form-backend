@@ -19,7 +19,7 @@ enum FlowRunRoutes {
         let budget_json: String; let steps_used: UInt64; let active_time_ms: UInt64
     }
     struct Object: Decodable {
-        let id: Blob; let object_role: String; let revision: UInt64; let ciphertext: Blob?
+        let id: Blob; let object_role: String; let revision: UInt64; var ciphertext: Blob?
         let ciphertext_sha256: Blob; let payload_sha256: Blob?; let kid: String; let state: String
         let ordinal_no: UInt64; let generation_id: Blob?; let wrap_kind: String; let byte_count: UInt64
     }
@@ -88,7 +88,7 @@ enum FlowRunRoutes {
             let (tenant, form, id) = try ids(req)
             let r = try await load(sql, tenant: tenant, form: form, id: id)
             try await perms.authorize(account: s.accountID!, "flow.resume", on: .form(customer: tenant, form: form), exists: r != nil)
-            let run = r!, objects = try await requiredObjects(sql, tenant: tenant, form: form, run: run)
+            let run = r!, objects = try await requiredObjects(sql, tenant: tenant, form: form, run: run, withCiphertext: false)
             var blocked = [String]()
             let approvals = try await currentApprovals(sql, run: id, steps: Int(exactly: run.steps_used) ?? -1)
             if approvals.count > 1 || approvals.contains(where: { !["approved", "rejected", "expired"].contains($0.state) }) { blocked.append("gate-open") }
@@ -122,10 +122,10 @@ enum FlowRunRoutes {
             let r = try await load(sql, tenant: tenant, form: form, id: id)
             try await perms.authorize(account: s.accountID!, "flow.resume", on: .form(customer: tenant, form: form), exists: r != nil)
             _ = try await ReleaseRoutes.freshAuthentication(sql, session: s.id, now: now())
-            guard let o = try await requiredObjects(sql, tenant: tenant, form: form, run: r!).first(where: { $0.id == r!.checkpoint_object_id }),
-                  o.state == "ready", let wire = o.ciphertext else { throw Abort(.conflict) }
+            guard let o = try await requiredObjects(sql, tenant: tenant, form: form, run: r!, withCiphertext: false).first(where: { $0.id == r!.checkpoint_object_id }),
+                  o.state == "ready", let wire = try await ChunkedBlob.read(.objectCiphertext, key: o.id, on: sql) else { throw Abort(.conflict) }
             try await audit(sql, tenant: tenant, form: form, account: s.accountID!, run: id, action: "flow.checkpoint.read", at: now())
-            return try noStore(FormAdmin.json(.ok, CipherBody(object: try objectBody(o, access: "allowed"), package: String(decoding: wire.data, as: UTF8.self))))
+            return try noStore(FormAdmin.json(.ok, CipherBody(object: try objectBody(o, access: "allowed"), package: String(decoding: wire, as: UTF8.self))))
         }
         runs.post("resume") { req async throws -> Response in
             let s = try await guardian.requireAuthenticated(req, mutation: true)
@@ -210,8 +210,14 @@ enum FlowRunRoutes {
     static func load(_ sql: SQLDatabase, tenant: UUID, form: UUID, id: UUID, lock: Bool = false) async throws -> Run? {
         try await sql.raw("SELECT id,submission_id,release_id,state,revision,checkpoint_object_id,checkpoint_json,deadline_at,wake_at,budget_json,steps_used,active_time_ms FROM workflow_runs WHERE id=\(bind: DB.bin(id)) AND customer_id=\(bind: DB.bin(tenant)) AND form_id=\(bind: DB.bin(form)) \(unsafeRaw: lock ? "FOR UPDATE" : "")").first(decoding: Run.self)
     }
-    static func requiredObjects(_ sql: SQLDatabase, tenant: UUID, form: UUID, run: Run, lock: Bool = false) async throws -> [Object] {
-        try await sql.raw("SELECT o.id,o.object_role,o.revision,o.ciphertext,o.ciphertext_sha256,o.payload_sha256,o.kid,o.state,o.ordinal_no,g.generation_id,o.wrap_kind,o.byte_count FROM stored_objects o LEFT JOIN customer_key_generations g ON g.customer_id=o.customer_id AND g.kid=o.kid WHERE o.customer_id=\(bind: DB.bin(tenant)) AND o.form_id=\(bind: DB.bin(form)) AND o.submission_id=\(bind: run.submission_id) AND (o.id=\(bind: run.checkpoint_object_id) OR o.object_role IN ('data','attachment','mail-organisation','mail-filler','mail-manifest')) ORDER BY o.id \(unsafeRaw: lock ? "FOR UPDATE" : "")").all(decoding: Object.self)
+    /// `withCiphertext: false` reads inventory columns only (resume context, checkpoint read). With `true` every ready object is read whole in pieces (ChunkedBlob):
+    /// attachments of 20 MB are sealed packages of about 27 MB, above what the driver can carry in one row; the proof check of resume needs them all.
+    static func requiredObjects(_ sql: SQLDatabase, tenant: UUID, form: UUID, run: Run, lock: Bool = false, withCiphertext: Bool = true) async throws -> [Object] {
+        var rows = try await sql.raw("SELECT o.id,o.object_role,o.revision,NULL AS ciphertext,o.ciphertext_sha256,o.payload_sha256,o.kid,o.state,o.ordinal_no,g.generation_id,o.wrap_kind,o.byte_count FROM stored_objects o LEFT JOIN customer_key_generations g ON g.customer_id=o.customer_id AND g.kid=o.kid WHERE o.customer_id=\(bind: DB.bin(tenant)) AND o.form_id=\(bind: DB.bin(form)) AND o.submission_id=\(bind: run.submission_id) AND (o.id=\(bind: run.checkpoint_object_id) OR o.object_role IN ('data','attachment','mail-organisation','mail-filler','mail-manifest')) ORDER BY o.id \(unsafeRaw: lock ? "FOR UPDATE" : "")").all(decoding: Object.self)
+        if withCiphertext {
+            for i in rows.indices where rows[i].state == "ready" { rows[i].ciphertext = try await ChunkedBlob.read(.objectCiphertext, key: rows[i].id, on: sql).map { Blob($0) } }
+        }
+        return rows
     }
     static func needsManifest(_ sql: SQLDatabase, tenant: UUID, form: UUID, run: Run) async throws -> Bool {
         struct G: Decodable { let graph_json: String }

@@ -17,16 +17,16 @@ final class RotationInvariantTests: XCTestCase {
         for c in v.cases {
             let source = try PackageV2(c.source), target = try PackageV2(c.package)
             let hash = Data(SHA256.hash(data: Data(c.source.utf8)))
-            let row = RotationRoutes.Object(id: DB.bin(UUID()), form_id: DB.bin(UUID()), kid: source.kid, revision: 3, ciphertext_sha256: Blob(hash), payload_sha256: Blob(Data(SHA256.hash(data: source.iv + source.ciphertext + source.tag))), ciphertext: Blob(Data(c.source.utf8)), backend: "db", wrap_kind: source.wrap, held: nil)
+            let row = RotationRoutes.Object(id: DB.bin(UUID()), form_id: DB.bin(UUID()), kid: source.kid, revision: 3, ciphertext_sha256: Blob(hash), payload_sha256: Blob(Data(SHA256.hash(data: source.iv + source.ciphertext + source.tag))), byte_count: UInt64(c.source.utf8.count), backend: "db", wrap_kind: source.wrap, held: nil)
             let proof = RotationRoutes.Replacement(expectedRevision: 3, expectedSha256: RotationRoutes.hex(hash), package: c.package)
-            XCTAssertEqual(try RotationRoutes.replacement(row, proof, target: target.kid).wire, c.package)
-            XCTAssertThrowsError(try RotationRoutes.replacement(row, proof, target: source.kid))
-            XCTAssertThrowsError(try RotationRoutes.replacement(row, .init(expectedRevision: 2, expectedSha256: proof.expectedSha256, package: c.package), target: target.kid))
-            XCTAssertThrowsError(try RotationRoutes.replacement(row, .init(expectedRevision: 3, expectedSha256: String(repeating: "0", count: 64), package: c.package), target: target.kid))
+            XCTAssertEqual(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), proof, target: target.kid).wire, c.package)
+            XCTAssertThrowsError(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), proof, target: source.kid))
+            XCTAssertThrowsError(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), .init(expectedRevision: 2, expectedSha256: proof.expectedSha256, package: c.package), target: target.kid))
+            XCTAssertThrowsError(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), .init(expectedRevision: 3, expectedSha256: String(repeating: "0", count: 64), package: c.package), target: target.kid))
             var changed = c.package.components(separatedBy: "|")
             changed[4] = Data(repeating: 0, count: 12).base64EncodedString()
-            XCTAssertThrowsError(try RotationRoutes.replacement(row, .init(expectedRevision: 3, expectedSha256: proof.expectedSha256, package: changed.joined(separator: "|")), target: target.kid))
-            if target.wrap == "hpke" { XCTAssertThrowsError(try RotationRoutes.replacement(row, proof, target: target.kid, hold: true)) }
+            XCTAssertThrowsError(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), .init(expectedRevision: 3, expectedSha256: proof.expectedSha256, package: changed.joined(separator: "|")), target: target.kid))
+            if target.wrap == "hpke" { XCTAssertThrowsError(try RotationRoutes.replacement(row, wire: Data(c.source.utf8), proof, target: target.kid, hold: true)) }
         }
     }
 }

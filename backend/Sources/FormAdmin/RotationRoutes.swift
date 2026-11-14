@@ -18,7 +18,17 @@ enum RotationRoutes {
     struct Replacement: Decodable { let expectedRevision: UInt64; let expectedSha256: String; let package: String }
     struct Object: Decodable {
         let id: Blob; let form_id: Blob; let kid: String; let revision: UInt64; let ciphertext_sha256: Blob
-        let payload_sha256: Blob; let ciphertext: Blob?; let backend: String; let wrap_kind: String; let held: Int?
+        let payload_sha256: Blob; let byte_count: UInt64; let backend: String; let wrap_kind: String; let held: Int?
+    }
+    /// Inventory columns only. The ciphertext cell can exceed the driver packet limit (16 MiB - 1, see ChunkedBlob), so it is NEVER part of a row
+    /// select; whole packages are read with `wire` (4 MiB pieces) and written with `store` (head + appended pieces).
+    static let objectColumns: SQLQueryString = "id, form_id, kid, revision, ciphertext_sha256, payload_sha256, byte_count, backend, wrap_kind"
+    /// Upper bound of package bytes in one page of `GET key-rotation/objects` (at least one object per page, whatever its size): keeps the response and the
+    /// server's working set bounded when attachments of 20 MB (packages of about 27 MB) are listed.
+    static let pageBytes = 32 << 20
+    static func wire(_ db: SQLDatabase, _ row: Object) async throws -> Data? {
+        guard row.backend == "db" else { return nil }
+        return try await ChunkedBlob.read(.objectCiphertext, key: row.id, on: db)
     }
     static func audit(_ tx: SQLDatabase, tenant: UUID, form: UUID?, actor: UUID, action: String, subject: UUID, at: String, source: String, target: String) async throws {
         let details = String(decoding: try JSONSerialization.data(withJSONObject: ["sourceKid": source, "targetKid": target]), as: UTF8.self)
@@ -49,26 +59,28 @@ enum RotationRoutes {
         guard let d = Data(base64URLString: s), d.count == count else { throw ValidationFailed(detail: "Ungültige Schlüsselhülle") }; return d
     }
     static func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
-    static func replacement(_ row: Object, _ b: Replacement, target: String, hold: Bool = false) throws -> PackageV2 {
+    static func replacement(_ row: Object, wire stored: Data?, _ b: Replacement, target: String, hold: Bool = false) throws -> PackageV2 {
         guard row.revision == b.expectedRevision, hex(row.ciphertext_sha256.data) == b.expectedSha256 else { throw Abort(.conflict, reason: "Objekt wurde geändert") }
-        guard row.backend == "db", let wire = row.ciphertext, let text = String(data: wire.data, encoding: .utf8) else { throw Abort(.conflict, reason: "Externer Speicher benötigt bestätigten Rewrap") }
+        guard row.backend == "db", let wire = stored, let text = String(data: wire, encoding: .utf8) else { throw Abort(.conflict, reason: "Externer Speicher benötigt bestätigten Rewrap") }
         guard let old = try? PackageV2(text), let new = try? PackageV2(b.package), new.kid == target,
               old.kid == row.kid, old.wrap == row.wrap_kind,
               old.iv == new.iv, old.ciphertext == new.ciphertext, old.tag == new.tag,
               Data(SHA256.hash(data: old.iv + old.ciphertext + old.tag)) == row.payload_sha256.data,
-              Data(SHA256.hash(data: wire.data)) == row.ciphertext_sha256.data,
+              Data(SHA256.hash(data: wire)) == row.ciphertext_sha256.data,
               !(old.wrap == "sym" && new.wrap != "sym"), !hold || new.wrap == "sym"
         else { throw ValidationFailed(detail: "Rewrap darf nur die Schlüsselhülle ändern") }
         return new
     }
     static func store(_ tx: SQLDatabase, tenant: UUID, row: Object, package: PackageV2) async throws {
         let wire = Data(package.wire.utf8)
+        // The first piece replaces the cell, the rest is appended in the same transaction (a statement of 16 MiB - 1 or more is lost by the driver).
         try await tx.raw("""
-            UPDATE stored_objects SET ciphertext = \(bind: Blob(wire)), kid = \(bind: package.kid), wrap_kind = \(bind: package.wrap),
+            UPDATE stored_objects SET ciphertext = \(bind: ChunkedBlob.head(wire)), kid = \(bind: package.kid), wrap_kind = \(bind: package.wrap),
               ciphertext_sha256 = \(bind: Blob(Data(SHA256.hash(data: wire)))), byte_count = \(bind: wire.count), revision = revision + 1
             WHERE customer_id = \(bind: DB.bin(tenant)) AND id = \(bind: row.id) AND revision = \(bind: row.revision) AND ciphertext_sha256 = \(bind: row.ciphertext_sha256)
             """).run()
         // Row is held FOR UPDATE; revision/digest predicates also enforce the CAS at the write boundary.
+        try await ChunkedBlob.append(wire, to: .objectCiphertext, key: row.id, on: tx)
     }
     static func register(_ tenants: RoutesBuilder, guardian: AuthGuard, db: Database, perms: PermissionService, now: @escaping @Sendable () -> Date) {
         let sql = db as! SQLDatabase
@@ -147,14 +159,18 @@ enum RotationRoutes {
             let after: UUID?
             if let raw = req.query[String.self, at: "after"] { guard let id = UUID(uuidString: raw) else { throw Abort(.badRequest) }; after = id } else { after = nil }
             let cursor: SQLQueryString = after.map { "AND id > \(bind: DB.bin($0))" } ?? ""
-            let rows = try await sql.raw("SELECT id, form_id, kid, revision, ciphertext_sha256, payload_sha256, ciphertext, backend, wrap_kind, (SELECT COUNT(*) FROM submissions s WHERE s.customer_id = stored_objects.customer_id AND s.form_id = stored_objects.form_id AND s.id = stored_objects.submission_id AND s.removable = 0) AS held FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND kid = \(bind: kid) \(cursor) ORDER BY id LIMIT \(literal: limit + 1)").all(decoding: Object.self)
-            var items: [[String: Any]] = []
+            let rows = try await sql.raw("SELECT \(RotationRoutes.objectColumns) FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND kid = \(bind: kid) \(cursor) ORDER BY id LIMIT \(literal: limit + 1)").all(decoding: Object.self)
+            var items: [[String: Any]] = [], bytes = 0, cut = rows.count > limit
             for r in rows.prefix(limit) {
+                // Page by package size as well: never more than `pageBytes` of packages per response (one object always fits).
+                if !items.isEmpty, bytes + Int(r.byte_count) > pageBytes { cut = true; break }
                 guard let form = DB.uuid(r.form_id.data) else { throw Abort(.conflict) }
                 try await perms.authorize(account: account, "content.decrypt", on: .form(customer: tenant, form: form))
-                items.append(["id": DB.uuid(r.id.data)!.uuidString.lowercased(), "formId": form.uuidString.lowercased(), "kid": r.kid, "revision": r.revision, "ciphertext_sha256": hex(r.ciphertext_sha256.data), "package": r.ciphertext.map { String(decoding: $0.data, as: UTF8.self) } as Any? ?? NSNull(), "wrapKind": r.wrap_kind, "held": try await isHeld(sql, tenant: tenant, id: r.id)])
+                let package = try await wire(sql, r)
+                bytes += package?.count ?? 0
+                items.append(["id": DB.uuid(r.id.data)!.uuidString.lowercased(), "formId": form.uuidString.lowercased(), "kid": r.kid, "revision": r.revision, "ciphertext_sha256": hex(r.ciphertext_sha256.data), "package": package.map { String(decoding: $0, as: UTF8.self) } as Any? ?? NSNull(), "wrapKind": r.wrap_kind, "held": try await isHeld(sql, tenant: tenant, id: r.id)])
             }
-            let res = try MailRoutes.anyJSON(["items": items, "next": rows.count > limit ? DB.uuid(rows[limit - 1].id.data)!.uuidString.lowercased() as Any : NSNull()]); res.headers.replaceOrAdd(name: .cacheControl, value: "no-store"); return res
+            let res = try MailRoutes.anyJSON(["items": items, "next": cut ? (items.last?["id"] as Any) : NSNull()]); res.headers.replaceOrAdd(name: .cacheControl, value: "no-store"); return res
         }
         // 32 MiB ingress packages plus Base64/JSON and the complete Hold proof list.
         tenants.grouped(AdminBodyGate.make(guardian: guardian, maxBytes: AdminBodyGate.maxReplacementBytes)).on(.PUT, "key-rotation", "objects", ":objectId", body: .collect(maxSize: ByteCount(value: AdminBodyGate.maxReplacementBytes))) { req async throws -> Response in
@@ -172,12 +188,12 @@ enum RotationRoutes {
                 let gs = try await generations(tx, tenant)
                 guard let old = gs.first(where: { $0.state == "retiring" }), let active = gs.first(where: { $0.state == "active" }) else { throw Abort(.conflict) }
                 for g in gs { try await requireAccess(tx, tenant: tenant, account: account, kid: g.kid) }
-                guard let r = try await tx.raw("SELECT id, form_id, kid, revision, ciphertext_sha256, payload_sha256, ciphertext, backend, wrap_kind, (SELECT COUNT(*) FROM submissions s WHERE s.customer_id = stored_objects.customer_id AND s.form_id = stored_objects.form_id AND s.id = stored_objects.submission_id AND s.removable = 0) AS held FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND id = \(bind: DB.bin(id)) FOR UPDATE").first(decoding: Object.self), let form = DB.uuid(r.form_id.data) else { throw Abort(.notFound) }
+                guard let r = try await tx.raw("SELECT \(RotationRoutes.objectColumns), (SELECT COUNT(*) FROM submissions s WHERE s.customer_id = stored_objects.customer_id AND s.form_id = stored_objects.form_id AND s.id = stored_objects.submission_id AND s.removable = 0) AS held FROM stored_objects WHERE customer_id = \(bind: DB.bin(tenant)) AND id = \(bind: DB.bin(id)) FOR UPDATE").first(decoding: Object.self), let form = DB.uuid(r.form_id.data) else { throw Abort(.notFound) }
                 guard r.kid == old.kid else { throw Abort(.conflict) }
                 try await p.authorize(account: account, "content.decrypt", on: .form(customer: tenant, form: form))
                 let held = try await isHeld(tx, tenant: tenant, id: r.id)
                 if held { try await p.authorize(account: account, "content.hold", on: .form(customer: tenant, form: form)) }
-                try await store(tx, tenant: tenant, row: r, package: replacement(r, b, target: active.kid, hold: held))
+                try await store(tx, tenant: tenant, row: r, package: replacement(r, wire: try await wire(tx, r), b, target: active.kid, hold: held))
                 try await audit(tx, tenant: tenant, form: form, actor: account, action: "key.rotation.rewrap", subject: id, at: DB.time(now()), source: old.kid, target: active.kid)
             }
             return Response(status: .noContent)

@@ -27,8 +27,10 @@ enum MigrationVerificationRoutes {
             guard parts.count == 3, let id = UUID(uuidString: parts[1].enumerated().map { index, c in
                 ([8,12,16,20].contains(index) ? "-" : "") + String(c)
             }.joined()) else { continue }
-            if let object = try await tx.raw("SELECT ciphertext FROM stored_objects WHERE id=\(bind: DB.bin(id)) AND object_role='data' AND state='ready' AND backend='db'").first(decoding: Sample.self),
-               let wire = String(data: object.ciphertext.data, encoding: .utf8), wire.contains("|hpke|") { return wire }
+            // Imported cells can exceed 16 MiB - 1 (legacy uploads up to 20 MB inside one package): check the header in SQL, then read the cell in pieces.
+            if let head = try await tx.raw("SELECT SUBSTRING(ciphertext, 1, 80) AS ciphertext FROM stored_objects WHERE id=\(bind: DB.bin(id)) AND object_role='data' AND state='ready' AND backend='db'").first(decoding: Sample.self),
+               String(decoding: head.ciphertext.data, as: UTF8.self).contains("|hpke|"),
+               let whole = try await ChunkedBlob.read(.objectCiphertext, key: DB.bin(id), on: tx), let wire = String(data: whole, encoding: .utf8) { return wire }
         }
         throw Abort(.notFound, reason: "Keine :2-Einsendungen importiert: Entschlüsselungsprobe entfällt; :1-Einsendungen bleiben Prüffall")
     }
