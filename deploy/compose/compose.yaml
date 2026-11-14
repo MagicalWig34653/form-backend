@@ -152,6 +152,10 @@ services:
       FORM_INTERNAL_TRUSTED_PROXIES_FILE: "${FORM_INTERNAL_TRUSTED_PROXIES_FILE:-}"
       FORM_LOG_LEVEL: # Optional: aus Prozess-ENV; fehlt = DB/Default bzw. Legacy-Proxy-Fallback.
       FORM_LOG_LEVEL_FILE: "${FORM_LOG_LEVEL_FILE:-}"
+      FORM_BODY_BUDGET_MB:
+      FORM_BODY_BUDGET_MB_FILE: "${FORM_BODY_BUDGET_MB_FILE:-}"
+      FORM_MAIL_MAX_MB:
+      FORM_MAIL_MAX_MB_FILE: "${FORM_MAIL_MAX_MB_FILE:-}"
       FORM_DB_HOST: "${FORM_DB_HOST:-mariadb.example.org}"
       FORM_DB_HOST_FILE: "${FORM_DB_HOST_FILE:-}"
       FORM_DB_PORT: "${FORM_DB_PORT:-3306}"
