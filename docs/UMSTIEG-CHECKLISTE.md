@@ -94,3 +94,7 @@ Plan-Felder: Namespace, Dump-Hash, Kunden- und Formularzuordnung sind Pflicht. F
 ## 5. Zeit und Ressourcen
 
 Messwerte der Generalprobe stehen in `docs/handoffs/Import-Generalprobe.md`. Faustregel aus der Messung: Prüflauf und Import dauern je etwa gleich lang; der Job hält höchstens 2 Verbindungen des Ziel-Pools.
+
+## 6. Altregeln im Prüfbericht (Karte 6E571834)
+
+Vor dem Veröffentlichen den Prüfbericht je Formular lesen: Einträge `formularFelder/<n>/regel/<name>` mit „nicht abbildbar“ sind Regeln, die das neue Formular nicht prüft (Muster mit Flags oder außerhalb des linearen Dialekts, `mussSein` ohne Text, unbekannte Regeln, zweites Dateifeld). Einwilligung, Längen und Muster im Dialekt sind übernommen („uebernommen“) und gelten sofort; Pflichtflag der Dateifelder und die Teiltreffer-Umschließung stichprobenartig mit einer Testeinsendung prüfen.

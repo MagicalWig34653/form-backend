@@ -4,6 +4,7 @@ import FormCore
 @testable import FormAdmin
 @testable import FormMigration
 @testable import FormMail
+@testable import FormIngest
 
 final class LegacyFormConverterTests: XCTestCase {
     let tenant = UUID(), form = UUID()
@@ -32,7 +33,7 @@ final class LegacyFormConverterTests: XCTestCase {
         ], config: ["name": marker, "mailBody": marker, "domains": "[\"" + marker + "\"]", marker: marker])
         let report = String(decoding: try JSONEncoder().encode(result.report), as: UTF8.self)
         XCTAssertFalse(report.contains(marker))
-        XCTAssertTrue(result.report.contains { $0.source == "formularFelder/3/regel" && $0.status == "nicht abbildbar" })
+        XCTAssertTrue(result.report.contains { $0.source == "formularFelder/3/regel/muster" && $0.status == "nicht abbildbar" })
         _ = try DocumentValidator.validate(result.document, tenant: tenant, form: form)
     }
     func testPartialMailAndDomainsNeverEnterExecutableDocument() throws {
@@ -72,5 +73,76 @@ final class LegacyFormConverterTests: XCTestCase {
         let base = DraftStore.standardDocument(tenant: tenant, form: form, name: "Formular")
         XCTAssertThrowsError(try LegacyFormConverter.convert(Data("{}".utf8), standardDocument: base))
         XCTAssertThrowsError(try LegacyFormConverter.convert(Data(repeating: 32, count: 1_048_577), standardDocument: base))
+    }
+    // MARK: Altregeln (Karte 6E571834)
+    func rules(_ typ: String, _ regel: String, pflicht: String = "1", config: [String: String] = [:]) throws -> (LegacyFormConverter.Result, [String: JSONValue]) {
+        let r = try convert([["feldName": "f", "typ": typ, "pflicht": pflicht, "regel": regel]], config: config)
+        _ = try DocumentValidator.validate(r.document, tenant: tenant, form: form)
+        return (r, r.document["form"]?["fields"]?["legacy_0"]?["validation"]?.object ?? [:])
+    }
+    func accepts(_ r: LegacyFormConverter.Result, _ value: String?) -> Bool {
+        let def = (try? JSONSerialization.jsonObject(with: JCS.canonicalize(r.document["form"]!))) as! [String: Any]
+        var fields: [String: Any] = [:]
+        if let value { fields["f"] = value }
+        let canonical = (try? JSONSerialization.data(withJSONObject: ["fields": fields], options: [.sortedKeys])) ?? Data()
+        return (try? SubmissionValidation.validate(canonical: canonical, definition: def)) != nil
+    }
+    func testLengthRulesAreCarriedAndEnforced() throws {
+        let (r, v) = try rules("text", "{\"minLaenge\":2,\"maxLaenge\":4}")
+        XCTAssertEqual(v["minLength"], .int(2)); XCTAssertEqual(v["maxLength"], .int(4))
+        XCTAssertTrue(accepts(r, "abc")); XCTAssertFalse(accepts(r, "a")); XCTAssertFalse(accepts(r, "abcde"))
+        XCTAssertTrue(r.report.contains { $0.source == "formularFelder/0/regel/minLaenge" && $0.status == "uebernommen" })
+        let (bool, boolv) = try rules("text", "{\"minLaenge\":true}")
+        XCTAssertNil(boolv["minLength"]); XCTAssertTrue(bool.report.contains { $0.source == "formularFelder/0/regel/minLaenge" && $0.status == "nicht abbildbar" })
+        let (bad, bv) = try rules("text", "{\"minLaenge\":\"2\"}")
+        XCTAssertNil(bv["minLength"])
+        XCTAssertTrue(bad.report.contains { $0.source == "formularFelder/0/regel/minLaenge" && $0.status == "nicht abbildbar" })
+    }
+    func testConsentMussSeinBecomesSingleValueEnumKeepingRequired() throws {
+        let (r, v) = try rules("text", "{\"mussSein\":\"true\"}")
+        XCTAssertEqual(v["enum"], .array([.string("true")]))
+        XCTAssertEqual(r.document["form"]?["fields"]?["legacy_0"]?["required"], .bool(true))
+        XCTAssertTrue(accepts(r, "true")); XCTAssertFalse(accepts(r, "false")); XCTAssertFalse(accepts(r, nil))
+        let (b, _) = try rules("bool", "{\"mussSein\":\"true\"}")
+        XCTAssertTrue(accepts(b, "true")); XCTAssertFalse(accepts(b, "false")); XCTAssertFalse(accepts(b, "1"))
+        let (n, nv) = try rules("text", "{\"mussSein\":true}")
+        XCTAssertNil(nv["enum"])
+        XCTAssertTrue(n.report.contains { $0.source == "formularFelder/0/regel/mussSein" && $0.status == "nicht abbildbar" })
+    }
+    func testPatternPartialMatchSemanticsAreKept() throws {
+        // Anchored pattern: stripped, full match.
+        let (a, av) = try rules("text", "{\"muster\":\"/^[0-9]{3}$/\"}")
+        XCTAssertEqual(av["pattern"], .string("[0-9]{3}"))
+        XCTAssertTrue(accepts(a, "123")); XCTAssertFalse(accepts(a, "1234")); XCTAssertFalse(accepts(a, "x123"))
+        // Unanchored: legacy preg_match is a partial match, so the pattern is wrapped.
+        let (u, _) = try rules("text", "{\"muster\":\"/[0-9]{3}/\"}")
+        XCTAssertTrue(accepts(u, "ab123cd")); XCTAssertFalse(accepts(u, "ab12cd"))
+        // Half anchored.
+        let (h, _) = try rules("text", "{\"muster\":\"#^PLZ#\"}")
+        XCTAssertTrue(accepts(h, "PLZ 12345")); XCTAssertFalse(accepts(h, "x PLZ"))
+        // Anchors inside alternation keep their per-branch meaning.
+        let (alt, _) = try rules("text", "{\"muster\":\"/^a|b$/\"}")
+        XCTAssertTrue(accepts(alt, "azz")); XCTAssertTrue(accepts(alt, "zzb")); XCTAssertFalse(accepts(alt, "zbz"))
+    }
+    func testUnsupportedPatternsAreReportedNeverDropped() throws {
+        for muster in ["/^\\\\d+$/i", "/(?=a)b/", "/a(?<n>b)\\\\1/", "^\\\\d+$", "/\\\\bword\\\\b/"] {
+            let (r, v) = try rules("text", "{\"muster\":\"\(muster)\"}")
+            XCTAssertNil(v["pattern"], muster)
+            XCTAssertTrue(r.report.contains { $0.source == "formularFelder/0/regel/muster" && $0.status == "nicht abbildbar" }, muster)
+        }
+    }
+    func testFileFieldBecomesFileKindFirstOnly() throws {
+        let r = try convert([["feldName": "beleg", "typ": "datei", "pflicht": "1", "regel": "{}"], ["feldName": "zweit", "typ": "datei", "pflicht": "0"]])
+        _ = try DocumentValidator.validate(r.document, tenant: tenant, form: form)
+        XCTAssertEqual(r.document["form"]?["fields"]?["legacy_0"]?["kind"], .string("file"))
+        XCTAssertEqual(r.document["form"]?["fields"]?["legacy_0"]?["required"], .bool(true))
+        XCTAssertNil(r.document["form"]?["fields"]?["legacy_1"])
+        XCTAssertTrue(r.report.contains { $0.source == "formularFelder/1" && $0.status == "nicht abbildbar" })
+    }
+    func testBrokenAndUnknownRulesAreReported() throws {
+        let (r, _) = try rules("text", "broken")
+        XCTAssertTrue(r.report.contains { $0.source == "formularFelder/0/regel" && $0.status == "nicht abbildbar" })
+        let (u, _) = try rules("text", "{\"irgendwas\":1}")
+        XCTAssertTrue(u.report.contains { $0.source == "formularFelder/0/regel" && $0.status == "nicht abbildbar" })
     }
 }

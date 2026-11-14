@@ -1,5 +1,11 @@
 # Tatsächlicher Stand
 
+## Konverter übernimmt Altregeln (14.11.2026, Todolino 6E571834, Worktree-Branch `worktree-agent-a821c89579478f0c9`, lokal committet, nicht gepusht)
+
+- Änderung (`FormMigration/LegacyFormConverter.swift`): `regel`-JSON wird abgebildet: `minLaenge`/`maxLaenge` (nur echte Ganzzahlen, wie `is_int` im Alt) -> `minLength`/`maxLength`; `mussSein` (String) -> `enum` mit einem Wert, `required` bleibt (kein `fixedValue`/`locked`: das ließe fehlende Werte durch); `muster` (PCRE mit Begrenzern) -> `pattern` im linearen Dialekt (ADR 0046). Teiltreffer (Alt) vs. Volltreffer (neu): `^...$` ohne `|` wird entrankert, sonst `[\s\S]*(?:...)[\s\S]*`. Flags, andere Begrenzer, Konstrukte außerhalb des Dialekts, Muster >500 Byte: "nicht abbildbar" mit Pfad `formularFelder/<n>/regel/<name>`. `datei` -> Kind `file` (nur das erste, wie im Alt; weitere "nicht abbildbar"). Kaputte/unbekannte Regeln werden gemeldet. Berichte enthalten nie Werte.
+- Tests: 6 neue in `LegacyFormConverterTests` prüfen die Regeln gegen die echte `SubmissionValidation` (Länge, Einwilligung inkl. fehlend/falsch, Muster Teil/Voll/Alternation, nicht unterstützte Muster, Dateifeld). Mutationsprobe (Regelabbildung auskommentiert): 9 Fehlschläge; mit Fix grün. `Package.swift`: Testtarget bekommt `FormIngest`.
+- Grenzen: PCRE `$` vor abschließendem Zeilenumbruch und Mehrzeilenflags nicht abgebildet; Pflicht-Dateifeld unverändert übernommen (Alt-Verhalten für Uploads in `$post` nicht abschließend geprüft); `min/maxLaenge` zählt jetzt Zeichen (Swift `count`) statt `mb_strlen`-Codepoints (nur bei Graphemclustern abweichend); Dateiregeln (Typ/Größe) gelten global, nicht je Feld; Nacharbeit-Rest laut Matrix: `datum`/derived, Turnstile.
+
 ## Legacy-API für alte Website-Einbindungen (14.11.2026, Todolino 4D037986, Worktree-Branch `worktree-agent-a6b7b112a581a7ee7`, lokal, nicht gepusht)
 
 - Befund (belegt aus form-backend_bvk): Alt-SDK ruft `/api/getFormData.php?z=`, `/endpoint/?f=`, `/api/v2/form/?f=`, `/api/v2/submit/?f=`, `/api/v2/key/`; Fehler `{"error":{"code","status"}}` (v2) bzw. `<Code> - <Text>` (v1), Feldfehler 412.

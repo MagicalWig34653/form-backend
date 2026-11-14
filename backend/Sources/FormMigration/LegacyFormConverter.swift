@@ -44,8 +44,8 @@ public enum LegacyFormConverter {
             form["title"] = .object(["de": .string(title)]); view["title"] = form["title"]
             note("name", "uebernommen", "Formulartitel übernommen.")
         } else { note("name", "angepasst", "Ungültiger Titel durch Standardtitel ersetzt.") }
-        var fields: [String: JSONValue] = [:], order: [String] = [], names = Set<String>()
-        let kinds = ["text":"text", "email":"email", "datum":"date", "zahl":"number", "bool":"boolean", "auswahl":"choice"]
+        var fields: [String: JSONValue] = [:], order: [String] = [], names = Set<String>(), haveFile = false
+        let kinds = ["text":"text", "email":"email", "datum":"date", "zahl":"number", "bool":"boolean", "auswahl":"choice", "datei":"file"]
         guard source.legacyFields.count <= 500 else { throw Failure.tooLarge }
         for (index, f) in source.legacyFields.enumerated() {
             // Ordinals, never arbitrary source names or values, identify report entries.
@@ -60,6 +60,11 @@ public enum LegacyFormConverter {
             if kind == "number" { validation["pattern"] = .string("^-?[0-9]+([.,][0-9]+)?$") }
             if kind == "boolean" { validation["enum"] = .array(["0","1","true","false","on","off"].map(JSONValue.string)) }
             let rule = f["regel"] ?? nil
+            if kind == "file" {
+                // The legacy backend only ever handled the FIRST file field (FeldSchema::uploadFeldname); later ones were ignored.
+                guard !haveFile else { note(path, "nicht abbildbar", "Weiteres Dateifeld: das Altsystem verarbeitete nur das erste Dateifeld."); continue }
+                haveFile = true
+            }
             if kind == "choice" {
                 guard let rule, let d = rule.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
                       let options = o["optionen"] as? [String], !options.isEmpty, options.count <= 500 else {
@@ -67,14 +72,13 @@ public enum LegacyFormConverter {
                 }
                 validation["enum"] = .array(options.map(JSONValue.string))
             }
-            if let rule, !rule.isEmpty, rule != "{}" {
-                note(path + "/regel", "nicht abbildbar", "Altregeln außer Auswahloptionen benötigen semantische Prüfung; PHP-Regulärausdrücke werden nicht ausgeführt.")
-            }
+            applyRules(rule, kind: kind, path: path, validation: &validation, note: note)
             let id = "legacy_\(index)"
             fields[id] = .object(["name": .string(name), "kind": .string(kind), "label": .object(["de": .string(name)]),
                 "required": .bool(required == "1"), "hidden": .bool(false), "locked": .bool(false),
                 "sensitive": .bool(kind == "email"), "validation": .object(validation)])
             order.append(id)
+            if kind == "file" { note(path, "angepasst", "Dateifeld übernommen; Dateityp- und Größenregeln des Uploads gelten global (PDF/PNG/JPG/HEIC, unter 20 MB, höchstens 5 Dateien); Pflichtflag prüfen.") }
             note(path, "angepasst", "Typ in Editorformat übersetzt; Pflicht-, Leerwert- und Datums-/Zahlsemantik manuell prüfen; Beschriftung aus Feldname vorgeschlagen.")
         }
         if source.legacyFields.isEmpty, let requiredNames = list(value("essentialPostFields")) {
@@ -159,6 +163,73 @@ public enum LegacyFormConverter {
         view["form"] = .object(reference); views[0] = .object(view); doc["views"] = .array(views)
         return Result(document: .object(doc), proposals: .object(proposals), report: report)
     }
+
+    /// Maps the legacy `regel` JSON (minLaenge, maxLaenge, muster, mussSein, optionen) onto the editor validation. Every rule that is not
+    /// mapped is reported per field (never silently dropped); reports carry rule names only, never values.
+    private static func applyRules(_ rule: String?, kind: String, path: String, validation: inout [String: JSONValue], note: (String, String, String) -> Void) {
+        guard let rule, !rule.isEmpty, rule != "{}" else { return }
+        guard let d = rule.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else {
+            note(path + "/regel", "nicht abbildbar", "Regel ist kein JSON-Objekt (im Altsystem ein Konfigurationsfehler); Regeln von Hand anlegen."); return
+        }
+        let handled: Set<String> = ["optionen", "minLaenge", "maxLaenge", "muster", "mussSein"]
+        if o.keys.contains(where: { !handled.contains($0) }) {
+            note(path + "/regel", "nicht abbildbar", "Unbekannte Regelschlüssel nicht übernommen.")
+        }
+        if kind == "file" {
+            if o.keys.contains(where: { $0 != "optionen" }) { note(path + "/regel", "nicht abbildbar", "Längen-, Muster- und Einwilligungsregeln gelten nicht für Dateifelder.") }
+            return
+        }
+        for (old, key) in [("minLaenge", "minLength"), ("maxLaenge", "maxLength")] {
+            guard let raw = o[old] else { continue }
+            // Legacy honours only real integers (is_int); JSON booleans decode as NSNumber, so exclude them.
+            if let n = raw as? NSNumber, !isJSONBool(raw), n.doubleValue == n.doubleValue.rounded(), n.doubleValue >= 0, n.doubleValue < 1e9 {
+                validation[key] = .int(Int64(n.doubleValue))
+                note(path + "/regel/" + old, "uebernommen", "Länge als \(key) übernommen.")
+            } else { note(path + "/regel/" + old, "nicht abbildbar", "Längenregel ist keine nichtnegative Ganzzahl; im Altsystem wirkungslos, nicht übernommen.") }
+        }
+        if let raw = o["mussSein"] {
+            // Legacy: `$wert !== mussSein` against the posted string, e.g. consent "true". Exact-value enum keeps `required` intact.
+            if let text = raw as? String {
+                validation["enum"] = .array([.string(text)])
+                note(path + "/regel/mussSein", "uebernommen", "Pflichtwert (Einwilligung) als erlaubte Einzelauswahl übernommen.")
+            } else { note(path + "/regel/mussSein", "nicht abbildbar", "mussSein ist kein Text; das Altsystem lehnte damit jeden Wert ab. Einwilligung von Hand anlegen.") }
+        }
+        if let raw = o["muster"] {
+            if let text = raw as? String {
+                switch linearPattern(fromPCRE: text) {
+                case .success(let p): validation["pattern"] = .string(p); note(path + "/regel/muster", "uebernommen", "Muster in den linearen Dialekt (ADR 0046) übertragen; Treffer gilt wie im Altsystem für Teilübereinstimmung.")
+                case .failure(let why): note(path + "/regel/muster", "nicht abbildbar", why.reason)
+                }
+            } else { note(path + "/regel/muster", "nicht abbildbar", "Muster ist kein Text.") }
+        }
+    }
+
+    /// Portable (Darwin and Linux) check that a decoded JSON number was a boolean literal.
+    private static func isJSONBool(_ v: Any) -> Bool {
+        guard let d = try? JSONSerialization.data(withJSONObject: [v]), let t = String(data: d, encoding: .utf8) else { return false }
+        return t == "[true]" || t == "[false]"
+    }
+
+    /// PCRE with delimiters (partial match) -> linear dialect (full match). Flags, other delimiters or unsupported constructs fail.
+    static func linearPattern(fromPCRE raw: String) -> Swift.Result<String, PatternFailure> {
+        let chars = Array(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let open = chars.first, "/#~@%!".contains(open), let close = chars.lastIndex(of: open), close > 0 else {
+            return .failure(PatternFailure("Muster ohne gültige Begrenzer."))
+        }
+        guard close == chars.count - 1 else { return .failure(PatternFailure("Muster mit Modifikatoren (Flags) ist im linearen Dialekt nicht möglich; von Hand ohne Flags neu schreiben.")) }
+        var body = String(chars[1..<close])
+        let anchoredStart = body.hasPrefix("^")
+        var trailing = 0; for c in body.reversed().dropFirst() { if c == "\\" { trailing += 1 } else { break } }
+        let anchoredEnd = body.hasSuffix("$") && trailing % 2 == 0
+        if anchoredStart && anchoredEnd && !body.contains("|") {
+            body = String(body.dropFirst().dropLast())
+        } else {
+            body = "[\\s\\S]*(?:" + body + ")[\\s\\S]*"
+        }
+        if let why = LinearRegex.validate(body) { return .failure(PatternFailure("Muster nicht im linearen Dialekt (\(why)); von Hand neu schreiben.")) }
+        return .success(body)
+    }
+    struct PatternFailure: Error { let reason: String; init(_ r: String) { reason = r } }
     private static func object(_ v: JSONValue?) -> [String: JSONValue] { if case .object(let o)? = v { return o }; return [:] }
     private static func array(_ v: JSONValue?) -> [JSONValue] { if case .array(let a)? = v { return a }; return [] }
 }

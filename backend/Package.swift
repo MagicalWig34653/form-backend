@@ -130,7 +130,7 @@ let package = Package(
             swiftSettings: v5),
 
         .target(name: "FormMigration", dependencies: ["FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Fluent", package: "fluent"), .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"), .product(name: "Vapor", package: "vapor"), .product(name: "Crypto", package: "swift-crypto")], swiftSettings: v5),
-        .testTarget(name: "FormMigrationTests", dependencies: ["FormAdmin", "FormMail", "FormMigration", "FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Crypto", package: "swift-crypto"), .product(name: "Vapor", package: "vapor")], resources: [.copy("Fixtures")], swiftSettings: v5),
+        .testTarget(name: "FormMigrationTests", dependencies: ["FormAdmin", "FormIngest", "FormMail", "FormMigration", "FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Crypto", package: "swift-crypto"), .product(name: "Vapor", package: "vapor")], resources: [.copy("Fixtures")], swiftSettings: v5),
         .testTarget(name: "FormCoreTests", dependencies: ["FormCore"], swiftSettings: v5),
         .testTarget(name: "FormPersistenceTests", dependencies: ["FormPersistence", "FormCore", .product(name: "Vapor", package: "vapor")], swiftSettings: v5),
         .testTarget(

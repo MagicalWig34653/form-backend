@@ -99,7 +99,7 @@ Menü **Umstieg**:
    - **Veröffentlichen:** „Ich habe die Änderungen geprüft.“ → „Jetzt veröffentlichen“.
    - **Einbindung:** „Zugangsdatei ausstellen“ und die Datei für das PHP-SDK auf der Website ablegen.
 
-Eigene Feldmuster aus dem Altsystem werden nicht übernommen (Prüfbericht „nicht abbildbar“); im Editor neu gesetzte Muster müssen zum einfachen Regex-Dialekt passen (kein Lookaround, keine Rückreferenz, kein `(?i)`); `App migrate` meldet Abweichungen vor dem Umschalten.
+Altregeln werden je Feld übernommen: Mindest-/Höchstlänge, `mussSein` (Einwilligung, als einziger erlaubter Wert; Pflicht bleibt) und Muster, sofern es im einfachen Regex-Dialekt liegt (kein Lookaround, keine Rückreferenz, kein `\b`, keine Flags wie `/i`). Das Altsystem prüfte Muster als Teiltreffer, das neue als Volltreffer; der Konverter umschließt unverankerte Muster entsprechend. Der erste Dateifeld-Typ wird als Dateifeld übernommen (erlaubt: PDF, PNG, JPG, HEIC, unter 20 MB, höchstens 5 Dateien). Was nicht abbildbar ist (Muster mit Flags oder außerhalb des Dialekts, unbekannte Regeln, weitere Dateifelder), steht im Prüfbericht als „nicht abbildbar“ mit Feldnummer und Regelname (`formularFelder/<n>/regel/<name>`); diese Regeln im Editor neu setzen. Im Editor neu gesetzte Muster müssen zum Dialekt passen; `App migrate` meldet Abweichungen vor dem Umschalten.
 
 ## 5. Umschalten
 
