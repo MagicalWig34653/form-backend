@@ -534,6 +534,8 @@ Port per Firewall ausschließlich vom Proxy zulassen. Hier werden keine TLS-Zert
 
 ## Update, Migration und Rollback
 
+**Feldmuster (ADR 0046):** `App migrate` meldet am Ende `WARNING pattern-incompatible: form=… field=… reason=…` für jedes veröffentlichte Feldmuster außerhalb des linearen Regex-Dialekts (z. B. `(?i)`, `\p{L}`, Rückreferenz, Lookaround); solche Formulare lehnen nichtleere Werte ab, bis das Muster angepasst und neu veröffentlicht ist. Meldungen vor dem Umschalten abarbeiten.
+
 ```bash
 git pull --ff-only
 # Vorher DB und Schlüssel sichern, alten Digest und Schema-Kompatibilität prüfen.
