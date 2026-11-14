@@ -3,6 +3,7 @@ import Crypto
 import FormAuth
 @testable import FormAdmin
 import FormCore
+import FormIngest
 import FormPersistence
 import Foundation
 import SQLKit
@@ -11,6 +12,7 @@ import XCTVapor
 
 final class ReleaseFlowTests: XCTestCase {
     private struct C: Decodable { let c: Int }
+    private struct StoredDef: Decodable { let definition_json: String }
     private struct Frm: Decodable { let active: Int; let current_release_id: Blob? }
 
     private func hex(_ d: Data) -> String { d.map { String(format: "%02x", $0) }.joined() }
@@ -127,6 +129,21 @@ final class ReleaseFlowTests: XCTestCase {
             XCTAssertEqual(still, 1)
             let audit = try await f.sql.raw("SELECT COUNT(*) AS c FROM audit_events WHERE action_code IN ('release.confirm','release.publish','form.create')").first(decoding: C.self)?.c
             XCTAssertEqual(audit, 3)
+            // Upgrade check (ADR 0046): the published definition is clean; an incompatible stored pattern is reported per field.
+            let clean = try await PatternCompatibility.scan(sql: f.sql)
+            XCTAssertEqual(clean, [])
+            let stored = try await f.sql.raw("SELECT definition_json FROM form_versions").first(decoding: StoredDef.self)?.definition_json ?? ""
+            var storedDoc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any])
+            var storedFields = try XCTUnwrap(storedDoc["fields"] as? [String: Any])
+            let firstKey = try XCTUnwrap(storedFields.keys.sorted().first)
+            var storedField = try XCTUnwrap(storedFields[firstKey] as? [String: Any])
+            storedField["validation"] = ["pattern": "(?i)abc"]
+            storedFields[firstKey] = storedField; storedDoc["fields"] = storedFields
+            let patched = String(decoding: try JSONSerialization.data(withJSONObject: storedDoc), as: UTF8.self)
+            try await f.sql.raw("UPDATE form_versions SET definition_json = \(bind: patched)").run()
+            let found = try await PatternCompatibility.scan(sql: f.sql)
+            XCTAssertEqual(found.count, 1)
+            XCTAssertEqual(found.first?.form, form.replacingOccurrences(of: "-", with: "").lowercased())
             // the pointer is what the ingest reads: getForm shows it
             try await c.get("tenants/\(tenant)/forms/\(form)") { res async throws in
                 XCTAssertEqual(jsonObject(res)["active"] as? Bool, true); XCTAssertEqual(jsonObject(res)["currentReleaseVersion"] as? Int, 1)

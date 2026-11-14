@@ -2,6 +2,20 @@
 import XCTest
 @testable import FormIngest
 
+final class PatternCompatibilityTests: XCTestCase {
+    func testReportsOnlyPatternsOutsideTheDialect() {
+        let def: [String: Any] = ["fields": [
+            "a": ["name": "plz", "validation": ["pattern": "\\d{5}"]],
+            "b": ["name": "ci", "validation": ["pattern": "(?i)abc"]],
+            "c": ["name": "uni", "validation": ["muster": "\\p{L}+"]],
+            "d": ["name": "none", "validation": [String: Any]()],
+            "e": ["name": "bad", "validation": ["pattern": 5]],
+        ]]
+        let f = PatternCompatibility.findings(definition: def, form: "f1")
+        XCTAssertEqual(f.map(\.field), ["ci", "uni", "bad"])   // ordered by field key
+    }
+}
+
 final class SubmissionValidationTests: XCTestCase {
     private func canonical(_ fields: [String: Any]) -> Data {
         try! JSONSerialization.data(withJSONObject: ["fields": fields, "files": []] as [String: Any])

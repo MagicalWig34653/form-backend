@@ -98,6 +98,8 @@ Menü **Umstieg**:
    - **Veröffentlichen:** „Ich habe die Änderungen geprüft.“ → „Jetzt veröffentlichen“.
    - **Einbindung:** „Zugangsdatei ausstellen“ und die Datei für das PHP-SDK auf der Website ablegen.
 
+Eigene Feldmuster aus dem Altsystem werden nicht übernommen (Prüfbericht „nicht abbildbar“); im Editor neu gesetzte Muster müssen zum einfachen Regex-Dialekt passen (kein Lookaround, keine Rückreferenz, kein `(?i)`); `App migrate` meldet Abweichungen vor dem Umschalten.
+
 ## 5. Umschalten
 
 1. Website auf das neue PHP-SDK umstellen (Zugangsdatei aus 4.3), Testeinsendung schicken.

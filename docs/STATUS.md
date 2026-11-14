@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## S2-03 Nachbesserung nach Codex-Review (14.11.2026, Karten S2-03a 12CEEEFE, S2-03b 46B784C4, S2-03c 88B3E7CC; Branch wie unten, lokal, nicht gepusht)
+
+- (a) Compiler-DoS: festes Arbeitsbudget (50 000 Besuche) + leere quantifizierte Gruppen werden beim Parsen verworfen. (b) Klassenoperatoren `&&`, `--`, `||`, verschachtelte/POSIX-Klassen, `[]` abgelehnt. (c) `\w`/`\d`/`\s` wie ICU; Differentialtest gegen ICU über U+0000..U+1FFFF (Private Use ausgenommen: Apple-ICU-Daten weichen dort ab, `\s` enthält U+000B/U+0085, gemessen).
+- Mutationsprobe (alte `LinearRegex.swift` aus 8eb0c95): `testCompilerWorkIsBounded` rot (3x Watchdog 5 s, Test selbst beendet nach 15 s), `testClassSetOperatorsAreRejected` rot, `testClassMembershipMatchesICU` rot, `testDifferentialAgainstICU` rot; mit Fix alle grün.
+- Migration: Inventur: der Konverter (`LegacyFormConverter`) importiert keine Alt-Regulärausdrücke (`regel` -> "nicht abbildbar"), erzeugt nur `^-?[0-9]+([.,][0-9]+)?$` (im Dialekt); Muster können also nur aus dem Editor/der API stammen. Neu: `FormIngest/PatternCompatibility` + `App migrate` gibt `WARNING pattern-incompatible: form=… field=…` für aktuelle Releases aus (read-only). Doku: BETRIEB.md, UMSTIEG-CHECKLISTE.md (6b), MIGRATION-ANLEITUNG.md. Einsendungen werden weiter abgelehnt (nicht still): Meldung ist vorgelagert.
+- Grenzen: Prüfung betrifft nur aktuelle Releases (nicht Entwürfe/alte Versionen); Differentialtest nur bis Plane 1.
+
 ## Regex-ReDoS in der Formularvalidierung behoben (14.11.2026, Todolino S2-03 017C4F98, Worktree-Branch `worktree-agent-a4abe8cc3317dc34e`, lokal committet, nicht gepusht)
 
 - Ursache (belegt): Der Textfilter `hasNestedQuantifier` ließ `((a|aa))+` durch (innere Klammer beendet `[^)]*`); `NSRegularExpression` hat kein Zeitlimit und ist nicht abbrechbar. Mutationsprobe: mit dem alten Matcher hängt `SubmissionValidationTests/testReviewFindings` (Muster `((a|aa))+`, `"a"*100+"!"`) über 180 s (Prozess abgebrochen).

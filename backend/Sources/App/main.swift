@@ -47,6 +47,11 @@ struct MigrateCommand: AsyncCommand {
             let r = try await MigrationRunner(db: Persistence.sql(context.application)).run(schemaFile: MigrationRunner.upgradeFile(name, schemaFile: schemaFile), name: name)
             context.console.print("upgrade \(name): \(r)")
         }
+        // ADR 0046: report published patterns the linear dialect cannot evaluate (their forms reject non-empty values). Read-only, never fails the upgrade.
+        if let findings = try? await PatternCompatibility.scan(sql: Persistence.sql(context.application)) {
+            for f in findings { context.console.print("WARNING pattern-incompatible: form=\(f.form) field=\(f.field) reason=\(f.reason); adjust the pattern before rollout (docs/BETRIEB.md)") }
+            context.console.print("pattern check: \(findings.isEmpty ? "all published patterns supported" : "\(findings.count) incompatible pattern(s)")")
+        }
     }
 }
 

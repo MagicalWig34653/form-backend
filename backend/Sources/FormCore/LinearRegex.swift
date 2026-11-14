@@ -13,6 +13,7 @@ public struct LinearRegex: Sendable {
     public static let maxInputBytes = 2_000
     static let maxProgram = 4_000
     static let maxRepeat = 1_000
+    static let maxWork = 50_000   // compiler visits, independent of emitted instructions
 
     public struct Unsupported: Error, Equatable { public let reason: String }
 
@@ -47,7 +48,8 @@ public struct LinearRegex: Sendable {
         let node = try p.parseAlt()
         guard p.i == p.s.count else { throw Unsupported(reason: "unbalanced parenthesis") }
         var prog: [Inst] = []
-        try Self.emit(node, &prog)
+        var work = 0
+        try Self.emit(node, &prog, &work)
         prog.append(.match)
         self.program = prog
     }
@@ -91,9 +93,12 @@ public struct LinearRegex: Sendable {
     // MARK: classes
     static func isLineTerminator(_ s: Unicode.Scalar) -> Bool { [0x0A, 0x0B, 0x0C, 0x0D, 0x85, 0x2028, 0x2029].contains(s.value) }
     static func inClass(_ k: Character, _ s: Unicode.Scalar) -> Bool {
-        let digit = s.properties.numericType == .decimal
-        let word = s.properties.isAlphabetic || digit || s == "_" || s.properties.generalCategory == .nonspacingMark
-        let space = s.properties.isWhitespace
+        // ICU definitions: \d = Nd; \w = Alphabetic, M, Nd, Pc, Join_Control; \s = White_Space.
+        let gc = s.properties.generalCategory
+        let digit = gc == .decimalNumber
+        let word = s.properties.isAlphabetic || digit || s.value == 0x200C || s.value == 0x200D
+            || gc == .nonspacingMark || gc == .spacingMark || gc == .enclosingMark || gc == .connectorPunctuation
+        let space = s.properties.isWhitespace   // White_Space (incl. U+000B, U+0085), as measured against ICU
         switch k {
         case "d": return digit
         case "D": return !digit
@@ -105,34 +110,36 @@ public struct LinearRegex: Sendable {
     }
 
     // MARK: compile
-    static func emit(_ n: Node, _ p: inout [Inst]) throws {
+    static func emit(_ n: Node, _ p: inout [Inst], _ work: inout Int) throws {
+        work += 1
+        guard work <= maxWork else { throw Unsupported(reason: "pattern too complex") }
         guard p.count <= maxProgram else { throw Unsupported(reason: "pattern too complex") }
         switch n {
         case .empty: break
         case .set(let c): p.append(.set(c))
         case .bol: p.append(.bol)
         case .eol: p.append(.eol)
-        case .cat(let xs): for x in xs { try emit(x, &p) }
+        case .cat(let xs): for x in xs { try emit(x, &p, &work) }
         case .alt(let xs):
             var jumps: [Int] = []
             for (k, x) in xs.enumerated() {
                 if k < xs.count - 1 {
                     let sp = p.count; p.append(.split(0, 0))
-                    try emit(x, &p)
+                    try emit(x, &p, &work)
                     jumps.append(p.count); p.append(.jmp(0))
                     p[sp] = .split(sp + 1, p.count)
-                } else { try emit(x, &p) }
+                } else { try emit(x, &p, &work) }
             }
             for j in jumps { p[j] = .jmp(p.count) }
         case .opt(let x):
-            let sp = p.count; p.append(.split(0, 0)); try emit(x, &p); p[sp] = .split(sp + 1, p.count)
+            let sp = p.count; p.append(.split(0, 0)); try emit(x, &p, &work); p[sp] = .split(sp + 1, p.count)
         case .star(let x):
-            let sp = p.count; p.append(.split(0, 0)); try emit(x, &p); p.append(.jmp(sp)); p[sp] = .split(sp + 1, p.count)
+            let sp = p.count; p.append(.split(0, 0)); try emit(x, &p, &work); p.append(.jmp(sp)); p[sp] = .split(sp + 1, p.count)
         case .plus(let x):
-            let st = p.count; try emit(x, &p); p.append(.split(st, p.count + 1))
+            let st = p.count; try emit(x, &p, &work); p.append(.split(st, p.count + 1))
         case .rep(let x, let lo, let hi):
-            for _ in 0..<lo { try emit(x, &p) }
-            if let hi { for _ in lo..<hi { try emit(.opt(x), &p) } } else { try emit(.star(x), &p) }
+            for _ in 0..<lo { try emit(x, &p, &work) }
+            if let hi { for _ in lo..<hi { try emit(.opt(x), &p, &work) } } else { try emit(.star(x), &p, &work) }
         }
         guard p.count <= maxProgram else { throw Unsupported(reason: "pattern too complex") }
     }
@@ -150,11 +157,21 @@ public struct LinearRegex: Sendable {
         }
         mutating func parseCat() throws -> Node {
             var items: [Node] = []
-            while let c = peek(), c != "|", c != ")" { items.append(try parseQuantified()) }
-            return items.isEmpty ? .empty : .cat(items)
+            while let c = peek(), c != "|", c != ")" {
+                let q = try parseQuantified()
+                if case .empty = q { continue }   // empty items add nothing; keeps nested empties from costing work
+                items.append(q)
+            }
+            return items.isEmpty ? .empty : (items.count == 1 ? items[0] : .cat(items))
         }
         mutating func parseQuantified() throws -> Node {
             var atom = try parseAtom()
+            if case .empty = atom, let c = peek(), c == "*" || c == "+" || c == "?" || c == "{" {
+                // Quantified empty group: same language as empty; consume the quantifier without building nodes.
+                if c == "{" { _ = try parseBraces(.empty) } else { i += 1 }
+                if let n = peek(), n == "?" || n == "+" || n == "*" || n == "{" { throw Unsupported(reason: "lazy, possessive or stacked quantifier") }
+                return .empty
+            }
             if let c = peek(), c == "*" || c == "+" || c == "?" || c == "{" {
                 switch c {
                 case "*": i += 1; atom = .star(atom)
@@ -227,9 +244,11 @@ public struct LinearRegex: Sendable {
             while true {
                 guard let c = peek() else { throw Unsupported(reason: "unterminated class") }
                 i += 1
-                if c == "]", !first { return cs }
+                if c == "]" { if first { throw Unsupported(reason: "empty class") }; return cs }
                 first = false
-                if c == "[" { throw Unsupported(reason: "nested class") }
+                if c == "[" { throw Unsupported(reason: "nested class or POSIX class") }
+                // ICU set operators (intersection, difference, union): never reinterpreted as literals.
+                if let n = peek(), (c == "&" && n == "&") || (c == "-" && n == "-") || (c == "|" && n == "|") { throw Unsupported(reason: "class set operator") }
                 var lo = c.value
                 if c == "\\" {
                     let e = try parseEscape()

@@ -17,3 +17,10 @@ Betreiber definieren pro Feld ein `pattern`/`muster`; öffentliche Einsendungen 
 
 - Semantik weicht minimal von ICU ab: `\d`/`\w`/`\s` nach Unicode-Eigenschaften (nicht ICU-identisch an Randzeichen), `$` nur am echten Ende, keine Groß-/Kleinschreibungs-Flags. Bestehende Formulare mit Mustern außerhalb des Dialekts (z. B. `\p{L}`, `(?i)`) lehnen Einsendungen ab, bis das Muster angepasst ist; der Migrationskonverter erzeugt nur Zahlenmuster im Dialekt.
 - Die Browser-Prüfung (HTML-`pattern`) ist unabhängig und nicht Sicherheitsgrenze.
+
+## Nachtrag nach Codex-Review (14.11.2026, Karten S2-03a 12CEEEFE, S2-03b 46B784C4, S2-03c 88B3E7CC)
+
+- Compiler-DoS: Der Compiler hat ein festes Arbeitsbudget (50 000 Besuche, unabhängig von erzeugten Befehlen); quantifizierte leere Gruppen werden beim Parsen verworfen. Überschreitung = "pattern too complex" (beim Speichern abgelehnt).
+- Klassenoperatoren `&&`, `--`, `||`, verschachtelte Klassen, `[[:alpha:]]`, `[]`/`[]a]` werden abgelehnt (vorher als Literale = Vereinigung, `[a-z&&def]+` akzeptierte `abc`).
+- `\w` = Alphabetic, M, Nd, Pc, Join_Control; `\d` = Nd; `\s` = White_Space (gemessen gegen ICU: schließt U+000B und U+0085 ein). Differentialtest gegen ICU über U+0000..U+1FFFF (ohne Private Use, plattformspezifische ICU-Daten) für `\w \d \s \W \D \S [^\w] . [^a]`.
+- Bestand: `PatternCompatibility` (FormIngest) prüft die aktuellen Releases; `App migrate` gibt `WARNING pattern-incompatible` je Feld aus. Der Konverter importiert keine Alt-Regulärausdrücke (nur das feste Zahlenmuster, im Dialekt).
