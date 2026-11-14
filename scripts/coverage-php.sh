@@ -23,10 +23,17 @@ python3 - "$tmp" "$out" <<'PY'
 import glob, json, sys
 merged = {}
 for f in glob.glob(sys.argv[1] + '/*.json'):
-    for path, lines in json.load(open(f)).items():
+    data = json.load(open(f))
+    if not isinstance(data, dict):  # pcov reported nothing for this process (or an old list-encoded file)
+        data = {}
+    for path, lines in data.items():
+        if isinstance(lines, list):
+            lines = {str(i): h for i, h in enumerate(lines)}
         m = merged.setdefault(path, {})
         for ln, hit in lines.items():
             m[ln] = max(m.get(ln, 0), hit)
+if not merged:
+    sys.exit('no pcov data collected: refusing to report a coverage of nothing')
 json.dump(merged, open(sys.argv[2], 'w'))
 print(f'merged {len(merged)} files into {sys.argv[2]}')
 PY

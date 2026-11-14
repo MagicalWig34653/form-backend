@@ -39,6 +39,12 @@ def rel(path):
     return p.lstrip('/')
 
 
+def swift_counts(name):
+    """Only our own product code counts: backend/Sources/** (container path /src/backend/Sources, host path ROOT/backend/Sources).
+    Dependencies (checkouts), tests and Vendor are not ours; the exclusion list handles the remaining product files."""
+    return rel(name).startswith('backend/Sources/')
+
+
 def swift_lines(doc):
     """Per-line hit counts from llvm-cov segments [line, col, count, hasCount, isRegionEntry, isGap]."""
     pats = [re.compile(p) for p in exclusions('swift')]
@@ -46,7 +52,7 @@ def swift_lines(doc):
     for datum in doc['data']:
         for fl in datum['files']:
             name = fl['filename']
-            if any(p.search(name) for p in pats):
+            if not swift_counts(name) or any(p.search(name) for p in pats):
                 continue
             segs = fl.get('segments', [])
             lines, wrap, i = {}, None, 0
@@ -122,7 +128,7 @@ def swift_metrics(path):
     tot = cov = files = 0
     for datum in json.load(open(path))['data']:
         for fl in datum['files']:
-            if any(p.search(fl['filename']) for p in pats):
+            if not swift_counts(fl['filename']) or any(p.search(fl['filename']) for p in pats):
                 continue
             files += 1
             tot += fl['summary']['lines']['count']

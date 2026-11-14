@@ -11,7 +11,8 @@ if (!function_exists('pcov\\start') || !($dir = getenv('COVERAGE_PHP_DIR'))) {
 register_shutdown_function(static function () use ($dir): void {
     \pcov\stop();
     $out = [];
-    foreach (\pcov\collect(\pcov\inclusive, [realpath(__DIR__ . '/../sdk/php/src')]) as $file => $lines) {
+    // \pcov\all is restricted to sdk/php/src by -d pcov.directory (coverage-php.sh); \pcov\inclusive would need a list of files, not a directory
+    foreach (\pcov\collect(\pcov\all) as $file => $lines) {
         foreach ($lines as $line => $hit) {
             // pcov: 1 = executed, -1 = executable but not executed, 0 = dead code
             if ($hit !== 0) {
@@ -19,5 +20,5 @@ register_shutdown_function(static function () use ($dir): void {
             }
         }
     }
-    file_put_contents($dir . '/' . getmypid() . '.json', json_encode($out));
+    file_put_contents($dir . '/' . getmypid() . '.json', json_encode($out, JSON_FORCE_OBJECT));
 });

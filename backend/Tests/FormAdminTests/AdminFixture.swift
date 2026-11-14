@@ -26,7 +26,7 @@ struct AdminFixture {
     let mail: MailDispatcher
     var sql: SQLDatabase { Persistence.sql(app) }
 
-    static func with(webhookLimits: WebhookLimits = WebhookLimits(), singleConnection: Bool = false, secondFactorRequired: Bool = true, clientIP: @escaping @Sendable (Request) -> String = { _ in "203.0.113.9" }, _ body: (AdminFixture) async throws -> Void) async throws {
+    static func with(webhookLimits: WebhookLimits = WebhookLimits(), singleConnection: Bool = false, secondFactorRequired: Bool = true, clientIP: @escaping @Sendable (Request) -> String = { _ in "203.0.113.9" }, now: @escaping @Sendable () -> Date = { Date() }, _ body: (AdminFixture) async throws -> Void) async throws {
         let env = ProcessInfo.processInfo.environment
         guard let port = env["P4A_DB_PORT"].flatMap(Int.init), let pw = env["P4A_DB_PASSWORD"] else {
             throw XCTSkip("P4A_DB_PORT/P4A_DB_PASSWORD not set; run backend/integration-test.sh")
@@ -57,7 +57,7 @@ struct AdminFixture {
             var auth = AuthConfig(relyingParty: RelyingParty(rpID: "admin.example.test", origin: origin), clientIP: clientIP)
             auth.secondFactorRequired = secondFactorRequired
             auth.requestBudget = (100_000, 60)
-            let guardian = FormAuth.register(app, config: auth, keys: key)
+            let guardian = FormAuth.register(app, config: auth, keys: key, now: now)
             let secrets = SecretStore(db: app.db(.mysql), keys: key)
             let loopback = [CIDR("127.0.0.0/8")!]
             struct Digest: DigestSecretProvider { let store: SecretStore; func secret(ref: String) async throws -> Data? { try await store.get(ref) } }
