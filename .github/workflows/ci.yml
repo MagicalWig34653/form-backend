@@ -121,7 +121,7 @@ jobs:
     name: Real end-to-end runs (binary + MariaDB + Chromium)
     needs: [pwa]
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
     steps:
