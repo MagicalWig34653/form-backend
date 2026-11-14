@@ -822,3 +822,19 @@ direkt setzen, damit Portfreigabe, Healthcheck und Listener dieselben Werte verw
 Ein nachträglicher Datei-Override könnte sonst den internen Listener auf das öffentliche
 Portziel verschieben. Beim Umstieg entsprechende Dateivariablen entfernen und die
 gewünschten Werte direkt eintragen. Andere Datei-Overrides bleiben verfügbar.
+
+## Legacy-API für alte Website-Einbindungen (ADR 0047)
+
+Alte Websites, die das PHP-SDK des bisherigen Backends nutzen (`Backend.php`/`BackendV2.php`), laufen nach dem DNS-Umzug weiter. Das Modul `FormLegacyAPI` bedient nur am **öffentlichen Listener** die alten Pfade und Formate und übersetzt sie auf die neue Einsende-Pipeline (gleiche Validierung, Ratenlimits, Body-Gates, Origin-/Host-Regeln, Abuse-Policy):
+
+| Alter Aufruf (POST) | Antwort |
+|---|---|
+| `/endpoint/?f=` (v1-Einsendung) | `200 - OK` bzw. `<Code> - <Statustext>` als Text |
+| `/api/getFormData.php?z=` (v1-Konfig) | `{"cf-sitekey":…,"mode":…}` |
+| `/api/v2/form/?f=` (v2-Konfig) | `{"configuration":{…},"fields":[…]}` |
+| `/api/v2/submit/?f=` mit Alt-SDK-Köpfen `CLIENTUA-ENCRYPT`/`CLIENTIP-ENCRYPT` | Erfolg wie neu, Fehler `{"error":{"code","status"}}` |
+| `/api/v2/key/` | konstant 403 (Schlüsselanmeldung nicht möglich) |
+
+Statuscodes wie im Altsystem: Feldfehler **412** (neu 422), Turnstile fehlend 412 / fehlgeschlagen 406, Malware 451, Rate-Limit 429 mit `Retry-After`. Formulare ohne hinterlegten Signaturschlüssel nehmen auf diesen Pfaden unsignierte Anfragen an (wie früher; die Alt-Schlüssel werden nicht importiert). Hat das Formular einen Schlüssel, gilt die Signaturpflicht auch hier.
+
+Schalter: `FORM_COMPAT_LEGACY` bzw. Einstellung `compat.legacy` (Standard `true`, ohne Neustart). Nach dem Umbau aller Websites auf das neue SDK auf `false` stellen: dann antworten alle Legacy-Pfade 404. Das v1-SDK hat den Hostnamen `alt-backend.example.invalid` fest im Code, der Name muss auf das neue Backend zeigen. Details und Grenzen: ADR 0047.
