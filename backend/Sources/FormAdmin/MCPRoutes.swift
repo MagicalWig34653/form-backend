@@ -9,6 +9,7 @@ import Vapor
 
 /// Stateless Streamable HTTP profile: JSON responses, no server-initiated messages or SSE/resume.
 enum MCPRoutes {
+    private struct ResolvedTokenKey: StorageKey { typealias Value = TokenIdentity }
     static let versions = ["2025-06-18", "2025-03-26"]
     static let tools: [(String, String, [String])] = [
         ("formulare_auflisten", "form.read", ["tenantId"]),
@@ -28,9 +29,16 @@ enum MCPRoutes {
             _ = try await identity(req, guardian, db, now)
             return Response(status: .methodNotAllowed, headers: ["Allow": "POST"])
         }
-        routes.on(.POST, body: .collect(maxSize: "64kb")) { req async throws -> Response in
+        // 64 KiB is above Vapor's 16 KiB default: Origin and token are checked and the body budget reserved BEFORE the body is collected.
+        // The resolved token is passed on in the request storage, so the per-token rate limit is charged once per request.
+        let gate = BodyBudgetGate(maxBytes: 64 << 10) { req in
             try origin(req, guardian)
-            let token = try await identity(req, guardian, db, now)
+            req.storage[ResolvedTokenKey.self] = try await identity(req, guardian, db, now)
+        }
+        routes.grouped(gate).on(.POST, body: .collect(maxSize: "64kb")) { req async throws -> Response in
+            try origin(req, guardian)
+            let token: TokenIdentity
+            if let resolved = req.storage[ResolvedTokenKey.self] { token = resolved } else { token = try await identity(req, guardian, db, now) }
             guard req.headers.contentType == .json else { throw Abort(.unsupportedMediaType) }
             let accept = req.headers[.accept].joined(separator: ",")
             guard accept.contains("application/json"), accept.contains("text/event-stream") else { throw Abort(.notAcceptable) }

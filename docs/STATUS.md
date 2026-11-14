@@ -11,6 +11,29 @@
 - Fix: `IngestConfig.proxiedClientIP(trusted:)` (alle XFF-Zeilen, Auflösung nur bei vertrautem Peer) und `clientKey` (= `IPAddr.quotaKey`) für `AbuseProtection` (Ban-Digest) und `enforceBudget`. Roh-IP bleibt für `abuse.blockedNets`. Übrige `remoteAddress`-Stellen geprüft: Dashboard-Host/Statistik/Listener nutzen den Peer bewusst für die Vertrauensprüfung, Auth-Pfade nutzen schon den Resolver.
 - Tests (`IngestDBTests`, 20/20 grün, DB-Integration): zwei Clients hinter vertrautem Proxy getrennt gezählt (Ban und Budget), Spoof-Header von unvertrautem Peer ignoriert, linker XFF-Eintrag ignoriert, IPv6 /64 geteilt. Mutationsproben: (1) `clientKey` ohne /64 -> 2 Tests rot; (2) Vertrauen ignoriert (Resolver mit 0.0.0.0/0) -> Spoof-Assertions in 2 Tests rot.
 - Grenze: Das PHP-SDK sendet keine Besucher-IP; ruft ein Kundenserver das Backend auf, bleibt dessen Adresse der Client. Das eigentliche Kartenproblem (Bot sperrt Website) braucht die signierte Besucherkennung im SDK (offen). BETRIEB.md warnt, bis dahin Turnstile/Sperrlisten nicht zu aktivieren.
+## SEC: Body-Sammeln vor Auth/Budget (14.11.2026, Todolino CDC7EA6D, Worktree-Branch `worktree-agent-a4fa884948b60adef`, lokal committet, nicht gepusht)
+
+- Ursache (belegt, Codex-Abschlussreview Befund 2): `PATCH drafts/:draftId` (bis 1 MiB) und `POST migration/jobs` (1 MiB) liefen mit `body: .collect` ohne Gate. Vapor sammelt im Route-Responder NACH der Route-Middleware; Auth, Drosselung und gemeinsames Byte-Budget kamen erst im Handler, nach dem Puffern. Dasselbe galt für `settings` (32 KiB) und `POST /mcp` (64 KiB); beide über Vapors Standard von 16 KiB.
+- Änderung: `AdminBodyGate.make(guardian:db:maxBytes:now:)` (Sitzung ODER Bearer/OAuth-Token, Origin/CSRF, Drosselung, Reservierung; Identität wird per Request-Storage an den Handler übergeben, Token-Drosselung zählt einmal), `AdminBodyGate.make(..., mutation:)` für settings, eigener `BodyBudgetGate` für migration/jobs (volle `authorize`-Kette inkl. frischer Anmeldung und Recht `migration.run`) und für `/mcp` (Origin, Token). Handler wiederholen die Prüfungen unverändert.
+- Routen (`.collect` in `backend/Sources`):
+
+| Route | Limit | Vorher | Jetzt |
+|---|---|---|---|
+| PATCH drafts/:draftId | 1 MiB | kein Gate | Gate (Session/Token, CSRF, Budget, Reservierung) |
+| POST migration/jobs | 1 MiB | kein Gate | Gate (volle authorize-Kette, Reservierung) |
+| GET/PUT admin/settings | 32 KiB | kein Gate | Gate (Session, CSRF bei PUT, Reservierung) |
+| POST /mcp | 64 KiB | Auth im Handler | Gate (Origin, Token, Reservierung) |
+| PUT key-rotation/objects, PUT entries/hold | 64 MiB | Gate | unverändert |
+| POST api/v2/submit (Ingest) | 32 MiB | Gate | unverändert |
+| POST oauth/token, register, revoke | 8 KiB | Drosselung im Handler | Verzicht: unter Vapors Standard 16 KiB, jede Route (auch Login) puffert vor dem Handler bis 16 KiB; Reservierung 3 x 8 KiB je Anfrage brächte nur zusätzliche 503 für öffentliche Pfade, Schutz liegt bei Verbindungslimit des Proxys |
+| POST api/v2/statistics/events | 8 KiB | öffentlich | Verzicht, gleiche Begründung |
+| PUT me/preferences | 4 KiB | Auth im Handler | Verzicht (unter 16 KiB) |
+| GET/PUT forms/:id/abuse-secret | 1 KiB | Auth im Handler | Verzicht (unter 16 KiB) |
+| S3ObjectStore (`response.body.collect`) | max. `ObjectStoreLimits.maxBytes` | Client-Antwort, keine Server-Route | nicht betroffen |
+
+- Tests: neu `BodyGateRoutesTests` (4): anonyme/ungültige Anfragen auf alle vier Routen 401 ohne Reservierung, auch bei vollem Budget; authentifiziert: Reservierung 3 x Länge (`granted`/`peak`), danach `inFlight` 0; 413 bei deklarierter Überlänge ohne Reservierung; 503 `body_budget_exhausted` bei belegtem Budget; Token-Drosselung zählt einmal. `LinearRegexTests.testZeroRepetitionGroupsStayBounded` (`(a{0})`, `(a{0}){1000}`, Wächter 5 s).
+- Mutationsprobe (Quellen ohne Gates, `backend/Sources` auf Stand main): `BodyGateRoutesTests` 3 von 4 rot (kein 413/503 vor dem Sammeln, `granted` 0 statt 1, `peak` 0, `/mcp` 200 statt 503); der Anonym-Test bleibt grün, weil der Handler ohne Gate ebenfalls 401 liefert (er sichert die Reihenfolge, nicht den Fix). Mit Fix: 4/4 grün; `BodyBudgetRouteTests`, `MCPStatisticsTests`, `SetupMigration*`, `DomainAdminTests`, `ImportRehearsalTests` zusammen 66 Tests, 1 übersprungen, 0 Fehler (`./backend/integration-test.sh`, macOS). `LinearRegexTests` 8/8 grün; der neue Einzelfall ist ein Wächter (der Compiler-Fix war schon in main), keine Mutation gebildet.
+- Grenzen: Anfragen bis 16 KiB werden weiterhin ohne Reservierung gepuffert (Standardverhalten aller Routen). Kein OOM-Lasttest im Container (nur Zähler); `e2e-body-budget.sh` nicht auf die neuen Routen erweitert.
 
 ## S2-03 Nachbesserung nach Codex-Review (14.11.2026, Karten S2-03a 12CEEEFE, S2-03b 46B784C4, S2-03c 88B3E7CC; Branch wie unten, lokal, nicht gepusht)
 

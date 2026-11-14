@@ -12,7 +12,8 @@ enum SettingsRoutes {
     static func register(_ app: Application, guardian: AuthGuard, db: Database, now: @escaping @Sendable () -> Date) {
         let env = ProcessInfo.processInfo.environment
         for method in [HTTPMethod.GET, .PUT] {
-            app.on(method, "admin", "api", "v1", "settings", body: .collect(maxSize: "32kb")) { req async throws -> Response in
+            // 32 KiB is above Vapor's 16 KiB default: authentication and budget come before the body is collected.
+            app.grouped(AdminBodyGate.make(guardian: guardian, maxBytes: 32 << 10, mutation: method == .PUT)).on(method, "admin", "api", "v1", "settings", body: .collect(maxSize: "32kb")) { req async throws -> Response in
                 let s = try await guardian.requireAuthenticated(req, mutation: method == .PUT)
                 try await guardian.budget(req)
                 // Reading needs no fresh authentication: sensitive entries are never returned (SettingsRegistry.resolve masks them,

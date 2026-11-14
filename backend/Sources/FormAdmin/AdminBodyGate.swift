@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import Fluent
 import FormAuth
 import Vapor
 
@@ -11,10 +12,20 @@ enum AdminBodyGate {
     /// 32 MiB ingress packages plus Base64/JSON and the complete hold proof list.
     static let maxReplacementBytes = 64 << 20
 
-    static func make(guardian: AuthGuard, maxBytes: Int) -> BodyBudgetGate {
+    static func make(guardian: AuthGuard, maxBytes: Int, mutation: Bool = true) -> BodyBudgetGate {
         BodyBudgetGate(maxBytes: maxBytes) { req in
-            _ = try await guardian.requireAuthenticated(req, mutation: true)
+            _ = try await guardian.requireAuthenticated(req, mutation: mutation)
             try await guardian.budget(req)
+        }
+    }
+
+    /// Gate for configuration routes that accept a session OR a bearer/OAuth token (drafts): the identity is resolved before the body is
+    /// collected and handed to the handler through the request storage, so the token rate limit is charged once per request.
+    static func make(guardian: AuthGuard, db: Database, maxBytes: Int, now: @escaping @Sendable () -> Date) -> BodyBudgetGate {
+        BodyBudgetGate(maxBytes: maxBytes) { req in
+            let identity = try await ConfigurationIdentity.require(req, guardian: guardian, db: db, mutation: true, now: now)
+            if identity.token == nil { try await guardian.budget(req) }
+            req.storage[ConfigurationIdentity.InternalKey.self] = identity
         }
     }
 }

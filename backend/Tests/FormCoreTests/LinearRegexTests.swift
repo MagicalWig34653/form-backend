@@ -55,6 +55,15 @@ final class LinearRegexTests: XCTestCase {
         XCTAssertTrue(m("(){5}a", "a"))
     }
 
+    /// Single cases from the Codex final review: a group repeated zero times, alone and as the unit of a large repetition.
+    func testZeroRepetitionGroupsStayBounded() {
+        for p in ["(a{0})", "(a{0}){1000}"] {
+            within(5, p) { _ = try? LinearRegex(p); return false }
+            within(5, p + " match") { (try? LinearRegex(p))?.fullMatch("aaa") ?? false }
+        }
+        XCTAssertTrue(m("(a{0})", "")); XCTAssertTrue(m("(a{0}){1000}", ""))
+    }
+
     /// Class set operators must not turn into a union of literals (S2-03b): `[a-z&&def]+` must never accept "abc".
     func testClassSetOperatorsAreRejected() {
         for p in ["[a-z&&def]+", "[a-z&&[^b]]", "[\\w--a]", "[a-z--b]", "[a||b]", "[[a-z]&&[def]]", "[[:alpha:]]", "[]a]", "[]", "[^]a]"] {

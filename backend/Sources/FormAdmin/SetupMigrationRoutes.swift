@@ -134,7 +134,10 @@ public enum SetupMigrationRoutes {
             try await service.audit(sql, actor: actor, action: "migration.source.test")
             return try response(inventory)
         }
-        root.on(.POST, "jobs", body: .collect(maxSize: "1mb")) { req async throws -> Response in
+        // Authentication, CSRF, budget, fresh login and permission run before the body is collected; the handler repeats them (cached/cheap).
+        let jobBytes = 1 << 20
+        let jobGate = BodyBudgetGate(maxBytes: jobBytes) { req in _ = try await authorize(req, mutation: true, fresh: true) }
+        root.grouped(jobGate).on(.POST, "jobs", body: .collect(maxSize: ByteCount(value: jobBytes))) { req async throws -> Response in
             let actor = try await authorize(req, mutation: true, fresh: true)
             struct Input: Decodable { let source: MigrationSource; let plan: ImportPlan; let expectedSchema: String; let dryRun: Bool }
             let input: Input = try decode(req, allowed: ["source", "plan", "expectedSchema", "dryRun"])

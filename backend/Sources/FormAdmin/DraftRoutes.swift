@@ -63,8 +63,9 @@ enum DraftRoutes {
         }
 
         // updateDraft: whole-document replace guarded by If-Match (428 missing, 412 stale); the hash is always server-side.
-        // Vapor collects only 16 KiB by default; documents may be up to DocumentValidator.maxDocumentBytes.
-        drafts.on(.PATCH, ":draftId", body: .collect(maxSize: ByteCount(value: DocumentValidator.maxDocumentBytes))) { req async throws -> Response in
+        // Vapor collects only 16 KiB by default; documents may be up to DocumentValidator.maxDocumentBytes. The gate authenticates,
+        // throttles and reserves the shared body budget BEFORE the body is collected (anonymous requests end with 401, nothing buffered).
+        drafts.grouped(AdminBodyGate.make(guardian: guardian, db: db, maxBytes: DocumentValidator.maxDocumentBytes, now: now)).on(.PATCH, ":draftId", body: .collect(maxSize: ByteCount(value: DocumentValidator.maxDocumentBytes))) { req async throws -> Response in
             let s = try await ConfigurationIdentity.require(req, guardian: guardian, db: db, mutation: true, now: now)
             if s.token == nil { try await guardian.budget(req) }
             let tenant = try FormAdmin.uuidParam(req, "tenantId"), form = try FormAdmin.uuidParam(req, "formId"), draft = try FormAdmin.uuidParam(req, "draftId")
