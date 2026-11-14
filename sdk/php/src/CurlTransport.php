@@ -13,7 +13,8 @@ final class CurlTransport implements Transport
     private const HTTP2_ERROR = 16;
     private const HTTP2_STREAM_ERROR = 92;
 
-    public function __construct(private readonly int $connectTimeout = 5, private readonly int $timeout = 20, private readonly int $maxResponseBytes = 65_536)
+    public function __construct(private readonly int $connectTimeout = 5, /** Hard ceiling per request in seconds; null = only the $timeoutMs the Client passes (it bounds large uploads by SERVER_WAIT_MS + upload time + budget). */
+        private readonly ?int $timeout = null, private readonly int $maxResponseBytes = 65_536)
     {
     }
 
@@ -38,7 +39,7 @@ final class CurlTransport implements Transport
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_CONNECTTIMEOUT_MS => min($this->connectTimeout * 1000, $timeoutMs),
-            CURLOPT_TIMEOUT_MS => min($this->timeout * 1000, $timeoutMs),
+            CURLOPT_TIMEOUT_MS => $this->timeout === null ? $timeoutMs : min($this->timeout * 1000, $timeoutMs),
             CURLOPT_NOSIGNAL => true,
             CURLOPT_HEADERFUNCTION => static function ($c, string $line) use (&$respHeaders): int {
                 $parts = explode(':', $line, 2);

@@ -1,8 +1,8 @@
 {
-  "_comment": "Ratchet baseline in percent; values only go up (scripts/coverage-ratchet.sh --update). null = not measured yet, reported but not enforced. tolerance (percentage points) absorbs run-to-run noise. swift is null until the first Linux CI run measures it (only backend/Sources counts; the first CI run counted dependencies and showed 21.89); then commit the value with --update. php 92.7 measured with pcov on PHP 8.4 (92.78).",
+  "_comment": "Ratchet baseline in percent; values only go up (scripts/coverage-ratchet.sh --update). null = not measured yet, reported but not enforced. tolerance (percentage points) absorbs run-to-run noise. Values are the first real CI measurements of 14.11.2026 (CI run 43619092895: Swift Linux amd64 94.1, PWA 62.25/53.54, PHP 8.4 pcov 92.78).",
   "tolerance": 0.2,
   "diff_min": 90,
-  "swift": { "lines": null },
-  "pwa": { "lines": 58.26, "branches": 50.02 },
-  "php": { "lines": 92.7 }
+  "swift": { "lines": 94.1 },
+  "pwa": { "lines": 62.25, "branches": 53.54 },
+  "php": { "lines": 92.78 }
 }

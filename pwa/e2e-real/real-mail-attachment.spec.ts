@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
@@ -13,11 +12,16 @@ import {
   registerPasskey,
   toOverview,
 } from './helpers';
+import {
+  clearMailbox,
+  exactlyOneMail,
+  expectAttachments,
+  expectEnvelope,
+  totalMessages,
+} from './mail-helpers';
 
 // Real end-to-end (decision 14.11.2026, ADR 0049): the practice team has no backend access, uploaded files must be IN the team mail. Real binary,
 // real MariaDB, real SMTP server (Mailpit), real signed SDK submissions with files. Synthetic data only.
-
-const mailpit = (path: string) => `http://127.0.0.1:${env('E2E_MAILPIT_API')}${path}`;
 
 async function publish(page: Page, bump: boolean) {
   await page.getByRole('link', { name: 'Veröffentlichen', exact: true }).click();
@@ -51,7 +55,7 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
   await page.getByRole('link', { name: 'Verbindungen', exact: true }).first().click();
   await page.getByRole('button', { name: 'Verbindung anlegen' }).first().click();
   await page.getByLabel('Name', { exact: true }).fill('Mailpit');
-  await page.getByLabel('Server').fill('127.0.0.1');
+  await page.getByLabel('Server').fill(process.env.E2E_MAILPIT_SMTP_HOST ?? '127.0.0.1');
   await page.getByLabel('Port').fill(env('E2E_MAILPIT_SMTP'));
   await page.locator('#conn-security').selectOption('plain');
   await page.getByRole('button', { name: 'Verbindung anlegen' }).last().click();
@@ -80,35 +84,6 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
   const file = await page.getByLabel('Zugangsdatei', { exact: true }).inputValue();
   const credentials = `${env('E2E_TMP')}/credentials.json`;
   writeFileSync(credentials, file, { mode: 0o600 });
-  // Mailpit (real SMTP server): wait for the organisation mail of one submission and return its parts.
-  type Att = { PartID: string; FileName: string; ContentType: string; Size: number };
-  type Detail = {
-    ID: string;
-    Subject: string;
-    Text: string;
-    Attachments: Att[];
-    To: { Address: string }[];
-  };
-  async function teamMail(id: string): Promise<Detail> {
-    for (let i = 0; i < 240; i++) {
-      const list = (await (await fetch(mailpit('/api/v1/messages?limit=50'))).json()) as {
-        messages: { ID: string; To: { Address: string }[] }[];
-      };
-      for (const m of list.messages) {
-        if (!m.To.some((t) => t.Address === 'team@example.org')) continue;
-        const d = (await (await fetch(mailpit(`/api/v1/message/${m.ID}`))).json()) as Detail;
-        if (d.Text.includes(id)) return d;
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    throw new Error('team mail did not arrive');
-  }
-  async function partSha256(d: Detail, a: Att): Promise<string> {
-    const res = await fetch(mailpit(`/api/v1/message/${d.ID}/part/${a.PartID}`));
-    return createHash('sha256')
-      .update(Buffer.from(await res.arrayBuffer()))
-      .digest('hex');
-  }
   const sent = (mode: string, marker: string) => {
     const lines = execFileSync(
       'php',
@@ -124,40 +99,47 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
     };
   };
 
-  // 1. two files, umlauts and special characters in the names: same bytes, same names
+  // 1. two files, umlauts and special characters in the names: exactly one mail, same bytes, same names
   const multi = sent('multi', 'MULTI-4711');
-  const m1 = await teamMail(multi.id);
-  expect(m1.Subject).toBe('Neue Einsendung: Kontakt');
-  expect(m1.Attachments.map((a) => a.FileName).sort()).toEqual(
-    multi.files.map((f) => f.name).sort(),
-  );
-  for (const f of multi.files) {
-    const a = m1.Attachments.find((x) => x.FileName === f.name)!;
-    expect(a.ContentType).toBe('application/pdf');
-    expect(await partSha256(m1, a)).toBe(f.sha);
-  }
+  const m1 = await exactlyOneMail(multi.id);
+  expectEnvelope(m1, 'Neue Einsendung: Kontakt');
+  for (const line of ['Vorname: Vorname-MULTI-4711', 'Anliegen: Anliegen-MULTI-4711'])
+    expect(m1.Text.replace(/\r\n/g, '\n')).toContain(line);
+  await expectAttachments(m1, multi.files);
+  for (const a of m1.Attachments) expect(a.ContentType).toBe('application/pdf');
   expect(m1.Text).not.toContain('konnten nicht an diese Mail angehängt werden');
+  expect(await totalMessages()).toBe(1);
 
-  // 2. 19.9 MB file: complete, byte for byte
+  // 1b. 3 MB file: exactly one mail, complete, byte for byte
+  const mid = sent('mid', 'MID-4710');
+  const m1b = await exactlyOneMail(mid.id, { settleMs: 4000 });
+  expectEnvelope(m1b, 'Neue Einsendung: Kontakt');
+  expect(m1b.Attachments.length).toBe(1);
+  await expectAttachments(m1b, [{ ...mid.files[0]!, size: 3_000_000 }]);
+  expect(await totalMessages()).toBe(2);
+
+  // 2. 19.9 MB file: exactly one mail, complete, byte for byte
   const big = sent('big', 'BIG-4712');
-  const m2 = await teamMail(big.id);
+  const m2 = await exactlyOneMail(big.id, { settleMs: 5000 });
+  expectEnvelope(m2, 'Neue Einsendung: Kontakt');
   expect(m2.Attachments.length).toBe(1);
-  expect(m2.Attachments[0]!.Size).toBe(19_900_000);
-  expect(await partSha256(m2, m2.Attachments[0]!)).toBe(big.files[0]!.sha);
+  await expectAttachments(m2, [{ ...big.files[0]!, size: 19_900_000 }]);
+  expect(await totalMessages()).toBe(3);
 
   // 3. total beyond FORM_MAIL_MAX_MB (30): the first file goes, the second is NAMED in the mail text, never lost silently
   const over = sent('over', 'OVER-4713');
-  const m3 = await teamMail(over.id);
-  expect(m3.Attachments.map((a) => a.FileName)).toEqual(['gross.pdf']);
-  expect(await partSha256(m3, m3.Attachments[0]!)).toBe(over.files[0]!.sha);
+  const m3 = await exactlyOneMail(over.id, { settleMs: 5000 });
+  expectEnvelope(m3, 'Neue Einsendung: Kontakt');
+  await expectAttachments(m3, [over.files[0]!]);
   expect(m3.Text).toContain('zweite-Datei.pdf');
   expect(m3.Text).toContain('nicht an diese Mail angehängt');
+  expect(await totalMessages()).toBe(4);
 
   // 4. manual resend in the PWA (ADR 0049 Nachtrag, parity with ALT): the browser opens the entry, hands over the attachment keys, the server re-attaches the files
   sql(
     `UPDATE mail_deliveries SET state = 'waiting-manual', last_error_code = 'no_connection' WHERE mail_kind = 'organisation' AND submission_id = ${uuidBin(multi.id)}`,
   );
-  await fetch(mailpit('/api/v1/messages'), { method: 'DELETE' });
+  await clearMailbox();
   resetBudget();
   // in-app navigation only: a page load would lock the keyring (RAM only)
   // the earlier page loads locked the RAM-only keyring: unlock with the passkey (PRF), then back to the entries by in-app navigation
@@ -172,7 +154,7 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
     .click();
   await page.getByRole('link', { name: 'Einsendungen', exact: true }).last().click();
   const rows = page.getByRole('button', { name: /^Aktionen für Einsendung/ });
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   // oldest entry = the first submission (list is newest first); repeat the click path if the list re-renders under the cursor
   await expect(async () => {
     await rows.last().click();
@@ -182,14 +164,10 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
   await expect(detail.getByText(`Vorname-MULTI-4711`)).toBeVisible();
   await detail.getByRole('button', { name: 'Erneut senden' }).click();
   await expect(detail.getByText('Der Versand wurde gestartet.')).toBeVisible();
-  const again = await teamMail(multi.id);
-  expect(again.Attachments.map((a) => a.FileName).sort()).toEqual(
-    multi.files.map((f) => f.name).sort(),
-  );
-  for (const f of multi.files) {
-    const a = again.Attachments.find((x) => x.FileName === f.name)!;
-    expect(await partSha256(again, a)).toBe(f.sha);
-  }
+  const again = await exactlyOneMail(multi.id);
+  expectEnvelope(again, 'Neue Einsendung: Kontakt');
+  await expectAttachments(again, multi.files);
+  expect(await totalMessages()).toBe(1); // the resend produced exactly one mail
   expect(again.Text).not.toContain('nicht beigefügt');
   expect(
     sql(

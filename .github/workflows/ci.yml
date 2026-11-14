@@ -280,6 +280,18 @@ jobs:
       - name: E2E Anhänge in der Team-Mail (Mailpit, SHA-256 je Datei, Umlaut-Namen, 19,9 MB, zu große Datei in der Mail genannt; ADR 0049)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33795 E2E_PORT=4395 E2E_LOG_DIR=e2e-logs bash backend/e2e-mail-attachment.sh
+      - name: E2E Team-Mail Standardinhalt (PHP-SDK → Backend → Mailpit, alle Felder; dann nur Link)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33796 E2E_PORT=4396 E2E_LOG_DIR=e2e-logs bash backend/e2e-mail-standard.sh
+      - name: E2E Team-Mail mit selbstsigniertem SMTP-Zertifikat (Vertrauensentscheidung, Zustellung)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33799 E2E_PORT=4399 E2E_LOG_DIR=e2e-logs bash backend/e2e-mail-selfsigned.sh
+      - name: E2E Team-Mail Ausfallpfade (503 + Retry-After im PHP-SDK, Feldwert über 10 MiB gekürzt, Mail-Ausfall und Erneut senden; je genau eine Mail)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33800 E2E_PORT=4400 E2E_LOG_DIR=e2e-logs bash backend/e2e-mail-resilience.sh
+      - name: E2E Body-Budget-Warteschlange (Abbruch bei 2 / 3,5 / 4 / 6 / 8 / 19 MiB, nichts gespeichert oder gemailt; Retry mit Idempotency-Key genau eine Einsendung/Mail)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33805 E2E_PORT=4405 E2E_LOG_DIR=e2e-logs bash backend/e2e-body-budget-wait.sh
       - name: Upload logs on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -389,6 +401,56 @@ jobs:
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA}" $(printf "$IMAGE@sha256:%s " *)
           docker buildx imagetools inspect "$IMAGE:latest"
+
+  e2e-mail-image:
+    name: E2E Team-Mail gegen das veröffentlichte Image (PHP-SDK, Compose, Mailpit)
+    if: github.ref == 'refs/heads/main'
+    needs: [manifest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pwa/package-lock.json
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: sodium
+      - name: Install PWA dependencies and Chromium
+        working-directory: pwa
+        run: |
+          npm ci
+          for attempt in 1 2 3; do
+            timeout 5m npx playwright install --with-deps chromium && exit 0
+            echo "playwright install --with-deps failed (attempt $attempt)"; sleep 30
+          done
+          npx playwright install chromium
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: E2E mail chain against the image of this run (tag = commit SHA, set by the manifest job)
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" PULL=1 bash backend/e2e-mail-image.sh
+      - name: Upload logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-mail-image-logs
+          path: |
+            e2e-logs
+            pwa/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   pages:
     name: Deploy documentation (GitHub Pages)

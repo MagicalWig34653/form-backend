@@ -15,6 +15,11 @@ public final class BodyBudget: @unchecked Sendable {
     /// Waiting buffers nothing (the body is not read yet); 0 = refuse at once.
     public static let defaultMaxWait: TimeInterval = 20
 
+    /// Bodies below this size never wait (card 85E16E07): they often sit completely in the socket buffer, so a client that gave up while
+    /// queued would still be processed after admission. They are refused at once (503 + Retry-After), exactly like before the queue existed.
+    /// Proper fix (cancel on connection end): card 01480C4B.
+    public static let minWaitBytes = 4 << 20
+
     public let capacity: Int
     public let maxWait: TimeInterval
     private let lock = NSLock()
@@ -62,9 +67,10 @@ public final class BodyBudget: @unchecked Sendable {
         bodyBytes <= 0 ? 0 : min(capacity, bodyBytes.multipliedReportingOverflow(by: Self.memoryFactor).partialValue)
     }
 
-    /// Like `reserve`, but a request that does not fit waits (first come, first served) up to `maxWait` seconds for capacity
-    /// instead of being refused at once; nil = still does not fit after the wait.
+    /// Like `reserve`, but a request of at least `minWaitBytes` that does not fit waits (first come, first served) up to `maxWait` seconds
+    /// for capacity instead of being refused at once; smaller bodies are refused at once (see `minWaitBytes`); nil = does not fit (after the wait).
     public func reserveWaiting(bodyBytes: Int) async -> Lease? {
+        if bodyBytes < Self.minWaitBytes { return reserve(bodyBytes: bodyBytes) }
         let cost = cost(for: bodyBytes)
         let id: Int
         lock.lock()

@@ -73,6 +73,32 @@ final class BodyBudgetTests: XCTestCase {
         XCTAssertEqual(budget.inFlight, 0)
     }
 
+    /// Card 85E16E07: bodies below 4 MiB never wait (they often sit completely in the socket buffer, an aborted client would be processed afterwards).
+    func testBodiesBelowFourMiBAreRefusedAtOnceEvenWithAWaitWindow() async throws {
+        XCTAssertEqual(BodyBudget.minWaitBytes, 4 * mib)
+        let budget = BodyBudget(capacity: 64 * mib, maxWait: 5)
+        let held = try XCTUnwrap(budget.reserve(bodyBytes: 20 * mib))   // 60 of 64 MiB
+        for size in [2 * mib, 3 * mib + mib / 2, 4 * mib - 1] {   // cost 3x exceeds the 4 MiB left
+            let t = Date(); let r = await budget.reserveWaiting(bodyBytes: size)
+            XCTAssertNil(r, "\(size)"); XCTAssertLessThan(Date().timeIntervalSince(t), 0.5, "\(size) must not wait")
+        }
+        XCTAssertEqual(budget.waited, 0); XCTAssertEqual(budget.refused, 3)
+        // below the threshold that does fit is still granted at once
+        let free = BodyBudget(capacity: 64 * mib, maxWait: 5)
+        let ok = await free.reserveWaiting(bodyBytes: mib)
+        XCTAssertNotNil(ok)
+        held.release()
+    }
+
+    func testBodiesOfFourMiBAndMoreStillWait() async throws {
+        let budget = BodyBudget(capacity: 64 * mib, maxWait: 5)
+        let held = try XCTUnwrap(budget.reserve(bodyBytes: 20 * mib))
+        Task { try? await Task.sleep(nanoseconds: 200_000_000); held.release() }
+        let r = await budget.reserveWaiting(bodyBytes: 4 * mib)
+        XCTAssertNotNil(r); XCTAssertEqual(budget.waited, 1)
+        r?.release(); XCTAssertEqual(budget.inFlight, 0)
+    }
+
     func testWaitingTimesOutWithNilAndZeroWaitRefusesAtOnce() async throws {
         let busy = BodyBudget(capacity: 64 * mib, maxWait: 0.2)
         let held = try XCTUnwrap(busy.reserve(bodyBytes: 64 * mib))

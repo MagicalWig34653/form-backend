@@ -11,20 +11,13 @@ import {
   registerPasskey,
   toOverview,
 } from './helpers';
+import { exactlyOneMail, expectEnvelope, totalMessages } from './mail-helpers';
 
 // Real end-to-end (ADR 0044): the mail server (Mailpit, STARTTLS) presents a self-signed certificate. A connection without the option
 // fails with the named TLS error; the same server with "Eigene/selbstsignierte Zertifikate erlauben" works (connection test and a real
 // signed SDK submission -> mail in Mailpit); switching the check back on fails again. Synthetic data only.
 
-const mailpit = (path: string) => `http://127.0.0.1:${env('E2E_MAILPIT_API')}${path}`;
 const TLS_FAILED = 'Die verschlüsselte Verbindung konnte nicht hergestellt werden.';
-
-async function messages(): Promise<{ ID: string }[]> {
-  const list = (await (await fetch(mailpit('/api/v1/messages'))).json()) as {
-    messages: { ID: string }[];
-  };
-  return list.messages;
-}
 
 async function createConnection(page: Page, name: string, selfSigned: boolean) {
   await page.getByRole('button', { name: 'Verbindung anlegen' }).first().click();
@@ -107,7 +100,7 @@ test('self-signed option per connection: fails when verifying, works with the op
   const file = await page.getByLabel('Zugangsdatei', { exact: true }).inputValue();
   const credentials = `${env('E2E_TMP')}/credentials.json`;
   writeFileSync(credentials, file, { mode: 0o600 });
-  expect(await messages()).toHaveLength(0);
+  expect(await totalMessages()).toBe(0);
   const id = execFileSync('php', [
     env('E2E_SUBMIT_DRIVER'),
     credentials,
@@ -117,17 +110,11 @@ test('self-signed option per connection: fails when verifying, works with the op
   ])
     .toString()
     .trim();
-  let text = '';
-  for (let i = 0; i < 60 && !text; i++) {
-    const list = await messages();
-    if (list.length > 0) {
-      const m = (await (await fetch(mailpit(`/api/v1/message/${list[0]!.ID}`))).json()) as {
-        Text: string;
-      };
-      text = m.Text;
-    } else await new Promise((r) => setTimeout(r, 500));
-  }
-  expect(text).toContain(`Kennung: ${id}`);
+  const mail = await exactlyOneMail(id);
+  expectEnvelope(mail, 'Neue Einsendung: Kontakt');
+  expect(mail.Text).toContain(`Kennung: ${id}`);
+  expect(mail.Text).toContain('Vorname-SELBST-4713');
+  expect(await totalMessages()).toBe(1);
 
   // 3. switching back: verified again, the self-signed server is refused again
   await page.getByRole('link', { name: 'Verbindungen', exact: true }).first().click();

@@ -11,28 +11,11 @@ import {
   registerPasskey,
   toOverview,
 } from './helpers';
+import { exactlyOneMail, expectEnvelope, totalMessages } from './mail-helpers';
 
 // Real end-to-end (decision 13.11.2026, ADR 0041): a form whose Mail tab is never touched for the content choice must send ALL fields to the
 // team; "Nur Benachrichtigung mit Link" is only sent when chosen. Real binary, real MariaDB, real SMTP server (Mailpit), real signed SDK
 // submission. Synthetic data only.
-
-const mailpit = (path: string) => `http://127.0.0.1:${env('E2E_MAILPIT_API')}${path}`;
-
-async function newestMail(): Promise<{ subject: string; text: string }> {
-  for (let i = 0; i < 60; i++) {
-    const list = (await (await fetch(mailpit('/api/v1/messages'))).json()) as {
-      messages: { ID: string }[];
-    };
-    if (list.messages.length > 0) {
-      const m = (await (
-        await fetch(mailpit(`/api/v1/message/${list.messages[0]!.ID}`))
-      ).json()) as { Subject: string; Text: string };
-      return { subject: m.Subject, text: m.Text.replace(/\r\n/g, '\n') };
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  throw new Error('no mail arrived');
-}
 
 async function publish(page: Page, bump: boolean) {
   await page.getByRole('link', { name: 'Veröffentlichen', exact: true }).click();
@@ -107,17 +90,19 @@ test('standard team mail carries all fields; notification only by explicit choic
       .toString()
       .trim();
 
-  // 1. standard: every field, with label and value
+  // 1. standard: exactly ONE mail, recipient/sender/subject, every field with label and value
   const id1 = submit('ALLES-4711');
-  const full = await newestMail();
-  expect(full.subject).toBe('Neue Einsendung: Kontakt');
+  const full = await exactlyOneMail(id1);
+  expectEnvelope(full, 'Neue Einsendung: Kontakt');
+  const fullText = full.Text.replace(/\r\n/g, '\n');
   for (const line of [
     'E-Mail: erika@example.org',
     'Vorname: Vorname-ALLES-4711',
     'Anliegen: Anliegen-ALLES-4711',
     `Kennung: ${id1}`,
   ])
-    expect(full.text).toContain(line);
+    expect(fullText).toContain(line);
+  expect(await totalMessages()).toBe(1);
 
   // 2. explicit choice: only the notification with the link
   await page.goto(`${formUrl}/mail`);
@@ -127,13 +112,12 @@ test('standard team mail carries all fields; notification only by explicit choic
   await expect(page.getByRole('status').filter({ hasText: /Gespeichert/ })).toBeVisible();
   await publish(page, true);
   const id2 = submit('NUR-LINK-4712');
-  let note = await newestMail();
-  for (let i = 0; i < 20 && !note.text.includes(id2); i++) {
-    await new Promise((r) => setTimeout(r, 500));
-    note = await newestMail();
-  }
-  expect(note.text).toContain(`Kennung: ${id2}`);
-  expect(note.text).toContain('/entries');
-  expect(note.text).not.toContain('NUR-LINK-4712');
-  expect(note.text).not.toContain('erika@example.org');
+  const note = await exactlyOneMail(id2);
+  expectEnvelope(note, 'Neue Einsendung: Kontakt');
+  const noteText = note.Text.replace(/\r\n/g, '\n');
+  expect(noteText).toContain(`Kennung: ${id2}`);
+  expect(noteText).toContain('/entries');
+  expect(noteText).not.toContain('NUR-LINK-4712');
+  expect(noteText).not.toContain('erika@example.org');
+  expect(await totalMessages()).toBe(2); // one mail per submission, nothing stray
 });

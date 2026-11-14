@@ -20,6 +20,19 @@ final class Client
 {
     public const SUBMIT_PATH = '/api/v2/submit';
 
+    /**
+     * How long the backend may hold a large submission back before it reads the body when its memory budget is taken by other uploads
+     * (BodyBudget.defaultMaxWait of the backend: 20 s). A client that gives up earlier abandons a request that is still queued.
+     */
+    public const SERVER_WAIT_MS = 20_000;
+    /**
+     * Assumed upload rate for the time to transfer the body: 1 MiB/s (about 8 Mbit/s). Deliberately conservative for a web server's
+     * uplink; a slower line only needs a larger totalBudget. The attempt timeout is a ceiling, a fast upload ends the request earlier.
+     */
+    public const UPLOAD_BYTES_PER_SECOND = 1_048_576;
+    /** Bodies up to this size keep the plain per-attempt slice (the server's memory budget practically never queues them). */
+    public const LARGE_BODY_BYTES = 1_048_576;
+
     private readonly array $endpoints;
     private readonly int $budgetMs;
     private readonly string $failoverKey;
@@ -107,6 +120,7 @@ final class Client
         }
         $order = $this->endpointOrder();
         $last = null;
+        $busyRounds = 0;
         for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
             $remaining = (int)floor($deadline - $this->monotonicMs());
             if ($remaining < 1) { break; }
@@ -120,7 +134,7 @@ final class Client
                     // Bound the complete primary attempt as well as cURL's connect phase.
                     $slice = min($slice, (int)floor($this->connectTimeout * 1000));
                 }
-                $res = $this->transport->post($url, $built['body'], $headers, $slice);
+                $res = $this->transport->post($url, $built['body'], $headers, self::attemptTimeoutMs($slice, $remaining, strlen($built['body'])));
             } catch (TransportException $e) {
                 if (!$e->retryable) { throw $e; }
                 $this->rememberPrimaryFailure($endpoint);
@@ -140,15 +154,31 @@ final class Client
                 $nextEndpoint = $order[min($attempt, count($order) - 1)];
                 $wait = min($last->retryAfter ?? 1, self::MAX_BUSY_WAIT_SECONDS);
                 $left = $deadline - $this->monotonicMs();
-                if ($attempt < $this->maxAttempts && $nextEndpoint === $endpoint && $wait > 0) {
+                // A busy answer does not use up an attempt (maxAttempts counts outages/failovers): it is bounded by the time budget
+                // and MAX_BUSY_ROUNDS, so large uploads need no hand-tuned maxAttempts next to totalBudget.
+                if ($busyRounds < self::MAX_BUSY_ROUNDS && $nextEndpoint === $endpoint && $wait > 0) {
                     if ($wait * 1000 >= $left - 1) { throw $last; }   // the pause would eat the whole budget
                     $this->pause($wait * 1_000_000);
+                    $busyRounds++;
+                    $attempt--;
                 }
                 continue;
             }
             $this->rememberPrimaryFailure($endpoint);
         }
         throw $last ?? new TransportException('request time budget exhausted');
+    }
+
+    /**
+     * Per-attempt timeout. A large body needs at least the server's wait for body-budget capacity plus its own upload time; otherwise the
+     * client disconnects while the request is still queued and the retry races a request the server may still process.
+     * Never above the remaining total budget; bodies up to LARGE_BODY_BYTES keep $slice.
+     */
+    private static function attemptTimeoutMs(int $slice, int $remainingMs, int $bodyBytes): int
+    {
+        if ($bodyBytes <= self::LARGE_BODY_BYTES) { return $slice; }
+        $needed = self::SERVER_WAIT_MS + (int)ceil($bodyBytes * 1000 / self::UPLOAD_BYTES_PER_SECOND);
+        return max(1, min($remainingMs, max($slice, $needed)));
     }
 
     public static function validateEndpoint(mixed $url): void
@@ -205,6 +235,8 @@ final class Client
     }
 
     /** Longest Retry-After pause between attempts (seconds); the remaining time budget caps it further. */
+    /** Upper bound of busy retries per submit() (each waits Retry-After, all within the time budget). */
+    public const MAX_BUSY_ROUNDS = 100;
     private const MAX_BUSY_WAIT_SECONDS = 5;
 
     /** 503 from the load gates: the server is healthy but full. */

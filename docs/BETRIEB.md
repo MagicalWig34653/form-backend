@@ -183,6 +183,8 @@ sudo deploy/compose/setup.sh --dry-run
 sudo deploy/compose/setup.sh --db-password-file /geschuetzt/db_password
 ```
 
+`deploy/compose/setup.sh` verlangt root. Auf macOS mit Docker Desktop gibt es kein `sudo` im Sinne eines Server-Roots; dort hilft der Weg über einen root-Container (Image `docker:cli`, Repository und `/var/run/docker.sock` einhängen und `setup.sh` darin ausführen, Hinweis von QA fb-qa5; als Weg beschrieben, nicht von uns auf jedem System geprüft).
+
 Das Erstsetup fragt Stack-/Projektname, HTTPS-Origin, RP-ID, externen DB-Host, Port, Benutzer,
 Datenbank, TLS und Image-Tag ab. Swarm fragt zusätzlich Replikate. Ohne Passwortdatei wird
 das **bereits gültige** DB-Passwort verdeckt abgefragt, niemals generiert. Einen vorhandenen
@@ -549,6 +551,16 @@ Request-Budget **vor** dem Body: anonyme Anfragen enden mit `401`, ohne dass der
 `FORM_BODY_BUDGET_MB` (Ganzzahl 64 bis 8192, Standard 128 = gleichzeitig höchstens rund 42 MiB Body-Daten, also ein 32-MiB-Body oder mehrere kleinere; Standard-Containerlimit seit 14.11.2026: 1024 MiB, `APP_MEMORY` in `deploy/swarm/stack.yaml` und `deploy/compose/compose.yaml`, Reservierung 256 MiB; das Budget bleibt 128 MiB, also rund ein Achtel des Limits, der Rest bleibt für Heap, Medienverarbeitung und Mail-Anhänge. Das 512-MiB-Limit ist als Untergrenze weiter getestet, siehe `backend/e2e-body-budget.sh`, reicht aber bei mehreren großen Einsendungen nicht (OOM, Karte 30858F93). Bei größerem
 Containerlimit proportional erhöhen (Faustregel: Budget höchstens halbes Limit). **Host-Bedarf:** mindestens Containerlimit je Replikat plus Datenbank, Proxy und Betriebssystem, für eine Replik also grob 2 GiB RAM. Gemessen wird nicht pro Replikat
 koordiniert: bei mehreren Replikaten gilt das Budget je Prozess.
+
+**Body-Budget: Wartefenster nur ab 4 MiB (Karte 85E16E07, `backend/e2e-body-budget-wait.sh`).** Reicht das Body-Budget nicht, wartet eine Anfrage
+nur, wenn ihr Body mindestens 4 MiB groß ist (`BodyBudget.minWaitBytes`, Konstante, nicht einstellbar; Wartezeit `BodyBudget.defaultMaxWait`, 20 s).
+Kleinere Bodies bekommen wie vor der Warteschlange sofort 503 `body_budget_exhausted` mit `Retry-After`, ohne dass der Body gelesen wird.
+Begründung: Vapor meldet keinen Abbruch bei Verbindungsende; eine wartende Anfrage wird nach Freigabe des Budgets auch dann bearbeitet, wenn
+der Client längst aufgegeben hat. Kleine Bodies liegen oft komplett im Socketpuffer, ein abgebrochener Client würde sonst nachträglich
+gespeichert und gemailt (gemessen vorher: 1,5 bis 2 MiB teils ja). Der Server-Fix (NIO-Channel-Handler, der wartende Anfragen bei
+Verbindungsende verwirft) ist Karte 01480C4B-0625-48A5-9A79-DE1778589E0B und noch nicht umgesetzt. Duplikate entstehen nie: der Wiederholungsversuch mit
+demselben Idempotenzschlüssel trifft dieselbe Einsendung. Gegenmaßnahme im SDK: Versuchs-Timeout bei Bodies über 1 MiB mindestens 20 s
+Serverwartezeit plus Upload (`sdk/php/README.md`). Messreihe der Grenze: siehe STATUS.md.
 
 **Proxy-Logs.** Das Access-Log der Vorlage kürzt IPs (IPv4 letztes Oktett auf `.0`, IPv6 auf
 /48) und enthält `$uri` ohne Query-String und ohne Referer. Das Backend erhält weiterhin die

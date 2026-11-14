@@ -129,6 +129,15 @@ $tb = new Fake([['status' => 503, 'headers' => ['retry-after' => '1'], 'body' =>
 (new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }))->submit(['a' => '1']);
 ok($sl === [], 'a plain gateway 503 keeps the immediate retry');
 
+// busy answers do not use up maxAttempts: 6 busy rounds with the default 3 attempts still get through (QA fb-qa5 needed maxAttempts 40 by hand)
+$busy1 = ['status' => 503, 'headers' => ['retry-after' => '1'], 'body' => '{"code":"body_budget_exhausted"}'];
+$tb = new Fake([$busy1, $busy1, $busy1, $busy1, $busy1, $busy1, $accepted]); $sl = [];
+$r = (new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }, totalBudget: 60.0))->submit(['a' => '1']);
+ok($r->id !== '' && count($tb->requests) === 7 && count($sl) === 6, 'busy rounds beyond maxAttempts still succeed within the time budget');
+// a non-busy outage still stops at maxAttempts
+$tb = new Fake([['status' => 502, 'headers' => [], 'body' => 'x'], ['status' => 502, 'headers' => [], 'body' => 'x'], ['status' => 502, 'headers' => [], 'body' => 'x'], $accepted]);
+throws(RejectedException::class, fn() => (new Client('https://h.example', $creds, $tb, sleep: $noSleep))->submit(['a' => '1']), '502 stops at maxAttempts');
+
 foreach (['', 'not json', '{"submission":{"id":"x"}}', '{"submission":{}}', '[]'] as $badBody) {
     throws(\FormBackend\Exception\FormBackendException::class, fn() => Submission::fromResponse($badBody), 'unexpected 200 body');
 }
@@ -197,6 +206,40 @@ $t = new Fake([new TransportException('timeout'), $accepted]);
 $c = new Client(null, $multi, $t, totalTimeoutMs: 10, monotonicClock: function () use (&$mono) { $now = $mono; $mono += 6; return $now; });
 throws(TransportException::class, fn() => $c->submit([]), 'total budget exhausted');
 ok(count($t->requests) === 1 && $t->requests[0]['timeoutMs'] <= 4, 'remaining budget passed to transport; no late attempt');
+// --- large bodies: the attempt timeout covers the server's body-budget wait (20 s) plus the upload at the assumed rate (1 MiB/s), capped by
+// the remaining total budget; small bodies keep the plain slice (card 85E16E07: a 3.3 s timeout abandoned a request still queued on the server).
+$timeoutFor = static function (int $bodyBytes, array $opts, bool $failover = false) use ($creds, $multi, $accepted) {
+    $t = new Fake([$accepted]);
+    $c = new Client($failover ? null : 'https://a.example.org', $failover ? $multi : $creds, $t, ...($opts + ['maxBodyBytes' => 64 * 1048576, 'monotonicClock' => static fn(): int => 0]));
+    $c->submit(['x' => str_repeat('a', $bodyBytes)]);
+    return $t->requests[0]['timeoutMs'];
+};
+$MIB = 1048576;
+ok(Client::SERVER_WAIT_MS === 20_000 && Client::UPLOAD_BYTES_PER_SECOND === $MIB && Client::LARGE_BODY_BYTES === $MIB, 'documented constants');
+$r = $timeoutFor(1000, ['totalBudget' => 90.0, 'maxAttempts' => 3]);
+ok($r === 30_000, "small body unchanged: slice = budget / attempts (got $r)");
+$r = $timeoutFor($MIB - 2, ['totalBudget' => 9.0, 'maxAttempts' => 3]);
+ok($r === 3_000, "body at the threshold is still small (got $r)");
+$r = $timeoutFor(4 * $MIB, ['totalBudget' => 75.0, 'maxAttempts' => 3]);
+ok($r === 25_000, "large body never below the plain slice (got $r)");
+$r = $timeoutFor(10 * $MIB, ['totalBudget' => 75.0, 'maxAttempts' => 3]);
+ok($r >= 30_000 && $r <= 30_100, "10 MiB: 20 s server wait + about 10 s upload (got $r)");
+$r = $timeoutFor(10 * $MIB, ['totalBudget' => 300.0, 'maxAttempts' => 3]);
+ok($r === 100_000, "slice above the need stays (got $r)");
+$r = $timeoutFor(12 * $MIB, ['totalBudget' => 25.0, 'maxAttempts' => 3]);
+ok($r === 25_000, "capped by the remaining total budget (got $r)");
+$r = $timeoutFor(1000, ['totalBudget' => 60.0, 'maxAttempts' => 6, 'connectTimeout' => 3.0], true);
+ok($r === 3_000, "failover primary cap of connectTimeout unchanged for small bodies (got $r)");
+$r = $timeoutFor(10 * $MIB, ['totalBudget' => 60.0, 'maxAttempts' => 6, 'connectTimeout' => 3.0], true);
+ok($r >= 30_000 && $r <= 30_100, "failover primary: the 3 s cap is lifted for large bodies (got $r)");
+$r = $timeoutFor(10 * $MIB, ['totalBudget' => 3.5, 'maxAttempts' => 3, 'connectTimeout' => 3.0], true);
+ok($r === 3_500,"failover primary: never above the total budget (got $r)");
+$m = 0;   // each clock read advances 50 s: the retry gets the same rule with the then remaining budget
+$t = new Fake([new TransportException('timeout'), $accepted]);
+(new Client('https://a.example.org', $creds, $t, totalBudget: 100.0, maxAttempts: 3, maxBodyBytes: 64 * $MIB,
+    monotonicClock: function () use (&$m) { $n = $m; $m += 40_000; return $n; }))->submit(['x' => str_repeat('a', 10 * $MIB)]);
+ok(count($t->requests) === 2 && $t->requests[1]['timeoutMs'] <= 100_000 - 40_000 && $t->requests[1]['timeoutMs'] >= 1, 'retry capped by the then remaining budget');
+
 $t = new Fake([new TransportException('down'), $accepted]);
 throws(TransportException::class, fn() => (new Client(null, $multi, $t, maxAttempts: 1))->submit([]), 'attempt limit');
 ok(count($t->requests) === 1, 'attempt limit respected');
