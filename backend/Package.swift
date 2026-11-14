@@ -20,7 +20,7 @@ let package = Package(
         // logging, handshake timeout). fluent-mysql-driver -> mysql-kit -> mysql-nio are all local path packages (siblings), so every identity has exactly one source.
         // Patches: backend/Vendor/README.md.
         .package(path: "Vendor/fluent-mysql-driver"),
-        .package(url: "https://github.com/apple/swift-crypto.git", exact: "3.15.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", exact: "5.1.1"),
         // SSH transport for SFTP (ADR 0011); Apache-2.0.
         .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),
         // Argon2 reference implementation (PHC winner), CC0-1.0 OR Apache-2.0; pinned by commit.
