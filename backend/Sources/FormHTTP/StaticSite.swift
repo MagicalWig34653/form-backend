@@ -7,7 +7,7 @@ import Vapor
 /// content-hashed `/assets/*` are immutable, everything else must revalidate (`sw.js`, HTML, manifest, theme-init).
 public struct StaticSiteMiddleware: AsyncMiddleware {
     let root: URL
-    static let apiPrefixes = ["/admin", "/api", "/health", "/healthz", "/.well-known", "/ready", "/oauth", "/mcp"]
+    static let apiPrefixes = ["/admin", "/api", "/endpoint", "/health", "/healthz", "/.well-known", "/ready", "/oauth", "/mcp"]
     /// Content-Security-Policy of the app shell: same-origin only. `style-src-attr` allows the inline style attributes
     /// that UI primitives set at runtime; no inline scripts, no framing, no plugins.
     static let csp = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; "

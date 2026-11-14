@@ -24,6 +24,7 @@ final class SettingsRegistryTSVTests: XCTestCase {
         "abuse.banSeconds": "Dauer der automatischen Sperre; Einstellung abuse.banSeconds.",
         "mail.restricted": "Mailversand nur an erlaubte Empfänger (true/false); Einstellung mail.restricted.",
         "mail.allowedRecipients": "Erlaubte Empfänger als JSON-Liste von E-Mail-Adressen; Einstellung mail.allowedRecipients.",
+        "compat.legacy": "Alte Website-Pfade und Statuscodes des alten Backends bedienen (true/false); Einstellung compat.legacy.",
         "migration.allowedNets": "Netze (CIDR), aus denen der Umstieg erlaubt ist; Einstellung migration.allowedNets.",
         "mail.allowedNets": "Private Mail-/SDK-Zielnetze (CIDR, kommagetrennt; leer = nur öffentliche Ziele); Einstellung mail.allowedNets.",
         "log.level": "Log-Stufe der Anwendung; Einstellung log.level.",

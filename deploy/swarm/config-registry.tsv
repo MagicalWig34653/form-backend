@@ -13,6 +13,7 @@ FORM_ABUSE_WINDOW_SECONDS	Missbrauchsschutz	int	600		1	86400		live	0	Zeitfenster
 FORM_ABUSE_BAN_SECONDS	Missbrauchsschutz	int	7200		1	86400		live	0	Dauer der automatischen Sperre; Einstellung abuse.banSeconds.
 FORM_MAIL_RESTRICTED	Missbrauchsschutz	bool	false					live	0	Mailversand nur an erlaubte Empfänger (true/false); Einstellung mail.restricted.
 FORM_MAIL_ALLOWED_RECIPIENTS	Missbrauchsschutz	text:jsonrecipients	[]			4096		live	0	Erlaubte Empfänger als JSON-Liste von E-Mail-Adressen; Einstellung mail.allowedRecipients.
+FORM_COMPAT_LEGACY	Umstieg	bool	true					live	0	Alte Website-Pfade und Statuscodes des alten Backends bedienen (true/false); Einstellung compat.legacy.
 FORM_MIGRATION_ALLOWED_NETS	Umstieg	text:cidrs				4096		live	0	Netze (CIDR), aus denen der Umstieg erlaubt ist; Einstellung migration.allowedNets.
 FORM_MAIL_ALLOWED_NETS	Mail-Netze	text:cidrs				4096		restart	0	Private Mail-/SDK-Zielnetze (CIDR, kommagetrennt; leer = nur öffentliche Ziele); Einstellung mail.allowedNets.
 FORM_LOG_LEVEL	Limits	choice	info				trace|debug|info|notice|warning|error|critical	restart	0	Log-Stufe der Anwendung; Einstellung log.level.

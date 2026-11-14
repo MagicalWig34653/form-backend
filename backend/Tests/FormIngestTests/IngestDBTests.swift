@@ -5,6 +5,7 @@ import FormCore
 @testable import FormCrypto
 import FormHTTP
 @testable import FormIngest
+import FormLegacyAPI
 import FormPersistence
 import Foundation
 import NIOCore
@@ -71,7 +72,7 @@ final class IngestDBTests: XCTestCase {
             config.abuseKey = Data(repeating: 99, count: 32)
             config.clientIP = clientIP ?? { [box] _ in box.ip }
             if rateLimited { config.throttle = ThrottleService(db: app.db(.mysql), keys: try StaticServerKey(Data(repeating: 5, count: 32)), now: { [box] in box.t }) }
-            IngestSetup.register(app, config: config)
+            LegacyAPI.register(app, backend: IngestSetup.register(app, config: config))
             let sql = Persistence.sql(app)
             _ = try await MigrationRunner(db: sql).run(schemaFile: schemaPath)
             let recipient = Curve25519.KeyAgreement.PrivateKey()
@@ -449,7 +450,7 @@ final class IngestDBTests: XCTestCase {
                 var hh = h; hh["Idempotency-Key"] = "k-\(name)"
                 let r = try await send(fx.app, headers: hh, body: b)
                 XCTAssertEqual(r.status, .forbidden, name)
-                XCTAssertFalse(r.text.contains("SYNTHETIC-MARKER"), name)
+                XCTAssertFalse(r.text.contains("SYNTHETICMARKER"), name)
                 XCTAssertTrue(r.text.contains("forbidden"), name)  // uniform ProblemMiddleware envelope
             }
             // +/-300 accepted (inclusive window).
@@ -570,5 +571,187 @@ final class IngestDBTests: XCTestCase {
             XCTAssertEqual(r.headers.first(name: "X-Content-Type-Options"), "nosniff")
             XCTAssertNotNil(r.headers.first(name: "X-Request-Id"))
         }
+    }
+}
+
+// MARK: legacy compatibility layer (ADR 0047)
+
+extension IngestDBTests {
+    private var legacyHeaders: [String: String] { ["CLIENTUA-ENCRYPT": "x", "CLIENTIP-ENCRYPT": "y"] }
+    private var schema: String {
+        #"{"fields":{"a":{"name":"name","kind":"text","required":true},"b":{"name":"nachricht","kind":"text","validation":{"minLength":3,"pattern":"[A-Za-z0-9 ]+"}}}}"#
+    }
+    private func compat(_ fx: Fixture, _ on: Bool = true) async throws {
+        try await SystemSettings.write(fx.sql, key: "compat.legacy", value: on ? "true" : "false", at: SubmitHandler.dbTime(now))
+    }
+    private func definition(_ fx: Fixture, _ json: String) async throws {
+        try await fx.sql.raw("UPDATE form_versions SET definition_json=\(bind: json)").run()
+    }
+    private func dropKeys(_ fx: Fixture) async throws { try await fx.sql.raw("DELETE FROM form_protocol_keys WHERE purpose='ed25519'").run() }
+    private func signedForm(_ ts: Int64? = nil) throws -> [String: String] {
+        let canonical = try RequestSignature.canonical(fields: .array([]))
+        let t = String(ts ?? Int64(now.timeIntervalSince1970))
+        let text = try RequestSignature.signingText(route: .form, formID: formID, timestamp: t, canonical: canonical)
+        return ["X-Kubus-Timestamp": t, "X-Kubus-Signature": try RequestSignature.sign(text, seed: sigSeed).base64EncodedString()]
+    }
+    private var good: [(String, String)] { [("name", "Beispiel Test"), ("nachricht", "SYNTHETICMARKER7731 hallo")] }
+    private var bad: [(String, String)] { [("name", ""), ("nachricht", "SYNTHETICMARKER7731 !!")] }
+
+    func testLegacyPathsAreNotFoundAndNewApiUnchangedWhileSettingIsOff() async throws {
+        try await withFixture { fx in
+            try await compat(fx, false)
+            for p in ["/endpoint/", "/endpoint/index.php", "/api/getFormData.php", "/api/v2/form/", "/api/v2/key/"] {
+                try await eq(try await send(fx.app, path: p, query: "f=\(formID)&z=\(formID)", body: body(good)).status, .notFound, p)
+            }
+            // legacy client headers on the shared path: no special treatment, no unsigned acceptance, problem+json
+            let r = try await send(fx.app, headers: legacyHeaders, body: body(good))
+            XCTAssertEqual(r.status, .forbidden)
+            XCTAssertTrue(r.text.contains("\"code\""), r.text)
+            XCTAssertFalse(r.text.contains("\"error\""))
+            try await eq(try await count(fx.sql, "submissions"), 0)
+        }
+    }
+
+    func testV1SubmitEndpointOldFormatAndSignatureRule() async throws {
+        try await withFixture { fx in
+            try await compat(fx)
+            // form WITH key: unsigned stays refused
+            let refused = try await send(fx.app, path: "/endpoint/", headers: legacyHeaders, body: body(good))
+            XCTAssertEqual(refused.status, .forbidden); XCTAssertEqual(refused.text, "403 - Forbidden")
+            try await eq(try await count(fx.sql, "submissions"), 0)
+            // form WITHOUT key: accepted, plain "200 - OK" like the old v1 answer
+            try await dropKeys(fx)
+            let ok = try await send(fx.app, path: "/endpoint/", headers: legacyHeaders, body: body(good))
+            XCTAssertEqual(ok.status, .ok); XCTAssertEqual(ok.text, "200 - OK")
+            let alias = try await send(fx.app, path: "/endpoint/index.php", body: body(good))
+            XCTAssertEqual(alias.status, .ok)
+            try await eq(try await count(fx.sql, "submissions"), 2)
+            // the unsigned relaxation does not leak to the new API (no legacy headers = no relaxation)
+            let new = try await send(fx.app, body: body(good))
+            XCTAssertEqual(new.status, .forbidden)
+            // error shapes of the old backend
+            let get = try await send(fx.app, method: .GET, path: "/endpoint/")
+            XCTAssertEqual(get.status, .methodNotAllowed); XCTAssertEqual(get.text, "405 - Method Not Allowed")
+            let noF = try await send(fx.app, path: "/endpoint/", query: "x=1", body: body(good)); XCTAssertEqual(noF.text, "401 - Unauthorized")
+            let unknown = try await send(fx.app, path: "/endpoint/", query: "f=\(UUID().uuidString.lowercased())", body: body(good)); XCTAssertEqual(unknown.text, "404 - Not Found")
+            try await fx.sql.raw("UPDATE forms SET active=0").run()
+            let inactive = try await send(fx.app, path: "/endpoint/", body: body(good)); XCTAssertEqual(inactive.text, "404 - Not Found")
+        }
+    }
+
+    func testFieldErrorsAre412InTheOldFormatAndStay422ForTheNewApi() async throws {
+        try await withFixture { fx in
+            try await compat(fx); try await definition(fx, schema)
+            try await dropKeys(fx)
+            let v1 = try await send(fx.app, path: "/endpoint/", body: body(bad))
+            XCTAssertEqual(v1.status, .preconditionFailed); XCTAssertEqual(v1.text, "412 - Precondition Failed")
+            let v2 = try await send(fx.app, headers: legacyHeaders, body: body(bad))
+            XCTAssertEqual(v2.status, .preconditionFailed)
+            XCTAssertEqual(v2.text, #"{"error":{"code":412,"status":"Precondition Failed"}}"#)
+            // no field name, no value
+            for r in [v1, v2] { XCTAssertFalse(r.text.contains("SYNTHETICMARKER")); XCTAssertFalse(r.text.contains("nachricht")) }
+            // new API (no legacy headers), signed as the new SDK does: 422 problem+json
+            try await fx.sql.raw("""
+                INSERT INTO form_protocol_keys (customer_id,form_id,purpose,generation_no,public_key,state,created_at)
+                SELECT customer_id,id,'ed25519',1,\(bind: Blob(try Curve25519.Signing.PrivateKey(rawRepresentation: sigSeed).publicKey.rawRepresentation)),'current',created_at FROM forms
+                """).run()
+            let new = try await send(fx.app, headers: try signedHeaders(bad), body: body(bad))
+            XCTAssertEqual(new.status.code, 422); XCTAssertTrue(new.text.contains("submission_invalid"))
+            try await eq(try await count(fx.sql, "submissions"), 0)
+            // valid input still passes through the same validation
+            let ok = try await send(fx.app, headers: try signedHeaders(good), body: body(good))
+            XCTAssertEqual(ok.status, .ok)
+        }
+    }
+
+    func testOldV2SubmitSignatureRulesAndSuccessFormat() async throws {
+        try await withFixture { fx in
+            try await compat(fx)
+            var h = legacyHeaders; h["X-Kubus-Timestamp"] = "1"; h["X-Kubus-Signature"] = "garbage"
+            // key registered + invalid signature: 403 in the old JSON shape
+            let r = try await send(fx.app, headers: h, body: body(good))
+            XCTAssertEqual(r.status, .forbidden); XCTAssertEqual(r.text, #"{"error":{"code":403,"status":"Forbidden"}}"#)
+            // key registered + valid signature: accepted, success body unchanged
+            var signed = try signedHeaders(good); for (k, v) in legacyHeaders { signed[k] = v }
+            let ok = try await send(fx.app, headers: signed, body: body(good))
+            XCTAssertEqual(ok.status, .ok); XCTAssertTrue(ok.text.hasPrefix(#"{"submission":{"id":""#))
+            // no key: the (unusable) signature of the old SDK is ignored
+            try await dropKeys(fx)
+            let ok2 = try await send(fx.app, headers: h, body: body(good))
+            XCTAssertEqual(ok2.status, .ok)
+            try await eq(try await count(fx.sql, "submissions"), 2)
+        }
+    }
+
+    func testConfigV1AndV2ShapesAndErrors() async throws {
+        try await withFixture { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await definition(fx, #"{"security":{"abuse":{"siteKey":"0x4AAAA-synthetic","testMode":false}},"fields":{"a":{"name":"name","kind":"text","required":true},"b":{"name":"nachricht","kind":"text","validation":{"pattern":"[a-z]+"}}}}"#)
+            let v1 = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)", headers: legacyHeaders)
+            XCTAssertEqual(v1.status, .ok); XCTAssertEqual(v1.text, #"{"cf-sitekey":"0x4AAAA-synthetic","mode":"production"}"#)
+            let v2 = try await send(fx.app, path: "/api/v2/form/", headers: legacyHeaders)
+            XCTAssertEqual(v2.status, .ok)
+            XCTAssertEqual(v2.text, #"{"configuration":{"cfSitekey":"0x4AAAA-synthetic","mode":"production","signaturschluesselHinterlegt":false},"fields":[{"name":"name","required":true,"rule":null,"type":"text"},{"name":"nachricht","required":false,"rule":"[a-z]+","type":"text"}]}"#)
+            try await definition(fx, #"{"security":{"abuse":{"testMode":true}}}"#)
+            let t = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)"); XCTAssertEqual(t.text, #"{"cf-sitekey":null,"mode":"testing"}"#)
+            // errors, old shape; unknown/inactive/disabled are indistinguishable
+            let miss = try await send(fx.app, path: "/api/getFormData.php", query: "x=1"); XCTAssertEqual(miss.text, "401 - Unauthorized")
+            let unknown = try await send(fx.app, path: "/api/v2/form/", query: "f=\(UUID().uuidString.lowercased())")
+            XCTAssertEqual(unknown.text, #"{"error":{"code":404,"status":"Not Found"}}"#)
+            try await fx.sql.raw("UPDATE forms SET active=0").run()
+            let inactive = try await send(fx.app, path: "/api/v2/form/"); XCTAssertEqual(inactive.text, unknown.text)
+            try await fx.sql.raw("UPDATE forms SET active=1").run(); try await fx.sql.raw("UPDATE customers SET state='disabled'").run()
+            let disabled = try await send(fx.app, path: "/api/v2/form/"); XCTAssertEqual(disabled.text, unknown.text)
+            let get = try await send(fx.app, method: .GET, path: "/api/v2/form/"); XCTAssertEqual(get.status, .methodNotAllowed)
+        }
+    }
+
+    func testConfigV2NeedsSignatureWhenAKeyIsRegisteredAndKeyRouteIsConstant403() async throws {
+        try await withFixture { fx in
+            try await compat(fx); try await definition(fx, schema)
+            let unsigned = try await send(fx.app, path: "/api/v2/form/", headers: legacyHeaders)
+            XCTAssertEqual(unsigned.status, .forbidden); XCTAssertEqual(unsigned.text, #"{"error":{"code":403,"status":"Forbidden"}}"#)
+            var h = try signedForm(); for (k, v) in legacyHeaders { h[k] = v }
+            let ok = try await send(fx.app, path: "/api/v2/form/", headers: h, body: "")
+            XCTAssertEqual(ok.status, .ok); XCTAssertTrue(ok.text.contains(#""signaturschluesselHinterlegt":true"#), ok.text)
+            let stale = try signedForm(Int64(now.timeIntervalSince1970) - 1000)
+            try await eq(try await send(fx.app, path: "/api/v2/form/", headers: stale).status, .forbidden)
+            // key registration cannot be honoured; same answer for known and unknown forms
+            let a = try await send(fx.app, path: "/api/v2/key/", headers: legacyHeaders, body: "publicKey=x")
+            let b = try await send(fx.app, path: "/api/v2/key/", query: "f=\(UUID().uuidString.lowercased())", body: "publicKey=x")
+            XCTAssertEqual(a.status, .forbidden); XCTAssertEqual(a.text, b.text)
+            // v1 config never needs a signature (the old v1 never had one)
+            let v1 = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)")
+            XCTAssertEqual(v1.status, .ok)
+        }
+    }
+
+    func testLegacyBudgetAppliesAndConfigHasItsOwnBucket() async throws {
+        try await withFixture(rateLimited: true) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            for _ in 0..<2 { let r = try await send(fx.app, path: "/endpoint/", body: body(good)); XCTAssertEqual(r.status, .ok) }
+            let limited = try await send(fx.app, path: "/endpoint/", body: body(good))
+            XCTAssertEqual(limited.status, .tooManyRequests); XCTAssertEqual(limited.text, "429 - Too Many Requests")
+            XCTAssertTrue((Int(limited.headers.first(name: "Retry-After") ?? "") ?? 0) >= 1)
+            // the old v2 path shares the submit bucket
+            let v2 = try await send(fx.app, headers: legacyHeaders, body: body(good))
+            XCTAssertEqual(v2.text, #"{"error":{"code":429,"status":"Too Many Requests"}}"#)
+            // config is counted separately (page renders must not exhaust submits) but is limited too
+            for _ in 0..<2 { let r = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)"); XCTAssertEqual(r.status, .ok) }
+            let cfg = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)")
+            XCTAssertEqual(cfg.status, .tooManyRequests)
+            try await eq(try await count(fx.sql, "submissions"), 2)
+        }
+    }
+
+    func testOldStatusMappingForAbuseOutcomes() throws {
+        let withToken = Data(#"{"fields":{"cf-turnstile-response":"t"},"files":[]}"#.utf8)
+        let noToken = Data(#"{"fields":{},"files":[]}"#.utf8)
+        XCTAssertEqual((LegacyStatus.fromAbuse(Abort(.preconditionFailed), canonical: withToken) as? LegacyStatus)?.code, 406)
+        XCTAssertEqual((LegacyStatus.fromAbuse(Abort(.preconditionFailed), canonical: noToken) as? LegacyStatus)?.code, 412)
+        XCTAssertEqual((LegacyStatus.fromAbuse(Abort(.unsupportedMediaType), canonical: noToken) as? LegacyStatus)?.code, 451)
+        XCTAssertEqual((LegacyStatus.fromAbuse(Abort(.tooManyRequests), canonical: noToken) as? Abort)?.status, .tooManyRequests)
+        XCTAssertEqual((LegacyStatus.fromAbuse(Abort(.forbidden), canonical: noToken) as? Abort)?.status, .forbidden)
     }
 }

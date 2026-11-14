@@ -7,6 +7,7 @@ import FormDeploy
 import FormHTTP
 import FormStorage
 import FormIngest
+import FormLegacyAPI
 import FormMigration
 import FormWebhooks
 import FormMail
@@ -187,7 +188,8 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             ingest.throttle = guardian.throttles
             ingest.abuseKey = abuseKey.withUnsafeBytes { Data($0) }
             ingest.clientIP = IngestConfig.proxiedClientIP(trusted: config.publicTrustedProxies)
-            IngestSetup.register(app, config: ingest)
+            let backend = IngestSetup.register(app, config: ingest)
+            LegacyAPI.register(app, backend: backend)
         }
         app.lifecycle.use(FlowMaintenance())
         app.lifecycle.use(MailMaintenanceScheduler())

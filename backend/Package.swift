@@ -62,6 +62,11 @@ let package = Package(
                 .product(name: "Vapor", package: "vapor"),
             ],
             swiftSettings: v5),
+        // Legacy API (ADR 0047): old website paths/status codes of the previous backend, translated onto the ingest services.
+        .target(
+            name: "FormLegacyAPI",
+            dependencies: ["FormCore", "FormIngest", "FormPersistence", .product(name: "Vapor", package: "vapor")],
+            swiftSettings: v5),
         // Admin authentication core (P5-B1): passkey verification (copy of poc-passkey), sessions, rights.
         .target(
             name: "FormAuth",
@@ -121,7 +126,7 @@ let package = Package(
             swiftSettings: v5),
         .executableTarget(
             name: "App",
-            dependencies: ["FormCore", "FormPersistence", "FormHTTP", "FormAuth", "FormAdmin", "FormIngest", "FormMail", "FormDeploy", "FormWebhooks", "FormStorage", "FormMigration", "FormFlow", .product(name: "Vapor", package: "vapor")],
+            dependencies: ["FormCore", "FormPersistence", "FormHTTP", "FormAuth", "FormAdmin", "FormIngest", "FormLegacyAPI", "FormMail", "FormDeploy", "FormWebhooks", "FormStorage", "FormMigration", "FormFlow", .product(name: "Vapor", package: "vapor")],
             swiftSettings: v5),
 
         .target(name: "FormMigration", dependencies: ["FormCore", "FormAuth", "FormCrypto", "FormPersistence", .product(name: "Fluent", package: "fluent"), .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"), .product(name: "Vapor", package: "vapor"), .product(name: "Crypto", package: "swift-crypto")], swiftSettings: v5),
@@ -130,7 +135,7 @@ let package = Package(
         .testTarget(name: "FormPersistenceTests", dependencies: ["FormPersistence", "FormCore", .product(name: "Vapor", package: "vapor")], swiftSettings: v5),
         .testTarget(
             name: "FormIngestTests",
-            dependencies: ["FormIngest", "FormAuth", "FormHTTP", "FormCrypto", "FormPersistence", .product(name: "XCTVapor", package: "vapor")],
+            dependencies: ["FormIngest", "FormLegacyAPI", "FormAuth", "FormHTTP", "FormCrypto", "FormPersistence", .product(name: "XCTVapor", package: "vapor")],
             swiftSettings: v5),
         .testTarget(
             name: "FormAuthTests",

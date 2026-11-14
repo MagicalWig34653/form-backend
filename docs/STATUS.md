@@ -1,5 +1,13 @@
 # Tatsächlicher Stand
 
+## Legacy-API für alte Website-Einbindungen (14.11.2026, Todolino 4D037986, Worktree-Branch `worktree-agent-a6b7b112a581a7ee7`, lokal, nicht gepusht)
+
+- Befund (belegt aus form-backend_bvk): Alt-SDK ruft `/api/getFormData.php?z=`, `/endpoint/?f=`, `/api/v2/form/?f=`, `/api/v2/submit/?f=`, `/api/v2/key/`; Fehler `{"error":{"code","status"}}` (v2) bzw. `<Code> - <Text>` (v1), Feldfehler 412.
+- Änderung: neues SwiftPM-Target `FormLegacyAPI` (nur Übersetzung) + schmale Fassade `LegacyIngestBackend` in FormIngest; Registrierung nur am öffentlichen Listener (`main.swift`). Gleiche Gates/Validierung/Limits wie `/api/v2/submit/`. Schalter `compat.legacy`/`FORM_COMPAT_LEGACY` (Standard an) in Registry, TSV, Stack, Compose, Env-Vorlagen, Entrypoint. ADR 0047, Doku BETRIEB/UMSTIEG-CHECKLISTE/MIGRATION-ANLEITUNG.
+- Bewusste Abweichung: Formular ohne Signaturschlüssel nimmt auf Legacy-Pfaden unsignierte Anfragen an (siehe ADR, Risiko). Mit Schlüssel bleibt die Signatur Pflicht.
+- Tests: `IngestDBTests` 28/28 grün (Legacy-Fälle je Pfad/Status, Budget, Schalter aus = 404, neues API unverändert); Mutationsprobe (412->422, Schalter ignoriert, Unsigned-Regel aus): 19 Fehlschläge, ohne Mutation 0. E2E `backend/e2e-legacy.sh` (echtes Alt-SDK `BackendV2.php`/`Backend.php` aus ../form-backend_bvk, php -S als Kundenseite, Form per Playwright veröffentlicht): v1+v2 loadForm 200, gültig 200, Pflichtfeld fehlt 412 mit Alt-Text, nichts gespeichert; Schalter aus = 404. CI-Einbindung des E2E nicht erfolgt.
+- Grenzen: Alt-Signaturen nicht prüfbar (Schlüssel nicht importiert); `check-deploy.py` scheitert lokal schon vor der Änderung an Docker-Render-Asserts (endpoint_mode), CI prüfen.
+
 ## Migration: Altanfrage ohne formularUUID (14.11.2026, Todolino 4E46E368, Branch `worktree-agent-a05104ab9c7aeb0e3`, lokal committet, nicht gepusht)
 
 - Ursache: `anfragen.formularUUID` ist im Altschema nullable; `owner()` warf `invalidSourceAt(missingValue)`, der Lauf brach ab. Änderung: Zeile wird übersprungen, Prüffall `orphan-row` (offen), `TableParity.orphanCount` im Bericht (Fallback-Formular verworfen: kein Kunde/Schlüssel zuordenbar; Daten bleiben im Quelldump).

@@ -104,6 +104,7 @@ Eigene Feldmuster aus dem Altsystem werden nicht übernommen (Prüfbericht „ni
 ## 5. Umschalten
 
 1. Website auf das neue PHP-SDK umstellen (Zugangsdatei aus 4.3), Testeinsendung schicken.
+   Alte Einbindungen (altes PHP-SDK, v1 und v2) laufen nach dem DNS-Umzug über die Legacy-API weiter (Schalter `FORM_COMPAT_LEGACY`, Standard an; ADR 0047, BETRIEB.md): alte Pfade, Antwortformate und Statuscodes (Feldfehler 412). Das ist eine Übergangshilfe, kein Dauerzustand: Formulare ohne Signaturschlüssel nehmen dort unsignierte Anfragen an. Websites danach auf das neue SDK umbauen und den Schalter ausschalten. Rollback: DNS zurück auf das alte Backend.
    **Du siehst:** die Mail beim Team mit allen Angaben und die Einsendung unter Formular → „Einsendungen“.
 2. Altsystem abschalten oder Formular dort deaktivieren.
 3. **Umstieg → Umschaltung:** Häkchen „Ich habe verstanden: Ohne Probe wird der Altzugriff entfernt …“ setzen, „Altzugriff entfernen“.

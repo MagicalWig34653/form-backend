@@ -36,7 +36,7 @@ public struct DashboardHostMiddleware: AsyncMiddleware {
     public init(hosts: [String], trusted: [CIDR]) { self.hosts = Set(hosts); self.trusted = trusted }
     public func respond(to req: Request, chainingTo next: AsyncResponder) async throws -> Response {
         let path = req.url.path
-        if ["/api", "/mcp", "/.well-known", "/oauth", "/healthz", "/health"].contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
+        if ["/api", "/endpoint", "/mcp", "/.well-known", "/oauth", "/healthz", "/health"].contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
             return try await next.respond(to: req)
         }
         try Self.validate(req, hosts: hosts, trusted: trusted)

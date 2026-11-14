@@ -61,7 +61,9 @@ public struct IngestConfig: Sendable {
 /// and rendered by the application's error middleware (FormHTTP `ProblemMiddleware`); nothing here builds an
 /// error body or logs request data.
 public enum IngestSetup {
-    public static func register(_ app: Application, config: IngestConfig) {
+    /// Returns the thin facade the legacy API module (FormLegacyAPI, ADR 0047) translates through.
+    @discardableResult
+    public static func register(_ app: Application, config: IngestConfig) -> LegacyIngestBackend {
         app.http.client.configuration.redirectConfiguration = .disallow
         let handler = SubmitHandler(config: config)
         app.lifecycle.use(PacketStartupCheck(ingestLimitBytes: config.maxBodyBytes))
@@ -77,14 +79,15 @@ public enum IngestSetup {
                 app.on(method, path.map { PathComponent(stringLiteral: $0) }) { _ -> Response in throw Abort(.methodNotAllowed) }
             }
         }
+        return LegacyIngestBackend(handler: handler)
     }
 }
 
 struct SubmitHandler: Sendable {
     let config: IngestConfig
 
-    fileprivate struct FormRow: Decodable { let customer_id: Blob; let active: Int; let current_release_id: Blob?; let cstate: String }
-    private struct KeyRow: Decodable { let public_key: Blob? }
+    struct FormRow: Decodable { let customer_id: Blob; let active: Int; let current_release_id: Blob?; let cstate: String }
+    struct KeyRow: Decodable { let public_key: Blob? }
     private struct CustomerKeyRow: Decodable { let kid: String; let public_key: Blob }
     private struct DigestKeyRow: Decodable { let generation_no: Int64; let secret_ref: String? }
     private struct IdemRow: Decodable {
@@ -93,16 +96,16 @@ struct SubmitHandler: Sendable {
     }
 
     /// `ingest.requestsPerMinute` (0 = off). Counters live in `auth_throttles` as HMAC only; the IP is never stored in clear.
-    func enforceBudget(_ req: Request, sql: SQLDatabase, form: UUID) async throws {
+    func enforceBudget(_ req: Request, sql: SQLDatabase, form: UUID, scope: String = "ingest") async throws {
         guard let throttle = config.throttle else { return }
         let limit = Int(try await SystemSettings.value("ingest.requestsPerMinute", sql: sql))!
         guard limit > 0 else { return }
         let ip = config.clientKey(req)
-        do { try await throttle.consume(.adminRoute, "ingest|\(form.uuidString.lowercased())|\(ip)", limit: limit, window: 60) }
+        do { try await throttle.consume(.adminRoute, "\(scope)|\(form.uuidString.lowercased())|\(ip)", limit: limit, window: 60) }
         catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
     }
 
-    fileprivate struct Prepared { let f: String; let formUUID: UUID; let form: FormRow; let contentType: HTTPMediaType }
+    fileprivate struct Prepared { let f: String; let formUUID: UUID; let form: FormRow; let contentType: HTTPMediaType; let unsigned: Bool }
     private struct PreparedKey: StorageKey { typealias Value = Prepared }
 
     /// Everything that needs no body, in the contract's order: form parameter (401/404), form state, per-client budget (429),
@@ -124,12 +127,15 @@ struct SubmitHandler: Sendable {
 
         // 2. Only urlencoded and multipart are read (decided after the body).
         guard let ct = req.headers.contentType else { throw Abort(.unsupportedMediaType) }
+        // Legacy API (ADR 0047, flag set only by FormLegacyAPI): a form WITHOUT any registered signature key is accepted unsigned,
+        // like the old backend did. A form with a key still demands a valid signature, so the pre-check below applies to it.
+        let unsigned = LegacyIngestBackend.isLegacy(req) ? try await Self.hasNoSignatureKey(sql: sql, form: form, formUUID: formUUID, now: config.now()) : false
         // Cheap pre-check before any parsing (review M6): without well-formed signature headers nothing is parsed or hashed.
-        guard let tsHeader = req.headers.first(name: "X-Kubus-Timestamp"), !tsHeader.isEmpty, tsHeader.utf8.count <= 20,
+        if !unsigned { guard let tsHeader = req.headers.first(name: "X-Kubus-Timestamp"), !tsHeader.isEmpty, tsHeader.utf8.count <= 20,
               let sigHeader = req.headers.first(name: "X-Kubus-Signature"), sigHeader.utf8.count == 88,
               let sigRaw = Data(base64Encoded: sigHeader), sigRaw.count == 64,
-              RequestSignature.validTimestamp(tsHeader, now: Int64(config.now().timeIntervalSince1970)) else { throw Abort(.forbidden) }   // stale requests are not parsed (M5)
-        let done = Prepared(f: f, formUUID: formUUID, form: form, contentType: ct)
+              RequestSignature.validTimestamp(tsHeader, now: Int64(config.now().timeIntervalSince1970)) else { throw Abort(.forbidden) } }  // stale requests are not parsed (M5)
+        let done = Prepared(f: f, formUUID: formUUID, form: form, contentType: ct, unsigned: unsigned)
         req.storage[PreparedKey.self] = done
         return done
     }
@@ -138,7 +144,7 @@ struct SubmitHandler: Sendable {
 
     func submit(_ req: Request) async throws -> Response {
         let pre = try await prepare(req)
-        let f = pre.f, formUUID = pre.formUUID, form = pre.form, ct = pre.contentType
+        let f = pre.f, formUUID = pre.formUUID, form = pre.form, ct = pre.contentType, unsigned = pre.unsigned
         let sql = req.db(.mysql) as! SQLDatabase
         let now = config.now()
 
@@ -157,7 +163,7 @@ struct SubmitHandler: Sendable {
         do { canonical = try RequestSignature.canonical(fields: fields, files: fileFields) } catch { throw Abort(.preconditionFailed) }
 
         // 3. Signature (before any idempotency lookup so a hit never reveals an identity to an unauthenticated caller).
-        try await verifySignature(req, sql: sql, form: form, formID: f, formUUID: formUUID, canonical: canonical, now: now)
+        if !unsigned { try await verifySignature(req, sql: sql, form: form, formID: f, formUUID: formUUID, canonical: canonical, now: now) }
 
         let statisticsContext = try IngestStatistics.context(canonical: canonical)
         struct HostCount: Decodable { let c: Int }
@@ -195,8 +201,14 @@ struct SubmitHandler: Sendable {
             }
         }
 
-        let protection = try await AbuseProtection.check(req: req, config: config, form: formUUID, customer: form.customer_id,
-            release: releaseID, canonical: canonical, uploads: uploads, now: now, policy: ingestPolicy)
+        let protection: AbuseProtection.Result
+        do {
+            protection = try await AbuseProtection.check(req: req, config: config, form: formUUID, customer: form.customer_id,
+                release: releaseID, canonical: canonical, uploads: uploads, now: now, policy: ingestPolicy)
+        } catch let abort as Abort where LegacyIngestBackend.isLegacy(req) {
+            // The old backend told these apart: missing Turnstile token 412, failed check 406, malware 451.
+            throw LegacyStatus.fromAbuse(abort, canonical: canonical)
+        }
         let environment = protection.test ? "test" : "production"
 
         // 5b. Field validation against the published form (parity FA-024); transport/captcha fields are not stored or forwarded (ADR 0034).
@@ -340,10 +352,10 @@ struct SubmitHandler: Sendable {
     }
 
     private struct PolicyRow: Decodable { let transport_policy: String }
-    private struct DefRow: Decodable { let definition_json: String }
+    struct DefRow: Decodable { let definition_json: String }
 
     /// The `mail` section of the form version behind the release, nil when absent or invalid.
-    private func definitionOf(sql: SQLDatabase, customer: Blob, form: UUID, release: Blob) async throws -> [String: Any]? {
+    func definitionOf(sql: SQLDatabase, customer: Blob, form: UUID, release: Blob) async throws -> [String: Any]? {
         guard let r = try await sql.raw("""
             SELECT fv.definition_json AS definition_json FROM releases r
             JOIN form_versions fv ON fv.customer_id = r.customer_id AND fv.form_id = r.form_id AND fv.version_no = r.form_version_no
@@ -364,7 +376,16 @@ struct SubmitHandler: Sendable {
 
     // MARK: Signature
 
-    private func verifySignature(_ req: Request, sql: SQLDatabase, form: FormRow, formID: String, formUUID: UUID, canonical: Data, now: Date) async throws {
+    /// True when no usable (current, or previous within its overlap window) Ed25519 key is registered for the form.
+    static func hasNoSignatureKey(sql: SQLDatabase, form: FormRow, formUUID: UUID, now: Date) async throws -> Bool {
+        try await sql.raw("""
+            SELECT public_key FROM form_protocol_keys
+            WHERE customer_id = \(bind: form.customer_id) AND form_id = \(bind: bin(formUUID)) AND purpose = 'ed25519'
+              AND (state = 'current' OR (state = 'previous' AND valid_until >= \(bind: dbTime(now))))
+            """).all(decoding: KeyRow.self).isEmpty
+    }
+
+    func verifySignature(_ req: Request, sql: SQLDatabase, form: FormRow, formID: String, formUUID: UUID, canonical: Data, now: Date, route: SignatureRoute = .submit) async throws {
         guard let ts = req.headers.first(name: "X-Kubus-Timestamp"), let sigB64 = req.headers.first(name: "X-Kubus-Signature"),
               let sig = Data(base64Encoded: sigB64), sig.base64EncodedString() == sigB64, sig.count == 64
         else { throw Abort(.forbidden) }
@@ -376,7 +397,7 @@ struct SubmitHandler: Sendable {
         // No exception path (signature_exceptions) in P5-A: no key or no valid signature -> 403, never an unsigned accept.
         let nowSeconds = Int64(now.timeIntervalSince1970)
         let ok = keys.contains { k in
-            k.public_key.map { RequestSignature.verify(signature: sig, route: .submit, formID: formID, timestamp: ts, canonical: canonical, publicKey: $0.data, now: nowSeconds) } ?? false
+            k.public_key.map { RequestSignature.verify(signature: sig, route: route, formID: formID, timestamp: ts, canonical: canonical, publicKey: $0.data, now: nowSeconds) } ?? false
         }
         guard ok else { throw Abort(.forbidden) }
     }

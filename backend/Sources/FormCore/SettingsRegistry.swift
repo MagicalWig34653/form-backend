@@ -70,6 +70,7 @@ public enum SettingsRegistry {
         .init("auth.freshLoginMinutes", "Anmeldung", "integer", "30", "", min: 1, max: 120, restart: false),
         .init("auth.sessionIdleMinutes", "Anmeldung", "integer", "120", "", min: 5, max: 720, restart: false),
         .init("migration.enabled", "Umstieg", "boolean", "true", "", restart: false),
+        .init("compat.legacy", "Umstieg", "boolean", "true", "FORM_COMPAT_LEGACY", restart: false),
         .init("migration.allowedNets", "Umstieg", "cidrs", "", "FORM_MIGRATION_ALLOWED_NETS", restart: false),
         .init("mail.allowedNets", "Mail-Netze", "cidrs", "", "FORM_MAIL_ALLOWED_NETS"),
         .init("log.level", "Limits", "level", "info", "FORM_LOG_LEVEL"),
