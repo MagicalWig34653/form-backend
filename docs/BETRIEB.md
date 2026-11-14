@@ -104,6 +104,18 @@ Extern vorab bereitstellen:
   Aufbewahrung löscht sie). Der Umstieg-Import schreibt große Zellen stückweise (`CONCAT`), MariaDB prüft das Ergebnis
   gegen die Grenze (Fehler 1301). Der Prüflauf meldet eine zu kleine Grenze vorab als `target_packet_too_small`, die
   Quellprüfung warnt. Nach einer Änderung Datenbank und App neu starten.
+  Dasselbe gilt für alle Wartungswege mit großen Objekten (Test `LargeObjectOperationsTests`, `ImportRehearsalTests.testDecryptionProbe…`,
+  Anhang 19,9 MB = Paket 26,5 MB, jeweils Länge und SHA-256 der ganzen Zelle in der Datenbank geprüft): Schlüsselrotation (Liste, Ersatzpaket
+  `PUT key-rotation/objects/{id}` bis zum Body-Limit von 64 MiB, Abschluss, Entschlüsselung mit dem neuen Schlüssel), Hold/Rewrap, Flow-Kontext
+  und Resume-Beweis, Checkpoints und die Entschlüsselungsprobe des Umstiegs lesen und schreiben ganze Zellen stückweise. Die Rotationsliste
+  (`GET key-rotation/objects`) liefert höchstens etwa 32 MiB Pakete je Seite (mindestens ein Objekt, Fortsetzung über `next`); ein Ersatzpaket
+  braucht im Body-Budget das Dreifache seiner Größe (27 MB Paket = ca. 81 von 128 MiB), parallele große Ersatzpakete werden mit 503 zurückgestellt.
+  Der Resume-Beweis eines Ablaufs liest alle Objekte der Einsendung (alle Anhänge) auf einmal in den Speicher; bei vielen 20-MB-Anhängen
+  entsprechend Container-Speicher einplanen. Das Ergebnis der Datenbank (`CONCAT`) muss in `max_allowed_packet` passen (Fehler 1301 = Rollback, kein
+  halb geschriebenes Objekt).
+- Mails (Standard „mit allen Angaben“, ADR 0041) enthalten keine Anhänge; ein Anhang von 19,9 MB verändert Mailgröße und Zustellung nicht (Test
+  `MailEndToEndTests.testFullMailForSubmissionWithAttachmentAbove16MiB…`: 454 Byte Mail, beide Zustellungen `smtp-accepted`, Anhang vollständig
+  gespeichert). Ein SMTP-Größenlimit des Mailservers ist dadurch für Anhänge nicht erreichbar; das Praxisteam sieht Anhänge im Backend.
 - DB-Netzwerkzugriff von allen App-/Migrations-Nodes und vom Client für Backup/Restore.
   DB-Host muss im Container auflösbar sein; `localhost` bezeichnet dort den Container.
 - TLS-Reverse-Proxy, öffentliche HTTPS-Origin und passende Passkey-RP-ID. Proxy-Anforderungen unten.
