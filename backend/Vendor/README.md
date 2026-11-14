@@ -22,6 +22,7 @@ Alle Änderungen sind im Code mit `LOCAL PATCH` markiert (`grep -rn "LOCAL PATCH
 | `mysql-nio/Sources/MySQLNIO/MySQLQueryCommand.swift` (`deinit`) | Weder Assertion noch Fehlerlog enthalten das SQL; nur die Statement-ID wird protokolliert, kein Trap im Debug-Build (Abbruch nach PREPARE ist ein regulärer Fall). | S2-04c |
 | `mysql-nio/Sources/MySQLNIO/MySQLConnection.swift` (`connect`), `MySQLConnectionHandler.swift` (`channelInactive`), `MySQLError.swift` | Neuer Parameter `handshakeTimeout` (Standard 10 s) über Greeting, TLS und Authentifizierung (`MySQLError.handshakeTimeout`); `channelInactive` beendet das Connect-Promise während des Handshakes mit `MySQLError.closed`. Upstream ließ das Promise offen, der Poolplatz blieb belegt. | Handshake-Timeout |
 | `mysql-kit/Sources/MySQLKit/MySQLConfiguration.swift`, `MySQLConnectionSource.swift` | `MySQLConfiguration.handshakeTimeout` (Standard 10 s) wird an `MySQLConnection.connect` übergeben. App-seitig nur als Testnaht: `Persistence.configure(..., handshakeTimeout:)`. | Handshake-Timeout |
+| `mysql-nio/Sources/MySQLNIO/Protocol/MySQLProtocol+ERR_Packet.swift` (`redactedForConnect`), `MySQLConnectionHandler.swift` (Early-ERR, caching_sha2_password, mysql_native_password) | ERR-Pakete der Connect-Phase werden vor `MySQLError.server` auf errno und bereinigten SQLSTATE reduziert (Servertext durch festen Text ersetzt). AsyncKit loggt Pool-Connect-Fehler mit `String(reflecting:)` auf `error`, unabhängig von `sqlLogLevel`; Upstream enthielt dort DB-Benutzer, Host und beliebigen Servertext ("Access denied"). Query-Fehler bleiben unverändert. | Vendor-Review 2 (Auth-Log) |
 | `mysql-kit/Package.swift`, `fluent-mysql-driver/Package.swift` | Abhängigkeit auf Geschwisterpaket per Pfad, Test-Target entfernt. | SwiftPM-Identität |
 
 Semantik-Änderung: `tlsConfiguration != nil` heißt "TLS zwingend". Alle Aufrufer in diesem Repository (`Persistence.configure`,
@@ -29,5 +30,5 @@ Umstieg-Quellverbindung, Legacy-Befehl) übergeben bei gewolltem Klartext ausdr�
 
 Update auf eine neuere Upstream-Version: Verzeichnisse einzeln ersetzen (Manifest-Pfade auf `../<paket>` setzen, Test-Targets
 entfernen), alle `LOCAL PATCH`-Stellen erneut anwenden, Revisionstabelle aktualisieren. Prüfen: `DBTLSTests`,
-`DBDriverHardeningTests` (FormPersistenceTests) und `MigrationTests/testImportRunInNestedSessionLogsNoStatementsOrValues`
+`DBDriverHardeningTests` (FormPersistenceTests, inkl. Auth-ERR-Log und Close-/TLS-Stall-Tests) und `MigrationTests/testImportRunInNestedSessionLogsNoStatementsOrValues`
 müssen grün bleiben.

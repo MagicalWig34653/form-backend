@@ -104,8 +104,9 @@ final class MySQLConnectionHandler: ChannelDuplexHandler {
     func handleHandshake(context: ChannelHandlerContext, packet: inout MySQLPacket, state: HandshakeState) throws {
         // https://github.com/vapor/mysql-nio/issues/91
         guard !packet.isError else {
-            let errorPacket = try packet.decode(MySQLProtocol.ERR_Packet.self, capabilities: [])
-            self.logger.trace("Received early server error before handshake: \(errorPacket)")
+            // LOCAL PATCH (form-backend, fb-sec vendor review 1): neither logged nor thrown with the server text.
+            let errorPacket = try packet.decode(MySQLProtocol.ERR_Packet.self, capabilities: []).redactedForConnect()
+            self.logger.trace("Received early server error before handshake: errno=\(errorPacket.errorCode.rawValue) sqlstate=\(errorPacket.sqlState ?? "?")")
             throw MySQLError.server(errorPacket)
         }
         let handshakeRequest = try packet.decode(MySQLProtocol.HandshakeV10.self, capabilities: [])
@@ -298,8 +299,9 @@ final class MySQLConnectionHandler: ChannelDuplexHandler {
                 guard let capabilities = self.serverCapabilities else {
                     throw MySQLError.protocolError
                 }
+                // LOCAL PATCH (form-backend, fb-sec vendor review 1): redact before the error reaches the pool's error log.
                 let err = try packet.decode(MySQLProtocol.ERR_Packet.self, capabilities: capabilities)
-                throw MySQLError.server(err)
+                throw MySQLError.server(err.redactedForConnect())
             }
             guard let status = packet.payload.readInteger(endianness: .little, as: UInt8.self) else {
                 throw MySQLError.missingOrInvalidAuthMoreDataStatusTag
@@ -364,8 +366,9 @@ final class MySQLConnectionHandler: ChannelDuplexHandler {
                 guard let capabilities = self.serverCapabilities else {
                     throw MySQLError.protocolError
                 }
+                // LOCAL PATCH (form-backend, fb-sec vendor review 1): redact before the error reaches the pool's error log.
                 let error = try packet.decode(MySQLProtocol.ERR_Packet.self, capabilities: capabilities)
-                throw MySQLError.server(error)
+                throw MySQLError.server(error.redactedForConnect())
             }
             guard !packet.isOK else {
                 self.logger.trace("mysql_native_password sent OK, going to command phase")

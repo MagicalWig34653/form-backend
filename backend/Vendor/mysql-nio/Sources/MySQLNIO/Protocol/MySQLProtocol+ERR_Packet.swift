@@ -26,6 +26,15 @@ extension MySQLProtocol {
         /// `string<EOF>`    `error_message`    human readable error message
         public var errorMessage: String
         
+        /// LOCAL PATCH (form-backend, fb-sec vendor review 1): connect-phase errors (early ERR, authentication failure) are
+        /// passed on to the connection pool, which logs `String(reflecting: error)` at error level. Their server text can
+        /// carry the DB user, the client host and arbitrary text, so only errno and SQLSTATE (sanitized) are kept.
+        func redactedForConnect() -> ERR_Packet {
+            let state = sqlState.map { String($0.unicodeScalars.filter { $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0)) }.prefix(5)) }
+            return .init(errorCode: errorCode, sqlStateMarker: sqlStateMarker == nil ? nil : "#", sqlState: state,
+                         errorMessage: "errno=\(errorCode.rawValue) sqlstate=\(state ?? "?") (server message redacted)")
+        }
+
         /// See ``MySQLPacketDecodable/decode(from:capabilities:)``.
         public static func decode(from packet: inout MySQLPacket, capabilities: CapabilityFlags) throws -> ERR_Packet {
             guard let flag = packet.payload.readInteger(endianness: .little, as: UInt8.self) else {

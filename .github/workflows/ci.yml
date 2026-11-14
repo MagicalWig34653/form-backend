@@ -225,6 +225,9 @@ jobs:
       - name: E2E imported submissions survive the retention job (no due date, upgrade 0035, explicit decision)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33738 LEGACY_PORT=33979 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-retention.sh
+      - name: E2E retention panel with imported submissions in the browser (dry run, cancel sends nothing, one PUT with applyToImported, job deletes the due ones)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33739 LEGACY_PORT=33980 E2E_LOG_DIR=e2e-logs bash backend/e2e-retention-ui.sh
       - name: E2E Umstieg with a 27 MB attachment cell (target max_allowed_packet 16 MiB refused before the first write, 64 MiB imports byte for byte)
         if: ${{ !cancelled() }}
         run: P3B_PORT=33737 P3B_PORT2=33738 LEGACY_PORT=33978 E2E_LOG_DIR=e2e-logs bash backend/e2e-migration-packet.sh

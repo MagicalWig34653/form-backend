@@ -102,51 +102,117 @@ final class DBDriverHardeningTests: XCTestCase {
     // Handshake: a server that accepts the TCP connection but never sends a greeting must end in an error after the
     // handshake timeout, and the pool (one connection per loop) must recover.
     func testSilentServerEndsInTimeoutAndPoolRecovers() async throws {
-        try await poolRecovery(mode: .silent, bound: 6)
+        try await poolRecovery(mode: .silent, timeout: 1, bound: 6, expectFast: false)
     }
 
-    // Peer closes before the greeting: the connect promise must complete with an error at once, the pool recovers.
+    // The next three tests use a handshake timeout (30 s) far above the allowed failure latency (5 s): only the
+    // channelInactive patch (connect promise fails when the peer closes) can explain a fast error, not the timer.
+    // Peer closes before the greeting.
     func testCloseBeforeGreetingFailsFastAndPoolRecovers() async throws {
-        try await poolRecovery(mode: .closeImmediately, bound: 3)
+        try await poolRecovery(mode: .closeImmediately, timeout: 30, bound: 5, expectFast: true)
+    }
+
+    // Peer closes during authentication (greeting delivered, handshake response swallowed, then the socket is closed).
+    func testCloseDuringAuthenticationFailsFastAndPoolRecovers() async throws {
+        try await poolRecovery(mode: .greetingThenClose, timeout: 30, bound: 5, expectFast: true)
     }
 
     // Greeting arrives, then the server goes silent (stalled authentication): the timeout covers the later stages too.
     func testStalledAuthenticationEndsInTimeoutAndPoolRecovers() async throws {
-        try await poolRecovery(mode: .greetingThenSilent, bound: 6)
+        try await poolRecovery(mode: .greetingThenSilent, timeout: 1, bound: 6, expectFast: false)
     }
 
-    private func poolRecovery(mode: FaultProxy.Mode, bound: Double) async throws {
+    // TLS stall: the server offers TLS, the client sends SSLRequest and ClientHello, the proxy swallows everything.
+    // Only the handshake timeout can end this attempt (no inactive event, no error from the peer).
+    func testStalledTLSHandshakeEndsInTimeoutAndPoolRecovers() async throws {
+        try await poolRecovery(mode: .greetingThenSilent, timeout: 1, bound: 6, expectFast: false, tls: true)
+    }
+
+    private func poolRecovery(mode: FaultProxy.Mode, timeout: Int64, bound: Double, expectFast: Bool, tls: Bool = false) async throws {
         let db = try dbEnv()
         // Connection 0 is faulty, all following ones are relayed.
         let proxy = try FaultProxy(upstreamHost: db.host, upstreamPort: db.port) { $0 == 0 ? mode : .relay }
         defer { proxy.stop() }
         let app = try await Application.make(.testing)
         // One connection per event loop and every request on the same loop: a stuck attempt would block the whole pool.
-        Persistence.configure(app, try plainConfig(port: proxy.port, pw: db.pw), maxConnectionsPerEventLoop: 1, handshakeTimeout: .seconds(1))
+        if tls {
+            let cfg = try AppConfig(env: ["FORM_DB_HOST": "127.0.0.1", "FORM_DB_PASSWORD": db.pw, "FORM_DB_PORT": "\(proxy.port)", "FORM_DB_USER": "root",
+                                         "FORM_DB_NAME": "p4atest", "FORM_DB_TLS": "verify"])
+            Persistence.configure(app, cfg, maxConnectionsPerEventLoop: 1, tlsConfiguration: tlsTrust(), handshakeTimeout: .seconds(timeout))
+        } else {
+            Persistence.configure(app, try plainConfig(port: proxy.port, pw: db.pw), maxConnectionsPerEventLoop: 1, handshakeTimeout: .seconds(timeout))
+        }
         let loop = app.eventLoopGroup.next()
         let sql = app.databases.database(.mysql, logger: app.logger, on: loop)! as! SQLDatabase
 
         let started = Date()
-        let first = await withDeadline(seconds: 15) { try await sql.raw("SELECT 1").run() }
+        let first = await watchdog(seconds: 12, onExpiry: { proxy.stop() }) { try await sql.raw("SELECT 1").run() }
         let firstTook = Date().timeIntervalSince(started)
         XCTAssertEqual(first, .failed, "the first query must fail with an error, not hang (took \(firstTook) s)")
-        XCTAssertLessThan(firstTook, bound, "the failure must follow the handshake timeout, not the 10 s pool timeout")
+        XCTAssertLessThan(firstTook, bound, "the failure must follow the handshake timeout (\(timeout) s), not the 10 s pool timeout")
+        if !expectFast { XCTAssertGreaterThanOrEqual(firstTook, Double(timeout) * 0.8, "the timer ended the attempt") }
 
-        let second = await withDeadline(seconds: 15) { try await sql.raw("SELECT 1").run() }
+        // The same pool slot (maxConnectionsPerEventLoop 1, same loop) must be reusable.
+        let second = await watchdog(seconds: 12, onExpiry: { proxy.stop() }) { try await sql.raw("SELECT 1").run() }
         XCTAssertEqual(second, .ok, "the pool must recover after the aborted handshake")
         XCTAssertGreaterThanOrEqual(proxy.connections, 2)
-        try? await app.asyncShutdown()
+        _ = await watchdog(seconds: 10, onExpiry: {}) { try await app.asyncShutdown() }
+    }
+
+    // S2-04 / fb-sec vendor review 1: a failed login is logged by the connection pool (error level, independent of
+    // sqlLogLevel). The server message (user, host, arbitrary text) must not reach any log at info or trace.
+    func testAuthErrorPacketIsNotLogged() async throws {
+        let db = try dbEnv()
+        let userMarker = "SYNTHUSER" + String(UUID().uuidString.prefix(8))
+        let hostMarker = "SYNTHHOST" + String(UUID().uuidString.prefix(8))
+        let textMarker = "SYNTHTEXT" + String(UUID().uuidString.prefix(8))
+        let message = "Access denied for user '\(userMarker)'@'\(hostMarker)' (using password: YES) \(textMarker)"
+        for level in [Logger.Level.info, .trace] {
+            let proxy = try FaultProxy(upstreamHost: db.host, upstreamPort: db.port) { _ in .forgedAuthError(message) }
+            defer { proxy.stop() }
+            let sink = LogSink()
+            let app = try await Application.make(.testing)
+            var logger = Logger(label: "authlog", factory: { _ in sink })
+            logger.logLevel = level
+            app.logger = logger
+            Persistence.configure(app, try plainConfig(port: proxy.port, pw: db.pw), maxConnectionsPerEventLoop: 1, handshakeTimeout: .seconds(30))
+            let sql = app.databases.database(.mysql, logger: logger, on: app.eventLoopGroup.next())! as! SQLDatabase
+            let outcome = await watchdog(seconds: 12, onExpiry: { proxy.stop() }) { try await sql.raw("SELECT 1").run() }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            _ = await watchdog(seconds: 10, onExpiry: {}) { try await app.asyncShutdown() }
+            XCTAssertEqual(outcome, .failed, "\(level): the forged ERR fails the connect")
+            let text = sink.text
+            XCTAssertFalse(text.isEmpty, "\(level): logger was exercised")
+            var leaks: [String] = []
+            for (name, marker) in [("user", userMarker), ("host", hostMarker), ("server text", textMarker)] where text.contains(marker) { leaks.append(name) }
+            XCTAssertTrue(leaks.isEmpty, "\(level): \(leaks) from the auth ERR packet is in the log:\n\(text)")
+            XCTAssertTrue(text.contains("1045"), "\(level): errno stays in the log for diagnosis")
+        }
     }
 
     enum Outcome { case ok, failed, hung }
-    private func withDeadline(seconds: Double, _ op: @escaping @Sendable () async throws -> Void) async -> Outcome {
-        await withTaskGroup(of: Outcome.self) { group in
-            group.addTask { do { try await op(); return .ok } catch { return .failed } }
-            group.addTask { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)); return .hung }
-            let r = await group.next()!
-            group.cancelAll()
-            return r
+
+    /// Real watchdog: the result is delivered after `seconds` even if the operation never returns (a task group would wait
+    /// for the child, and cancelling does not abort a NIO future). `onExpiry` forcibly closes the connections (proxy).
+    private func watchdog(seconds: Double, onExpiry: @escaping @Sendable () -> Void, _ op: @escaping @Sendable () async throws -> Void) async -> Outcome {
+        await withCheckedContinuation { (cont: CheckedContinuation<Outcome, Never>) in
+            let once = OnceGate(cont)
+            let task = Task { do { try await op(); once.resume(.ok) } catch { once.resume(.failed) } }
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) {
+                if once.resume(.hung) { onExpiry(); task.cancel() }
+            }
         }
+    }
+}
+
+private final class OnceGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<DBDriverHardeningTests.Outcome, Never>?
+    init(_ c: CheckedContinuation<DBDriverHardeningTests.Outcome, Never>) { cont = c }
+    @discardableResult func resume(_ o: DBDriverHardeningTests.Outcome) -> Bool {
+        lock.lock(); let c = cont; cont = nil; lock.unlock()
+        guard let c else { return false }
+        c.resume(returning: o); return true
     }
 }
 
@@ -170,7 +236,7 @@ private final class Flag: @unchecked Sendable {
 
 /// Blocking TCP relay on 127.0.0.1:random with a fault per accepted connection (chosen by connection index).
 private final class FaultProxy: @unchecked Sendable {
-    enum Mode { case relay, silent, closeImmediately, greetingThenSilent, abortAfterPrepare }
+    enum Mode: Equatable { case relay, silent, closeImmediately, greetingThenSilent, greetingThenClose, abortAfterPrepare, forgedAuthError(String) }
     let port: Int
     private let listenFD: Int32
     private let upHost: String, upPort: Int
@@ -250,7 +316,9 @@ private final class FaultProxy: @unchecked Sendable {
         }
         guard let up = connectUpstream() else { close(client); return }
         let abortAfterPrepare = mode == .abortAfterPrepare
-        let stall = mode == .greetingThenSilent
+        var forgedMessage: String?
+        if case .forgedAuthError(let m) = mode { forgedMessage = m }
+        let stall = mode == .greetingThenSilent || mode == .greetingThenClose || forgedMessage != nil
         let sawPrepare = Flag()
         // server -> client
         Thread.detachNewThread { [self] in
@@ -274,6 +342,13 @@ private final class FaultProxy: @unchecked Sendable {
         while true {
             let r = buf.withUnsafeMutableBytes { read(client, $0.baseAddress!, 16384) }
             if r <= 0 { break }
+            if mode == .greetingThenClose { break }   // close during authentication
+            if let m = forgedMessage {
+                // ERR_Packet: 0xFF, errno 1045 (LE), '#', SQLSTATE 28000, message; sequence id follows the client's packet.
+                let body: [UInt8] = [0xFF, 0x15, 0x04] + Array("#28000".utf8) + Array(m.utf8)
+                writeAll(client, [UInt8(body.count & 0xFF), UInt8((body.count >> 8) & 0xFF), 0, buf[3] &+ 1] + body)
+                continue
+            }
             if stall { continue }   // swallow the handshake response
             // A command packet is `len(3) seq(1)=0 command(1)`; COM_STMT_PREPARE is 0x16.
             if r > 4, buf[3] == 0, buf[4] == 0x16 {
