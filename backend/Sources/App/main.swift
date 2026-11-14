@@ -211,6 +211,7 @@ let internalResponder = app.responder.default
 app.responder.use { _ in internalResponder }
 let publicResponder = try ListenerRoutes.publicSurface(app, config: config,
     dashboard: { try dashboardRegistration?() }, protocols: { try publicRegistration?() })
+app.listenerPorts = [config.httpPort, config.publicPort]   // lets the body-budget gate find the socket of a request (ClientConnection)
 let servers = DualHTTPServer(app: app, config: config, internalResponder: internalResponder, publicResponder: publicResponder)
 app.servers.use { _ in servers }
 app.asyncCommands.use(MigrateLegacyCommand(), as: "migrate-legacy")

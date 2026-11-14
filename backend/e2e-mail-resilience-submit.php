@@ -7,6 +7,8 @@
 //      field: the field "anliegen" carries a value of 11 MiB (more than the 10 MiB mail limit), no file.
 //      abort: like busy (deterministic file of BYTES bytes, same key and bytes as "retry") but ONE attempt with a client timeout of TIMEOUT_MS (argv 7): emulates an old SDK
 //             that gives up while its request waits in the server's body-budget queue. Prints "aborted" (line 1) and the HTTP log (line 2), or the id lines when the server answered in time.
+//      capture: like abort, but nothing is sent: the signed request (request line, headers, body; same key and bytes as "retry") is written as raw HTTP/1.1 to the file OUT (argv 7) and "captured" is printed.
+//             backend/e2e-raw-abort.py replays it over a raw socket with a huge send buffer (card 01480C4B: deterministic "fully uploaded, then gone" client).
 //      retry: the same submission (same key, same bytes) with a generous budget; the result must be the one and only submission.
 //      files: two files (umlaut name, 41,000 and 3,000,001 bytes), the normal retry budget.
 declare(strict_types=1);
@@ -75,6 +77,21 @@ switch ($mode) {
         $files = [["busy-$marker.pdf", pdf($bytes, crc32($marker))]];
         $client = new Client($url, Credentials::fromFile($cred), $transport, sleep: $count, totalTimeoutMs: 300000, maxAttempts: 12);
         break;
+    case 'capture':
+        $files = [["budget-$marker.pdf", detPdf($bytes, $marker)]];
+        $client = new Client($url, Credentials::fromFile($cred), new class($argv[7]) implements Transport {
+            public function __construct(private string $out) {}
+            public function post(string $url, string $body, array $headers, int $timeoutMs): array
+            {
+                $u = parse_url($url);
+                $head = 'POST ' . ($u['path'] ?? '/') . (isset($u['query']) ? '?' . $u['query'] : '') . " HTTP/1.1\r\nHost: " . $u['host'] . (isset($u['port']) ? ':' . $u['port'] : '') . "\r\n";
+                foreach ($headers as $k => $v) { $head .= "$k: $v\r\n"; }
+                $head .= 'Content-Length: ' . strlen($body) . "\r\nConnection: close\r\n\r\n";
+                file_put_contents($this->out, $head . $body);
+                throw new \FormBackend\Exception\TransportException('captured', false);
+            }
+        }, sleep: $count, totalTimeoutMs: 120000, maxAttempts: 1);
+        break;
     case 'abort':
     case 'retry':
         $files = [["budget-$marker.pdf", detPdf($bytes, $marker)]];
@@ -99,6 +116,7 @@ foreach ($files as $i => [$name, $content]) {
 try {
     $id = $client->submit($fields, $key, $spec)->id;
 } catch (\FormBackend\Exception\TransportException | \FormBackend\Exception\RejectedException $e) {   // timeout, or (bodies < 4 MiB, no wait window) an immediate 503
+    if ($mode === 'capture' && $e->getMessage() === 'captured') { echo "captured\n"; exit(0); }
     if ($mode !== 'abort') { throw $e; }
     echo "aborted\n", "http ", implode(',', $transport->log), "\n";
     exit(0);

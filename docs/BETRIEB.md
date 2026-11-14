@@ -552,15 +552,22 @@ Request-Budget **vor** dem Body: anonyme Anfragen enden mit `401`, ohne dass der
 Containerlimit proportional erhöhen (Faustregel: Budget höchstens halbes Limit). **Host-Bedarf:** mindestens Containerlimit je Replikat plus Datenbank, Proxy und Betriebssystem, für eine Replik also grob 2 GiB RAM. Gemessen wird nicht pro Replikat
 koordiniert: bei mehreren Replikaten gilt das Budget je Prozess.
 
-**Body-Budget: Wartefenster nur ab 4 MiB (Karte 85E16E07, `backend/e2e-body-budget-wait.sh`).** Reicht das Body-Budget nicht, wartet eine Anfrage
-nur, wenn ihr Body mindestens 4 MiB groß ist (`BodyBudget.minWaitBytes`, Konstante, nicht einstellbar; Wartezeit `BodyBudget.defaultMaxWait`, 20 s).
-Kleinere Bodies bekommen wie vor der Warteschlange sofort 503 `body_budget_exhausted` mit `Retry-After`, ohne dass der Body gelesen wird.
-Begründung: Vapor meldet keinen Abbruch bei Verbindungsende; eine wartende Anfrage wird nach Freigabe des Budgets auch dann bearbeitet, wenn
-der Client längst aufgegeben hat. Kleine Bodies liegen oft komplett im Socketpuffer, ein abgebrochener Client würde sonst nachträglich
-gespeichert und gemailt (gemessen vorher: 1,5 bis 2 MiB teils ja). Der Server-Fix (NIO-Channel-Handler, der wartende Anfragen bei
-Verbindungsende verwirft) ist Karte 01480C4B-0625-48A5-9A79-DE1778589E0B und noch nicht umgesetzt. Duplikate entstehen nie: der Wiederholungsversuch mit
-demselben Idempotenzschlüssel trifft dieselbe Einsendung. Gegenmaßnahme im SDK: Versuchs-Timeout bei Bodies über 1 MiB mindestens 20 s
-Serverwartezeit plus Upload (`sdk/php/README.md`). Messreihe der Grenze: siehe STATUS.md.
+**Body-Budget: Wartefenster ab 4 MiB, Abbruch bei Verbindungsende (Karten 85E16E07, 01480C4B; `backend/e2e-body-budget-wait.sh`).** Reicht das Body-Budget
+nicht, wartet eine Anfrage nur, wenn ihr Body mindestens 4 MiB groß ist (`BodyBudget.minWaitBytes`, Konstante, nicht einstellbar; Wartezeit
+`BodyBudget.defaultMaxWait`, 20 s). Kleinere Bodies bekommen sofort 503 `body_budget_exhausted` mit `Retry-After`, ohne dass der Body gelesen wird.
+Vapor 4 meldet kein Request-Abbrechen und bietet keinen Pipeline-Haken je Verbindung; solange niemand den Body liest, bleibt auch ein
+Verbindungsende unsichtbar. Der Server fragt deshalb den Kernel (`ClientConnection`, `FormAuth`): wartende Anfragen werden alle 0,2 s geprüft
+(Socket der Anfrage über die Peer-Adresse unter den Dateideskriptoren gefunden, TCP-Zustand per `TCP_INFO`/`TCP_CONNECTION_INFO`; nur ESTABLISHED
+gilt als offen). Ist der Client weg, wird die Wartende aus der Schlange entfernt (Reihenfolge der anderen unverändert, nichts reserviert, Body
+ungelesen), die Anfrage endet mit 499 `client_closed_request` und wird nie bearbeitet. Harter Fall: ein Client, der alles hochgeladen hat und danach
+schließt, hinterlässt sein FIN hinter den noch ungelesenen Daten im Kernel, es ist erst nach dem Lesen sichtbar. Deshalb liest das Gate eine nach Wartezeit
+zugelassene Anfrage selbst (der Handler hätte es sofort getan, begrenzt durch die Reservierung), prüft die Verbindung erneut (0,1 s Kulanz für das FIN)
+und verwirft sie vor dem Handler: nichts gespeichert, nichts gemailt, Lease zurückgegeben. Grenzen: (1) dieser Fall kostet kurz Speicher für den Body
+(im Budget reserviert); (2) ein Client, der nach dem Senden nur seine Sendeseite schließt (Halbschluss), gilt als weg, nur betroffen sind Anfragen,
+die warten mussten; (3) hinter einem Proxy zählt die Verbindung zum Proxy. Die 4-MiB-Grenze bleibt als vorsichtige Untergrenze (kleine Bodies
+werden sofort mit Retry-After abgewiesen statt zu warten), ist für die Korrektheit aber nicht mehr nötig. Duplikate entstehen nie: der
+Wiederholungsversuch mit demselben Idempotenzschlüssel trifft dieselbe Einsendung. SDK: Versuchs-Timeout bei Bodies über 1 MiB mindestens 20 s Serverwartezeit
+plus Upload (`sdk/php/README.md`).
 
 **Proxy-Logs.** Das Access-Log der Vorlage kürzt IPs (IPv4 letztes Oktett auf `.0`, IPv6 auf
 /48) und enthält `$uri` ohne Query-String und ohne Referer. Das Backend erhält weiterhin die

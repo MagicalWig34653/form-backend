@@ -42,10 +42,31 @@ public struct BodyBudgetGate: AsyncMiddleware {
     public func respond(to req: Request, chainingTo next: AsyncResponder) async throws -> Response {
         try await preflight(req)
         let n = try Self.declaredBytes(req, maxBytes: maxBytes)
-        guard let lease = await req.application.bodyBudget.reserveWaiting(bodyBytes: n) else { throw BodyBudgetExhausted() }
+        let lease: BodyBudget.Lease?
+        do {
+            lease = try await req.application.bodyBudget.reserveWaiting(bodyBytes: n, abandoned: { !ClientConnection.isOpen(req) })
+        } catch is CancellationError { throw ClientClosedRequest() }   // gone while queued: nothing reserved, the body is never read
+        guard let lease else { throw BodyBudgetExhausted() }
         defer { lease.release() }
+        if lease.waited {
+            // admitted after a wait: the client may have given up meanwhile. A complete request can sit unread in the socket buffers; the FIN of a
+            // client that closed right after uploading is queued behind that data and invisible until it is read. So check, collect the body
+            // (the handler would do it next, bounded by the reservation) and check again, with a short grace for the FIN to arrive.
+            guard ClientConnection.isOpen(req) else { throw ClientClosedRequest() }
+            _ = try await req.body.collect(max: maxBytes).get()
+            guard await ClientConnection.staysOpen(req) else { throw ClientClosedRequest() }
+        }
         return try await next.respond(to: req)
     }
+}
+
+/// The client closed the connection while its request waited for the body budget; it is dropped unread (nobody is listening for the answer).
+public struct ClientClosedRequest: PublicProblemError {
+    public init() {}
+    public var statusCode: UInt { 499 }
+    public var code: String { "client_closed_request" }
+    public var message: String { "Verbindung vom Client beendet." }
+    public var auditReason: String? { nil }
 }
 
 /// Too much request data is in flight in this replica; the request was not read. Retryable.

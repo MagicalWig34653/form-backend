@@ -4,6 +4,7 @@ import FormCore
 import FormPersistence
 import Foundation
 import SQLKit
+import TestSupport
 import XCTest
 import XCTVapor
 @testable import FormAdmin
@@ -140,6 +141,44 @@ final class BodyBudgetRouteTests: XCTestCase {
             }
             XCTAssertEqual(budget.inFlight, 0)
             XCTAssertEqual(budget.peak, 60 * mib * BodyBudget.memoryFactor, "only the occupying lease (180 MiB) was ever reserved at once; the admitted 10 MiB body came after its release")
+        }
+    }
+
+    /// Card 01480C4B: over REAL HTTP (listening socket, real client) a request that waits in the body-budget queue is removed when its client
+    /// aborts: nothing is reserved for it, not even after the budget becomes free, and no submission is stored for it.
+    func testIngestRequestThatWaitsForTheBudgetIsDroppedWhenTheClientAborts() async throws {
+        try await AdminFixture.with { f in
+            let budget = BodyBudget(capacity: 64 * mib, maxWait: 30); f.app.bodyBudget = budget
+            let form = try await activeForm(f)
+            try await f.app.server.start(address: .hostname("127.0.0.1", port: 0))
+            defer { f.app.server.shutdown() }   // a started HTTPServer must be shut down before the application deinitializes
+            let port = try XCTUnwrap(f.app.http.server.shared.localAddress?.port)
+            f.app.listenerPorts = [port]
+            func wire(_ bytes: Int) -> Data {
+                var head = "POST /api/v2/submit/?f=\(form.uuidString.lowercased()) HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Length: \(bytes)\r\n"
+                for (k, v) in submitHeaders() { head += "\(k): \(v)\r\n" }
+                var d = Data((head + "\r\n").utf8); d.append(Data(repeating: 0x41, count: bytes)); return d
+            }
+            func waitUntil(_ what: String, _ cond: () -> Bool) async throws {
+                let end = Date().addingTimeInterval(8)
+                while !cond() { if Date() > end { XCTFail("timeout: \(what)"); return }; try await Task.sleep(nanoseconds: 20_000_000) }
+            }
+            struct C: Decodable { let c: Int }
+            let held = try XCTUnwrap(budget.reserve(bodyBytes: 20 * mib))   // 60 of 64 MiB: the next 5 MiB body (15) has to wait
+            let client = try RawClient(port: port)
+            XCTAssertGreaterThan(client.send(wire(5 * mib)), 5 * mib)
+            try await waitUntil("queued") { budget.waiting == 1 }
+            client.reset()   // the client gives up
+            try await waitUntil("dropped from the queue") { budget.waiting == 0 }
+            XCTAssertEqual(budget.cancelled, 1); XCTAssertEqual(budget.granted, 1, "never admitted"); XCTAssertEqual(budget.inFlight, 60 * mib)
+            held.release()
+            try await Task.sleep(nanoseconds: 700_000_000)
+            XCTAssertEqual(budget.inFlight, 0); XCTAssertEqual(budget.granted, 1, "nothing was reserved for the abandoned request")
+            let rows = try await f.sql.raw("SELECT COUNT(*) AS c FROM submissions").first(decoding: C.self)?.c
+            XCTAssertEqual(rows, 0)
+            // the budget is intact: the same kind of request from a client that stays is admitted right away
+            let lease = try await budget.reserveWaiting(bodyBytes: 5 * mib)
+            XCTAssertNotNil(lease); XCTAssertEqual(lease?.waited, false); lease?.release()
         }
     }
 

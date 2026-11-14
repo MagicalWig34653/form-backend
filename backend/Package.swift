@@ -139,7 +139,7 @@ let package = Package(
             swiftSettings: v5),
         .testTarget(
             name: "FormAuthTests",
-            dependencies: ["FormAuth", "FormHTTP", "FormPersistence", .product(name: "_CryptoExtras", package: "swift-crypto"), .product(name: "XCTVapor", package: "vapor")],
+            dependencies: ["FormAuth", "FormHTTP", "FormPersistence", "TestSupport", .product(name: "_CryptoExtras", package: "swift-crypto"), .product(name: "XCTVapor", package: "vapor")],
             resources: [.copy("Fixtures")],
             swiftSettings: v5),
         .testTarget(

@@ -43,7 +43,7 @@ LINK=$(printf '%s\n' "$OUT" | sed -n 's/.*): \(http[^ ]*\)$/\1/p' | head -1)
 "$BIN" serve >"$TMP/app.log" 2>&1 & APP_PID=$!
 for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
 export E2E_SETUP_LINK="$LINK" E2E_PASSWORD="$PASSWORD" E2E_PORT=$WPORT E2E_SPEC=${MR_SPEC:-real-mail-resilience.spec.ts} E2E_TMP="$TMP" E2E_PUBLIC_URL=http://127.0.0.1:$PPORT
-export E2E_DB_CONTAINER="$NAME" E2E_DB_PASSWORD="$PW" E2E_MAILPIT_CONTAINER="$MP" E2E_HOLD_SCRIPT="$PWD/backend/e2e-hold-ingest-slots.py"
+export E2E_DB_CONTAINER="$NAME" E2E_DB_PASSWORD="$PW" E2E_MAILPIT_CONTAINER="$MP" E2E_HOLD_SCRIPT="$PWD/backend/e2e-hold-ingest-slots.py" E2E_RAW_ABORT_SCRIPT="$PWD/backend/e2e-raw-abort.py"
 export E2E_MAILPIT_SMTP=$MPSMTP E2E_MAILPIT_API=$MPAPI E2E_SUBMIT_DRIVER="$PWD/backend/e2e-mail-resilience-submit.php"
 (cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; prc=$?
 tail -25 "$TMP/playwright.log"

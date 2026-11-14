@@ -16,15 +16,19 @@ public final class BodyBudget: @unchecked Sendable {
     public static let defaultMaxWait: TimeInterval = 20
 
     /// Bodies below this size never wait (card 85E16E07): they often sit completely in the socket buffer, so a client that gave up while
-    /// queued would still be processed after admission. They are refused at once (503 + Retry-After), exactly like before the queue existed.
-    /// Proper fix (cancel on connection end): card 01480C4B.
+    /// queued would otherwise leave a complete request behind. They are refused at once (503 + Retry-After), exactly like before the queue existed.
+    /// Since card 01480C4B a waiting request is also abandoned when its connection ends (`abandoned` of `reserveWaiting`), so the threshold is no
+    /// longer needed for correctness; it stays as a cheap, conservative limit (small bodies are retried at once instead of queueing).
     public static let minWaitBytes = 4 << 20
+
+    /// How often a waiting request asks whether its client is still there.
+    public static let abandonPollInterval: TimeInterval = 0.2
 
     public let capacity: Int
     public let maxWait: TimeInterval
     private let lock = NSLock()
-    private var used = 0, peakUsed = 0, grantedCount = 0, refusedCount = 0, waitedCount = 0
-    private struct Waiter { let id: Int; let cost: Int; let cont: CheckedContinuation<Lease?, Never> }
+    private var used = 0, peakUsed = 0, grantedCount = 0, refusedCount = 0, waitedCount = 0, cancelledCount = 0
+    private struct Waiter { let id: Int; let cost: Int; let cont: CheckedContinuation<Lease?, Error> }
     private var waiters: [Waiter] = []
     private var nextWaiterID = 0
 
@@ -40,13 +44,19 @@ public final class BodyBudget: @unchecked Sendable {
     public var refused: Int { lock.lock(); defer { lock.unlock() }; return refusedCount }
     /// Requests that had to wait for capacity (whether or not they were admitted in the end).
     public var waited: Int { lock.lock(); defer { lock.unlock() }; return waitedCount }
+    /// Waiting requests that were abandoned (task cancelled or client gone) before they were admitted.
+    public var cancelled: Int { lock.lock(); defer { lock.unlock() }; return cancelledCount }
+    /// Requests waiting right now.
+    public var waiting: Int { lock.lock(); defer { lock.unlock() }; return waiters.count }
 
     public final class Lease: @unchecked Sendable {
         private let owner: BodyBudget
         private let cost: Int
         private let lock = NSLock()
         private var open = true
-        fileprivate init(owner: BodyBudget, cost: Int) { self.owner = owner; self.cost = cost }
+        /// True when the request had to queue for this reservation (the connection may have ended meanwhile, see `reserveWaiting`).
+        public let waited: Bool
+        fileprivate init(owner: BodyBudget, cost: Int, waited: Bool = false) { self.owner = owner; self.cost = cost; self.waited = waited }
         public func release() {
             lock.lock(); let was = open; open = false; lock.unlock()
             if was, cost > 0 { owner.give(cost) }
@@ -69,7 +79,10 @@ public final class BodyBudget: @unchecked Sendable {
 
     /// Like `reserve`, but a request of at least `minWaitBytes` that does not fit waits (first come, first served) up to `maxWait` seconds
     /// for capacity instead of being refused at once; smaller bodies are refused at once (see `minWaitBytes`); nil = does not fit (after the wait).
-    public func reserveWaiting(bodyBytes: Int) async -> Lease? {
+    /// A request that waits is removed from the queue (nothing reserved, arrival order of the others unchanged) and `CancellationError` is thrown when
+    /// its task is cancelled or `abandoned` (polled every `abandonPollInterval` while queued; the client connection is gone) returns true.
+    public func reserveWaiting(bodyBytes: Int, abandoned: (@Sendable () -> Bool)? = nil) async throws -> Lease? {
+        try Task.checkCancellation()
         if bodyBytes < Self.minWaitBytes { return reserve(bodyBytes: bodyBytes) }
         let cost = cost(for: bodyBytes)
         let id: Int
@@ -82,15 +95,38 @@ public final class BodyBudget: @unchecked Sendable {
         waitedCount += 1; id = nextWaiterID; nextWaiterID += 1
         lock.unlock()
         let timeout = maxWait
-        return await withCheckedContinuation { (cont: CheckedContinuation<Lease?, Never>) in
-            lock.lock(); waiters.append(Waiter(id: id, cost: cost, cont: cont)); lock.unlock()
-            // a release may have happened between the check above and the registration
-            drain()
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                self?.expire(id)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Lease?, Error>) in
+                lock.lock(); waiters.append(Waiter(id: id, cost: cost, cont: cont)); lock.unlock()
+                // cancelled before the waiter existed: the handler below found nothing to remove
+                if Task.isCancelled { cancel(id) }
+                // a release may have happened between the check above and the registration
+                drain()
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    self?.expire(id)
+                }
+                if let abandoned {
+                    Task { [weak self] in
+                        while let me = self, me.isWaiting(id) {
+                            try? await Task.sleep(nanoseconds: UInt64(Self.abandonPollInterval * 1_000_000_000))
+                            if me.isWaiting(id), abandoned() { me.cancel(id); return }
+                        }
+                    }
+                }
             }
-        }
+        } onCancel: { [self] in cancel(id) }
+    }
+
+    private func isWaiting(_ id: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return waiters.contains { $0.id == id } }
+
+    /// Removes a waiting request (no reservation was made) and resumes it with `CancellationError`; no-op when it was admitted or expired already.
+    private func cancel(_ id: Int) {
+        lock.lock()
+        guard let i = waiters.firstIndex(where: { $0.id == id }) else { lock.unlock(); return }
+        let w = waiters.remove(at: i); cancelledCount += 1; lock.unlock()
+        w.cont.resume(throwing: CancellationError())
+        drain()   // the head may have been blocking smaller followers
     }
 
     private func expire(_ id: Int) {
@@ -108,7 +144,7 @@ public final class BodyBudget: @unchecked Sendable {
             guard let w = waiters.first, used + w.cost <= capacity else { lock.unlock(); return }
             waiters.removeFirst(); used += w.cost; peakUsed = max(peakUsed, used); grantedCount += 1
             lock.unlock()
-            w.cont.resume(returning: Lease(owner: self, cost: w.cost))
+            w.cont.resume(returning: Lease(owner: self, cost: w.cost, waited: true))
         }
     }
 
