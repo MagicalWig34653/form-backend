@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## QA: 500 PUT key-rotation/objects und 400 GET ops/access (14.11.2026, Todolino 5F3725C9, Branch `worktree-agent-a273ce1915d917036`, lokal, nicht gepusht)
+
+- 500 belegt: MySQL-Deadlock (errno 1213, sqlstate 40001) einer Admin-Schreibtransaktion; `ProblemMiddleware` machte jeden Nicht-Abort-Fehler zu 500. Reproduktion auf Image 2d3b4ee: 5 von 10 Läufen (synthetisch), 2 von 6 in der zweiten Serie. Zustand danach konsistent (Transaktion komplett zurückgerollt; die Wiederholung der PWA-Automation schließt die Rotation ab, Einsendung per Recovery-Code lesbar). Klasse B (nur Statuscode).
+- Fix: `DB.isTransientConflict` (1213/1205); `ProblemMiddleware` antwortet auf `/admin/` mit 409 `conflict` statt 500 (Ingest unverändert, hat eigene Wiederholung). Test `HTTPTests.testDatabaseDeadlockVictimIsConflictOnAdminApiNotInternalError` (echter Deadlock; Mutationsprobe rot).
+- 400 auf GET ops/access war ein Fehler: `forms.name` ist nullable, der Import legt unbenannte Formulare mit NULL an, `OpsRoutes.F.name: String` scheiterte beim Decodieren (DecodingError -> 400). Fix `String?`, Test `OpsDatabaseTests.testAccessListsFormsWithoutName` (Mutation rot). Weitere Decodable-Stellen geprüft: keine weitere mit forms.name als Pflicht-String.
+- Harness `e2e-operator.sh`: jeder 5xx im Browser ist Fehlschlag, die letzten 80 App-Logzeilen (Geheimnisse/Mailadressen maskiert) und DB-Deadlockbericht gehen ins Run-Log; Spec protokolliert Problem-Body bei >=400 (Doppelausgabe bei 5xx entfernt).
+
 ## Legacy: Server-zu-Server-Budget statt Peer-Bann, X-Real-IP (14.11.2026, Todolino 4D037986, Worktree-Branch `worktree-agent-a33dfb39a230e4e6b`, lokal, nicht gepusht)
 
 - Umgesetzt: Legacy-Anfragen ohne benannten Besucher (Peer = Website-Server) nutzen `ingest.legacyPeerRequestsPerMinute` (Standard 600, 0 = aus, `FORM_INGEST_LEGACY_PEER_REQUESTS_PER_MINUTE`) je (Formular, Peer) anstelle von `ingest.requestsPerMinute`; kein Bann und keine `abuse.blockedNets`-Sperre allein auf Peer-Identität (Fehlversuche zählen dort nicht). Ist der Besucher vertraut aufgelöst (XFF/X-Real-IP), bleibt Besucherbudget/-bann. `/api/v2/submit/` unverändert. Config-Aufruf (`legacyConfig`) zählt als Legacy.
@@ -157,6 +164,7 @@
 - nginx-Vorlage: `client_max_body_size` 33m (öffentlich) / 65m (intern), `X-Real-IP`, `limit_conn`, auskommentierter Block für Dashboard-Pfade; `deploy/proxy/test-template.sh` prüft `nginx -t` und die Grenzen (2/34/40/66 MiB). Doku: `docs/BETRIEB.md` (Abschnitt Betriebshärtung des Proxys).
 - Tests: `Tests/FormCoreTests/BodyBudgetTests.swift`, `Tests/FormAdminTests/BodyBudgetRouteTests.swift` (echte MariaDB), Echtlauf `backend/e2e-body-budget.sh` (+ `e2e-body-budget-flood.py`), CI-Schritt in `e2e-real`. Rot gegen HEAD `2b340db`: alle vier Phasen `OOMKilled=true`; grün nach Fix: alle vier `OOMKilled=false` (Ingest 503/403, Admin 401).
 - Offen: Budget gilt je Prozess; kein Test mit echtem Browser/nginx vor der App; Wirkung auf SDK-Wiederholung bei 503 nur aus dem Vertrag (503 retryable) abgeleitet.
+- Nachtrag Karte 30858F93 (Rückfall b, 14.11.2026): Standard-Speicherlimit der App 512M -> 1024M (`APP_MEMORY`, Reservierung 256M) in compose.yaml, stack.yaml, .env.example, stack.env.example, config-extra.tsv; Doku BETRIEB.md/UMSTIEG-CHECKLISTE.md. Budget-Default 128 MiB bleibt. `e2e-body-budget.sh` bleibt bewusst bei 512m (Untergrenzen-Beweis des Budgets, kein Standard-Test). Ob der OOM bei 512M durch Malloc/Leck behebbar ist, klärt der Untersuchungs-Worker; bei Erfolg Standard zurücknehmen. Host braucht grob 2 GiB RAM je Replikat.
 
 ## Sicherheitsbefunde S2-01 / S2-04: DB-TLS zwingend, kein Treiber-Logging von Geheimnissen (13.11.2026, Worktree-Branch `worktree-agent-a5a3849c493831cf8`, lokal committet, ungemergt)
 

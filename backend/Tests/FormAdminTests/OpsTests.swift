@@ -37,6 +37,22 @@ final class OpsUnitTests: XCTestCase {
 
 /// Compiled but not executed: MariaDB trigger, permission, paging, cleanup and audit regression.
 final class OpsDatabaseTests: XCTestCase {
+    /// Regression (operator runs, GET ops/access answered 400 on every call after the Umstieg): forms.name is nullable and the import stores
+    /// unnamed forms as NULL; the access lookup must list them instead of failing to decode the row.
+    func testAccessListsFormsWithoutName() async throws {
+        try await AdminFixture.with { fx in
+            let a = try await fx.account(), c = try await fx.customer(), f = try await fx.form(customer: c)
+            let user = try await fx.login(a)
+            try await fx.grant(a, "audit.read", customer: c, form: f, by: a)
+            try await fx.sql.raw("UPDATE forms SET name = NULL WHERE id = \(bind: DB.bin(f))").run()
+            try await user.get("ops/access") { res in
+                XCTAssertEqual(res.status, .ok)
+                let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(buffer: res.body)) as? [String: Any])
+                XCTAssertEqual((json["forms"] as? [[String: Any]])?.count, 1)
+            }
+            try await user.get("ops?form=\(f)") { XCTAssertEqual($0.status, .ok) }
+        }
+    }
     func testLiveRightsPagingChronologyAndCleanup() async throws {
         try await AdminFixture.with { fx in
             let a = try await fx.account(), c = try await fx.customer(), f = try await fx.form(customer: c), other = try await fx.form(customer: c)

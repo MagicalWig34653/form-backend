@@ -5,7 +5,7 @@ import Foundation
 /// A request reserves `memoryFactor` times its declared Content-Length BEFORE any body byte is collected (body buffer plus the
 /// parsed/working copies of the handler); a request that does not fit is refused (503) without being buffered. A single request
 /// larger than the whole budget is clamped to it and therefore only runs alone. The total stays below the container limit
-/// (default 128 MiB reserved against the 512 MiB of deploy/swarm/stack.yaml); `FORM_BODY_BUDGET_MB` overrides it.
+/// (default 128 MiB reserved against the 1024 MiB of deploy/swarm/stack.yaml); `FORM_BODY_BUDGET_MB` overrides it.
 public final class BodyBudget: @unchecked Sendable {
     public static let defaultCapacity = 128 << 20
     /// Peak working-set multiple of a collected body (ByteBuffer, Data/Array copy, sealing/decoding).

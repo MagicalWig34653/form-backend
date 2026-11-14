@@ -20,7 +20,8 @@ enum OpsRoutes {
     struct Form: Encodable { let customer: String, id: String, name: String }
     struct Access: Encodable { let forms: [Form]; let system: Bool; let cleanup: Bool; let alarm: Alarm? }
     struct Alarm: Codable { let outcome: String; let suppressed: UInt64 }
-    struct F: Decodable { let customer_id: Blob, id: Blob; let name: String }
+    /// `forms.name` is nullable (the Umstieg imports unnamed forms as NULL): a NULL must not turn the whole lookup into a decoding error (400).
+    struct F: Decodable { let customer_id: Blob, id: Blob; let name: String? }
     static func permitted(_ grants: [Grant], customer: UUID, form: UUID) -> Bool {
         grants.contains { $0.permission == "audit.read" && $0.scope.covers(.form(customer: customer, form: form)) }
     }
@@ -34,7 +35,7 @@ enum OpsRoutes {
             let rows = try await sql.raw("SELECT f.customer_id,f.id,f.name FROM forms f JOIN customers c ON c.id=f.customer_id WHERE c.state='active' ORDER BY f.id").all(decoding: F.self)
             let forms = rows.compactMap { r -> Form? in
                 guard let c = DB.uuid(r.customer_id.data), let f = DB.uuid(r.id.data), permitted(grants, customer: c, form: f) else { return nil }
-                return Form(customer: c.uuidString.lowercased(), id: f.uuidString.lowercased(), name: r.name)
+                return Form(customer: c.uuidString.lowercased(), id: f.uuidString.lowercased(), name: r.name ?? "")
             }
             let system = grants.contains { $0.permission == "audit.read" && $0.scope == .system }
             let alarm = system ? try await sql.raw("SELECT outcome,suppressed FROM ops_alarm_state WHERE singleton=1").first(decoding: Alarm.self) : nil

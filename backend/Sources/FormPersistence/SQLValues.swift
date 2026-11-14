@@ -44,6 +44,11 @@ public enum DB {
         default: return "MySQLError"
         }
     }
+    /// 1213 deadlock victim, 1205 lock wait timeout: the server rolled the transaction back as a whole and the request may simply be repeated.
+    public static func isTransientConflict(_ error: Error) -> Bool {
+        guard let e = error as? MySQLError, case .server(let p) = e else { return false }
+        return p.errorCode.rawValue == 1213 || p.errorCode.rawValue == 1205
+    }
     public static func isDuplicateKey(_ error: Error) -> Bool {
         guard let e = error as? MySQLError else { return false }
         switch e {

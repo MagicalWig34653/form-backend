@@ -538,9 +538,8 @@ antwortet das Backend `503 body_budget_exhausted` mit `Retry-After: 1` (der SDK-
 Content-Length über dem Routenlimit `413 payload_too_large`. Ohne Content-Length (chunked) wird das Routenlimit voll
 reserviert. Eine einzelne größere Anfrage als das Budget läuft allein. Die Admin-Routen prüfen Sitzung, Origin/CSRF und
 Request-Budget **vor** dem Body: anonyme Anfragen enden mit `401`, ohne dass der Body gepuffert wird. Einstellung:
-`FORM_BODY_BUDGET_MB` (Ganzzahl 64 bis 8192, Standard 128 = gleichzeitig höchstens rund 42 MiB Body-Daten, also ein 32-MiB-Body oder mehrere kleinere; Betrieb auf einem Replikat mit
-512 MiB Speicherlimit wie `deploy/swarm/stack.yaml` ist damit getestet, siehe `backend/e2e-body-budget.sh`). Bei größerem
-Containerlimit proportional erhöhen (Faustregel: Budget höchstens halbes Limit). Gemessen wird nicht pro Replikat
+`FORM_BODY_BUDGET_MB` (Ganzzahl 64 bis 8192, Standard 128 = gleichzeitig höchstens rund 42 MiB Body-Daten, also ein 32-MiB-Body oder mehrere kleinere; Standard-Containerlimit seit 14.11.2026: 1024 MiB, `APP_MEMORY` in `deploy/swarm/stack.yaml` und `deploy/compose/compose.yaml`, Reservierung 256 MiB; das Budget bleibt 128 MiB, also rund ein Achtel des Limits, der Rest bleibt für Heap, Medienverarbeitung und Mail-Anhänge. Das 512-MiB-Limit ist als Untergrenze weiter getestet, siehe `backend/e2e-body-budget.sh`, reicht aber bei mehreren großen Einsendungen nicht (OOM, Karte 30858F93). Bei größerem
+Containerlimit proportional erhöhen (Faustregel: Budget höchstens halbes Limit). **Host-Bedarf:** mindestens Containerlimit je Replikat plus Datenbank, Proxy und Betriebssystem, für eine Replik also grob 2 GiB RAM. Gemessen wird nicht pro Replikat
 koordiniert: bei mehreren Replikaten gilt das Budget je Prozess.
 
 **Proxy-Logs.** Das Access-Log der Vorlage kürzt IPs (IPv4 letztes Oktett auf `.0`, IPv6 auf

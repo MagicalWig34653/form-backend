@@ -49,7 +49,7 @@ public struct MailDispatcher: Sendable {
     /// Size limit of one whole mail (wire form); the resend route stops opening attachments beyond it.
     public var mailByteLimit: Int { maxMailBytes }
     /// Sends that carry attachments run at most `heavyConcurrent` at a time (each builds a ~1.4x copy of its attachments) and keep at most
-    /// `heavyQueuedBytes` of attachment bytes waiting; beyond that the mail goes to `waiting-manual` (`busy`) instead of filling the 512 MiB container.
+    /// `heavyQueuedBytes` of attachment bytes waiting; beyond that the mail goes to `waiting-manual` (`busy`) instead of filling the 1024 MiB container.
     static let heavyConcurrent = 2, heavyQueuedBytes = 64 * 1024 * 1024
     let heavy = AttachmentGate(maxConcurrent: MailDispatcher.heavyConcurrent, maxQueuedBytes: MailDispatcher.heavyQueuedBytes)
 

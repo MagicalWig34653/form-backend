@@ -264,8 +264,8 @@ services:
     deploy:
       replicas: ${FORM_REPLICAS:-1}
       resources:
-        limits: { cpus: "${APP_CPUS:-1.0}", memory: "${APP_MEMORY:-512M}" }
-        reservations: { cpus: "${APP_RESERVE_CPUS:-0.25}", memory: "${APP_RESERVE_MEMORY:-128M}" }
+        limits: { cpus: "${APP_CPUS:-1.0}", memory: "${APP_MEMORY:-1024M}" }
+        reservations: { cpus: "${APP_RESERVE_CPUS:-0.25}", memory: "${APP_RESERVE_MEMORY:-256M}" }
 secrets:
   db_password: { file: "${DB_PASSWORD_SOURCE_FILE:-./secrets/db_password}" }
   server_key: { file: "${SERVER_KEY_SOURCE_FILE:-./secrets/server_key}" }

@@ -157,8 +157,8 @@ services:
         monitor: ${ROLLBACK_MONITOR:-60s}
       restart_policy: { condition: "${RESTART_CONDITION:-any}", delay: "${RESTART_DELAY:-5s}" }
       resources:
-        limits: { cpus: "${APP_CPUS:-1.0}", memory: "${APP_MEMORY:-512M}" }
-        reservations: { cpus: "${APP_RESERVE_CPUS:-0.25}", memory: "${APP_RESERVE_MEMORY:-128M}" }
+        limits: { cpus: "${APP_CPUS:-1.0}", memory: "${APP_MEMORY:-1024M}" }
+        reservations: { cpus: "${APP_RESERVE_CPUS:-0.25}", memory: "${APP_RESERVE_MEMORY:-256M}" }
   app-pinned:
     <<: *app
     ports: [] # FORM_PINNED_PORTS

@@ -25,6 +25,10 @@ struct ProblemMiddleware: AsyncMiddleware {
             if let abort = error as? AbortError, abort.status.code < 500 {
                 status = abort.status
                 (code, message) = Self.clientError(status)
+            } else if req.url.path.hasPrefix("/admin/"), DB.isTransientConflict(error) {
+                // A concurrent writer won the lock race (deadlock victim / lock wait timeout): nothing was changed, the client repeats the call.
+                status = .conflict; (code, message) = Self.clientError(status)
+                req.logger.info("transient database conflict", metadata: ["detail": "\(DB.logDescription(error))", "requestId": "\(rid)"])
             } else {
                 status = .internalServerError; code = "internal_error"; message = "Interner Fehler."
                 // Error type plus MySQL errno/SQLSTATE (DB.logDescription): descriptions may contain request data or SQL values.

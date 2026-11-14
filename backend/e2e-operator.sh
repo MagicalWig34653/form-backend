@@ -8,7 +8,7 @@
 #   RUNS=n              n runs, each from an empty instance; log per run in $HOME/.cache/operator-runs/<ts>/run-N.log (step, duration, result)
 #   OLD_IMAGE=<ref>     optional: the instance is first installed with OLD_IMAGE and updated to IMAGE after the import (image update step)
 #   CLONES=n            optional: doubles the synthetic submissions n times (large source)
-# Instance like the compose operation: deploy/compose/compose.yaml (entrypoint wrapper, uid 10001, file secrets, 512 MB limit) with a per-run
+# Instance like the compose operation: deploy/compose/compose.yaml (entrypoint wrapper, uid 10001, file secrets, 1024 MB limit) with a per-run
 # override (labels, trust bundle), external MariaDB WITH TLS (FORM_DB_TLS=verify), TLS reverse proxy (nginx) for the admin origin (https) and
 # the public listener, NO FORM_ALLOW_INSECURE_DEV. The legacy source is its own MariaDB with TLS from a throw-away CA; the CA reaches the app
 # as part of its system trust bundle (mounted), the way docs/UMSTIEG-CHECKLISTE.md No. 6 requires. Mailpit offers STARTTLS with a
@@ -258,10 +258,25 @@ export E2E_DB_CONTAINER=$TNAME E2E_DB_PASSWORD=$ROOTPW E2E_DB_NAME=form E2E_LEGA
 export E2E_SRC_HOST=$SNAME E2E_SRC_PORT=3306 E2E_LEGACY_DB=$LDB E2E_LEGACY_USER=$LUSER E2E_LEGACY_PASSWORD=$LPW E2E_DUMP=$DUMP
 export E2E_MAILPIT_HOST=$MP E2E_MAILPIT_API=$MPAPI E2E_CA=$TMP/ca/ca.pem E2E_TMP=$TMP E2E_CTL=$TMP/ctl.sh E2E_SPEC=${E2E_SPEC:-real-operator.spec.ts}
 browser() {
+  echo "SET GLOBAL innodb_print_all_deadlocks=ON" | "$DOCKER" exec -i -e MYSQL_PWD="$ROOTPW" "$TNAME" mariadb --skip-ssl -uroot >/dev/null 2>&1
   (cd pwa && npx playwright test -c e2e-real/real-operator.config.ts --reporter=line) > "$TMP/playwright.log" 2>&1
   local r=$?
   grep -E '^(STEP|NOTE|FINDING|HTTP|CONSOLE|PAGEERROR)' "$TMP/playwright.log"
   [ "$r" = 0 ] || tail -60 "$TMP/playwright.log"
+  # Every HTTP 5xx the browser saw is a failure (a server error must never pass as green); the last 80 app log lines go into the run log
+  # (secrets and e-mail addresses masked) so the cause stays visible after the cleanup removes the containers.
+  if grep -qE '^HTTP 5[0-9][0-9] ' "$TMP/playwright.log"; then
+    echo "FAIL the browser saw HTTP 5xx; last 80 app log lines:"
+    savelogs
+    printf '%s\n' "$DBPW" "$ROOTPW" "$LROOT" "$LPW" > "$TMP/mask.txt"
+    tail -80 "$TMP/app.log" | grep -vFf "$TMP/mask.txt" | cut -c1-400 | sed -E 's|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+|<mail>|g'
+    # A deadlock (errno 1213) names its partner statements in the server log (innodb_print_all_deadlocks, set before the browser part).
+    echo "database deadlock report (if any):"
+    echo "db log lines: $("$DOCKER" logs "$TNAME" 2>&1 | wc -l | tr -d ' '), deadlock lines: $("$DOCKER" logs "$TNAME" 2>&1 | grep -ci deadlock), print_all: $(echo 'SELECT @@innodb_print_all_deadlocks' | "$DOCKER" exec -i -e MYSQL_PWD="$ROOTPW" "$TNAME" mariadb --skip-ssl -uroot -N 2>&1 | head -1)"
+    "$DOCKER" logs "$TNAME" 2>&1 | awk 'tolower($0) ~ /deadlock/{p=1} p' | grep -vFf "$TMP/mask.txt" | cut -c1-300 | head -60
+    rm -f "$TMP/mask.txt"
+    r=1
+  fi
   return $r
 }
 step browser browser

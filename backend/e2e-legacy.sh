@@ -50,7 +50,8 @@ LINK=$(printf '%s\n' "$OUT" | sed -n 's/.*): \(http[^ ]*\)$/\1/p' | head -1)
 "$BIN" serve >"$TMP/app.log" 2>&1 & APP_PID=$!
 for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
 export E2E_SETUP_LINK="$LINK" E2E_PASSWORD="$PASSWORD" E2E_PORT=$WPORT E2E_SPEC=real-legacy.spec.ts E2E_FORM_FILE="$TMP/form.txt"
-(cd pwa && npx playwright test -c e2e-real/playwright.config.ts 2>&1 | tail -15); [ "${PIPESTATUS[0]}" = 0 ] || { echo "FAIL form preparation in the UI"; exit 1; }
+(cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; prc=$?  # own status: a pipe into tail would hide a failed run
+tail -15 "$TMP/playwright.log"; [ "$prc" = 0 ] || { echo "FAIL form preparation in the UI"; exit 1; }
 FORM=$(cat "$TMP/form.txt" 2>/dev/null); [ -n "$FORM" ] || { echo "FAIL no form id"; exit 1; }
 echo "ok   form published in the new backend"
 

@@ -28,6 +28,11 @@ COPY sdk/php/VERSION sdk/php/composer.json sdk/php/README.md /app/sdk/
 COPY sdk/php/src /app/sdk/src
 COPY sdk/php/bin /app/sdk/bin
 USER 10001:10001
+# glibc malloc: large upload buffers (up to ~20 MB, several copies per request) are served from mmap and returned to the OS
+# on free, and arenas are capped. Without this the heap fragments, RSS keeps growing with every large submission and the
+# process is OOM-killed at APP_MEMORY=512M (measured: 12 x 19.5 MB uploads, peak 417 MB -> 180 MB, steady RSS 265 MB -> 54 MB).
+# Overridable at runtime (-e / compose environment).
+ENV MALLOC_MMAP_THRESHOLD_=131072 MALLOC_TRIM_THRESHOLD_=131072 MALLOC_ARENA_MAX=2
 ENV FORM_HTTP_HOST=0.0.0.0 FORM_SCHEMA_FILE=/app/db/schema-p3.sql FORM_PUBLIC_DIR=/app/public FORM_SDK_DIR=/app/sdk
 EXPOSE 8080 8081
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

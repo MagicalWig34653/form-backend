@@ -120,6 +120,53 @@ final class HTTPTests: XCTestCase {
         }
     }
 
+    private actor DeadlockLatch {
+        private var hits = 0
+        func hit() { hits += 1 }
+        func wait(for n: Int) async { while hits < n { try? await Task.sleep(nanoseconds: 10_000_000) } }
+    }
+
+    /// Regression (operator run, PUT key-rotation/objects): a deadlock victim (MySQL 1213, transaction rolled back as a whole) is a lock race
+    /// the client repeats, not an internal error: 409 on the admin API, unchanged 500 elsewhere (public ingest has its own retry).
+    func testDatabaseDeadlockVictimIsConflictOnAdminApiNotInternalError() async throws {
+        let (port, pw) = try dbEnv()
+        try await withApp(port: port, password: pw) { app in
+            let sql = Persistence.sql(app)
+            let table = "dl_" + String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(10))
+            try await sql.raw("CREATE TABLE \(ident: table) (id INT PRIMARY KEY, v INT NOT NULL) ENGINE=InnoDB").run()
+            try await sql.raw("INSERT INTO \(ident: table) (id, v) VALUES (1, 0), (2, 0)").run()
+            defer { Task { try? await sql.raw("DROP TABLE IF EXISTS \(ident: table)").run() } }
+            let latch = DeadlockLatch()
+            func crossing(first: Int, second: Int) async -> Error? {
+                do {
+                    try await app.db(.mysql).transaction { conn in
+                        let tx = conn as! SQLDatabase
+                        try await tx.raw("UPDATE \(ident: table) SET v = v + 1 WHERE id = \(literal: first)").run()
+                        await latch.hit()
+                        await latch.wait(for: 2)
+                        try await tx.raw("UPDATE \(ident: table) SET v = v + 1 WHERE id = \(literal: second)").run()
+                    }
+                    return nil
+                } catch { return error }
+            }
+            async let a = crossing(first: 1, second: 2)
+            async let b = crossing(first: 2, second: 1)
+            let failures = await [a, b].compactMap { $0 }
+            XCTAssertEqual(failures.count, 1, "exactly one transaction is the deadlock victim")
+            let victim = try XCTUnwrap(failures.first)
+            XCTAssertTrue(DB.isTransientConflict(victim), "\(DB.logDescription(victim))")
+            XCTAssertFalse(DB.isTransientConflict(Abort(.notFound)))
+            app.get("admin", "api", "v1", "race") { _ -> String in throw victim }
+            app.get("public", "race") { _ -> String in throw victim }
+            try await app.test(.GET, "admin/api/v1/race") { res async throws in
+                XCTAssertEqual(res.status, .conflict)
+                XCTAssertEqual(try JSONDecoder().decode(Problem.self, from: res.body).code, "conflict")
+                XCTAssertFalse(res.body.string.contains("1213"))
+            }
+            try await app.test(.GET, "public/race") { res async in XCTAssertEqual(res.status, .internalServerError) }
+        }
+    }
+
     func testReadyIs503WhenDatabaseDown() async throws {
         try await withApp(port: 1) { app in
             try await app.test(.GET, "ready") { res async throws in
