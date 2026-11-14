@@ -1,5 +1,12 @@
 # Tatsächlicher Stand
 
+## Regex-ReDoS in der Formularvalidierung behoben (14.11.2026, Todolino S2-03 017C4F98, Worktree-Branch `worktree-agent-a4abe8cc3317dc34e`, lokal committet, nicht gepusht)
+
+- Ursache (belegt): Der Textfilter `hasNestedQuantifier` ließ `((a|aa))+` durch (innere Klammer beendet `[^)]*`); `NSRegularExpression` hat kein Zeitlimit und ist nicht abbrechbar. Mutationsprobe: mit dem alten Matcher hängt `SubmissionValidationTests/testReviewFindings` (Muster `((a|aa))+`, `"a"*100+"!"`) über 180 s (Prozess abgebrochen).
+- Änderung: `FormCore/LinearRegex.swift` (NFA-Simulation, linear, eingeschränkter Dialekt, siehe ADR 0046). `SubmissionValidation` nutzt sie; `DocumentValidator` lehnt Muster außerhalb des Dialekts beim Speichern ab (`/form/fields/<id>/validation/pattern`). Längenlimits bleiben (Muster 500, Eingabe 2000 Byte).
+- Tests: neu `LinearRegexTests` (3; legitime Muster, Ablehnung, Wächter 5 s gegen Hängen), Ergänzung `SubmissionValidationTests`, `ReleaseFlowTests.testDocumentValidatorRejectsPatternsOutsideTheLinearDialect`. Bestandstests grün (macOS und `ci-linux.sh`).
+- Grenzen: Semantik leicht anders als ICU (siehe ADR); Altformulare mit Mustern außerhalb des Dialekts lehnen Einsendungen ab. Andere `.regularExpression`-Aufrufe nutzen feste eigene Muster (nicht betreiberdefiniert).
+
 ## OAuth-Registrierung gehärtet (14.11.2026, Todolino C3104C0F, Worktree-Branch `worktree-agent-aef4e373e3f1e62d0`, lokal committet, nicht gepusht)
 
 - Ursache (belegt, Repro `fb-sec/scripts/t_oauthreg.py`): `POST /oauth/register` (öffentlich) erlaubte pro IP 5 pro Minute = 300 pro Stunde, mehr als der globale Deckel `oauth.registrationsPerHour` (200). Eine Adresse konnte den globalen Deckel ausschöpfen, andere Adressen bekamen dann 429. Ungenutzte Clients lebten 24 h, IPv6-Adressen wurden einzeln gezählt (2^64 Schlüssel pro Anschluss).

@@ -63,6 +63,30 @@ final class ReleaseFlowTests: XCTestCase {
         return .object(top)
     }
 
+    /// S2-03 (ADR 0046): a stored form may only carry patterns from the linear-time dialect.
+    func testDocumentValidatorRejectsPatternsOutsideTheLinearDialect() async throws {
+        try await AdminFixture.with { f in
+            let (_, tenant, c) = try await setup(f)
+            let (form, _, doc, _) = try await createForm(c, tenant)
+            func with(_ pattern: JSONValue?) -> JSONValue {
+                guard var top = doc.object, var fo = top["form"]?.object, var fields = fo["fields"]?.object, let k = fields.keys.sorted().first, var field = fields[k]?.object else { XCTFail("shape"); return doc }
+                field["validation"] = .object(pattern.map { ["pattern": $0] } ?? [:])
+                fields[k] = .object(field); fo["fields"] = .object(fields); top["form"] = .object(fo)
+                return .object(top)
+            }
+            let id = UUID(uuidString: form)!
+            // The view hash no longer matches the edited form; only the field rule path is of interest here.
+            func fieldRuleError(_ v: JSONValue) -> String? {
+                do { try DocumentValidator.validate(v, tenant: tenant, form: id); return nil } catch let e as DocumentInvalid { return e.path } catch { return "?" }
+            }
+            XCTAssertFalse(fieldRuleError(with(.string("[a-z]{2,8}")))?.contains("/validation/") ?? false)
+            for bad in ["(?=a)a", "(a)\\1", "a+?", "((a|aa))+" + String(repeating: "x", count: 600)] {
+                XCTAssertTrue(fieldRuleError(with(.string(bad)))?.hasSuffix("/validation/pattern") ?? false, bad)
+            }
+            XCTAssertTrue(fieldRuleError(with(.int(1)))?.hasSuffix("/validation/pattern") ?? false)
+        }
+    }
+
     func testStandardDraftConfirmPublishActivatesAndReplays() async throws {
         try await AdminFixture.with { f in
             let (_, tenant, c) = try await setup(f)

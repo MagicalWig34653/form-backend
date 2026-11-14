@@ -124,11 +124,9 @@ enum SubmissionValidation {
             if let lo = intRule(rules["minLength"] ?? rules["minLaenge"]), length < lo { return false }
             if let hi = intRule(rules["maxLength"] ?? rules["maxLaenge"]), length > hi { return false }
             if let pattern = (rules["pattern"] ?? rules["muster"]) as? String {
-                // Anchored full match; an unparsable pattern rejects rather than silently accepting.
-                // Bounded input and pattern size limit the cost of an expensive (admin-defined) expression.
-                guard pattern.utf8.count <= 500, text.utf8.count <= 2_000, !hasNestedQuantifier(pattern),
-                      let re = try? NSRegularExpression(pattern: "^(?:" + pattern + ")\\z"),
-                      re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil else { return false }
+                // Anchored full match on a linear-time engine (ADR 0046): no backtracking, so no ReDoS. A pattern outside the
+                // supported dialect (or an over-long value) rejects rather than silently accepting.
+                guard let re = try? LinearRegex(pattern), re.fullMatch(text) else { return false }
             }
             if let allowed = (rules["enum"] ?? rules["options"] ?? rules["erlaubt"]) as? [Any], !allowed.contains(where: { same($0, item) }) { return false }
         }
@@ -148,11 +146,5 @@ enum SubmissionValidation {
         let leap = (parts[0] % 4 == 0 && parts[0] % 100 != 0) || parts[0] % 400 == 0
         let days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
         return parts[2] <= days[parts[1] - 1]
-    }
-
-    /// Rejects the classic catastrophic-backtracking shapes (a quantified group that itself contains a quantifier or an alternation).
-    /// ICU has no usable timeout, so such an admin-defined expression is refused instead of risking the ingest worker.
-    static func hasNestedQuantifier(_ pattern: String) -> Bool {
-        pattern.range(of: "\\([^)]*[+*{|][^)]*\\)[+*{]", options: .regularExpression) != nil
     }
 }

@@ -117,6 +117,12 @@ public enum DocumentValidator {
             try localized(fo["label"], p + "/label")
             for b in ["required", "hidden", "locked", "sensitive"] { guard fo[b]?.bool != nil else { throw DocumentInvalid(path: p + "/" + b, rule: "boolean") } }
             guard fo["validation"]?.object != nil else { throw DocumentInvalid(path: p + "/validation", rule: "object") }
+            for key in ["pattern", "muster"] {
+                if let pat = fo["validation"]?.object?[key] {
+                    // ADR 0046: only the linear-time regex dialect is accepted, so no stored pattern can stall the ingest.
+                    guard let str = pat.string, LinearRegex.validate(str) == nil else { throw DocumentInvalid(path: p + "/validation/" + key, rule: "supported regex (no lookaround, backreference, lazy quantifier)") }
+                }
+            }
             guard (fo["locked"]?.bool == true) == (fo["fixedValue"] != nil) else { throw DocumentInvalid(path: p + "/fixedValue", rule: "present exactly when locked") }
         }
         if let mail = o["mail"] {

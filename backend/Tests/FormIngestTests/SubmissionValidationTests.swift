@@ -86,6 +86,14 @@ final class SubmissionValidationTests: XCTestCase {
         XCTAssertEqual(failing(["p": "123\n"], nums), ["p"])
         // Catastrophic-backtracking shapes are refused instead of evaluated.
         XCTAssertEqual(failing(["x": String(repeating: "a", count: 40) + "!"], def([field("x", rules: ["pattern": "(a+)+$"])])), ["x"])
+        // S2-03: the former filter let ((a|aa))+ through; the linear engine evaluates it in bounded time and refuses what it cannot guarantee.
+        for p in ["((a|aa))+", "(a|aa)+$", "(a+)+$"] {
+            let t0 = Date()
+            XCTAssertEqual(failing(["x": String(repeating: "a", count: 100) + "!"], def([field("x", rules: ["pattern": p])])), ["x"])
+            XCTAssertLessThan(Date().timeIntervalSince(t0), 2, p)
+        }
+        XCTAssertEqual(failing(["x": "aaaa"], def([field("x", rules: ["pattern": "((a|aa))+"])])), [])
+        XCTAssertEqual(failing(["x": "ab"], def([field("x", rules: ["pattern": "(?=a)ab"])])), ["x"])
         // Rule values with a JSON number type still apply.
         XCTAssertEqual(failing(["t": "abcdef"], def([field("t", rules: ["maxLength": 5.0])])), ["t"])
     }
