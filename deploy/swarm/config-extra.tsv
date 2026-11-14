@@ -67,9 +67,9 @@ FORM_PINNED_NODE	Replikate und Platzierung	text:nodeid				63		envOnly	0	Swarm: H
 FORM_PINNED_REPLICAS	Replikate und Platzierung	int	1		1	999999		envOnly	0	Swarm: zusätzliche Replikate auf dem festen Knoten.
 FORM_EXCLUDE_LABEL	Replikate und Platzierung	text:nodeid				63		envOnly	0	Swarm: Node-Label, dessen Knoten ausgeschlossen werden (z. B. reserved).
 APP_CPUS	Ressourcen	number	1.0	CPUs	0.01	64		envOnly	0	CPU-Limit der App je Replikat.
-APP_MEMORY	Ressourcen	text:memlimit	512M			16		envOnly	0	Speicherlimit der App je Replikat.
+APP_MEMORY	Ressourcen	text:memlimit	1024M			16		envOnly	0	Speicherlimit der App je Replikat.
 APP_RESERVE_CPUS	Ressourcen	number	0.25	CPUs	0.01	64		envOnly	0	CPU-Reservierung der App je Replikat.
-APP_RESERVE_MEMORY	Ressourcen	text:memlimit	128M			16		envOnly	0	Speicher-Reservierung der App je Replikat.
+APP_RESERVE_MEMORY	Ressourcen	text:memlimit	256M			16		envOnly	0	Speicher-Reservierung der App je Replikat.
 MIGRATION_CPUS	Ressourcen	number	1.0	CPUs	0.01	64		envOnly	0	CPU-Limit des Migrationsjobs.
 MIGRATION_MEMORY	Ressourcen	text:memlimit	512M			16		envOnly	0	Speicherlimit des Migrationsjobs.
 UPDATE_PARALLELISM	Update und Health	int	1		0	999		envOnly	0	Replikate je Update-Schritt (0 = alle gleichzeitig).
@@ -91,4 +91,4 @@ WAIT_SECONDS	Update und Health	int	600	Sekunden	1	999999		envOnly	0	Maximale War
 FORM_ADMIN_REQUEST_LIMIT_IP	Limits	int	600		1	100000		envOnly	0	Admin-API-Anfragen je Minute und Client-IP (alle Anfragen, auch anonyme); Neustart nötig.
 FORM_ADMIN_REQUEST_LIMIT_ACCOUNT	Limits	int	300		1	100000		envOnly	0	Admin-API-Anfragen je Minute und angemeldetem Konto; Neustart nötig.
 FORM_MAIL_MAX_MB	Limits	int	30	MiB	10	100		envOnly	0	Größe einer ganzen Mail mit Anhängen (Base64 eingerechnet); zu große Anhänge werden in der Mail genannt statt angehängt; muss zum Limit des Mail-Providers passen; Neustart nötig.
-FORM_BODY_BUDGET_MB	Limits	int	128	MiB	64	8192		envOnly	0	Reservierter Speicher für Request-Bodies in Bearbeitung (Einsende-API, große Admin-Bodies); höchstens das halbe Containerlimit; Neustart nötig.
+FORM_BODY_BUDGET_MB	Limits	int	128	MiB	64	8192		envOnly	0	Reservierter Speicher für Request-Bodies in Bearbeitung (Einsende-API, große Admin-Bodies); höchstens das halbe Containerlimit (Standard 1024 MiB); Neustart nötig.
