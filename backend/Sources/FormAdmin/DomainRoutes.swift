@@ -95,7 +95,7 @@ enum DomainRoutes {
                     let tx = conn as! SQLDatabase
                     try await PermissionService(sql: tx).authorize(account: account, "domain.manage", on: .customer(b.tenantId))
                     try await validateTarget(tx, input: b)
-                    try await available(tx, hostname: hostname)
+                    try await available(tx, hostname: hostname, tenant: b.tenantId)
                     let aid = UUID(), time = DB.time(now())
                     try await ReleaseRoutes.audit(tx, tenant: b.tenantId, form: b.formId, actor: account, action: "domain.create", subject: id, at: time, id: aid, category: "domain").run()
                     try await confirmationDetails(tx, audit: aid, input: b, hostname: hostname, revision: 1)
@@ -125,7 +125,7 @@ enum DomainRoutes {
                     guard let locked = try await tx.raw("SELECT * FROM domain_bindings WHERE id=\(bind: DB.bin(id)) FOR UPDATE").first(decoding: Row.self), locked.revision == expected else { throw Abort(.preconditionFailed) }
                     try await PermissionService(sql: tx).authorize(account: account, "domain.manage", on: .customer(tenant))
                     try await validateTarget(tx, input: b)
-                    try await available(tx, hostname: hostname, excluding: id)
+                    try await available(tx, hostname: hostname, excluding: id, tenant: tenant)
                     let aid = UUID(), time = DB.time(now())
                     try await ReleaseRoutes.audit(tx, tenant: tenant, form: b.formId, actor: account, action: "domain.update", subject: id, at: time, id: aid, category: "domain").run()
                     try await confirmationDetails(tx, audit: aid, input: b, hostname: hostname, revision: expected + 1)
@@ -163,10 +163,16 @@ enum DomainRoutes {
     static func confirmationDetails(_ tx: SQLDatabase, audit: UUID, input: Input, hostname: String, revision: UInt64) async throws {
         try await tx.raw("UPDATE audit_events SET safe_details_json=JSON_OBJECT('hostname',\(bind: hostname),'releaseId',\(bind: input.releaseId?.uuidString.lowercased()),'viewId',\(bind: input.viewId.uuidString.lowercased()),'revision',\(bind: revision),'mode',\(bind: input.mode),'enabled',\(bind: input.enabled ? 1 : 0)) WHERE id=\(bind: DB.bin(audit))").run()
     }
-    static func available(_ tx: SQLDatabase, hostname: String, excluding: UUID? = nil) async throws {
-        let a = try await tx.raw("SELECT COUNT(*) AS c FROM api_hosts WHERE host_ascii=\(bind: hostname)").first(decoding: FormAdmin.CountRow.self)?.c ?? 0
-        let d = try await tx.raw("SELECT COUNT(*) AS c FROM domain_bindings WHERE host_ascii=\(bind: hostname) AND id<>\(bind: DB.bin(excluding ?? UUID()))").first(decoding: FormAdmin.CountRow.self)?.c ?? 0
-        guard a == 0, d == 0 else { throw Abort(.conflict) }
+    /// 409 when the name is taken by the caller's own tenant; 404 when it is taken by anyone else (no existence oracle).
+    /// Without DNS ownership proof a free name can still be claimed by any customer with domain.manage (documented limit, ADR 0045).
+    static func available(_ tx: SQLDatabase, hostname: String, excluding: UUID? = nil, tenant: UUID) async throws {
+        struct A: Decodable { let owner_customer_id: Blob? }
+        struct D: Decodable { let customer_id: Blob }
+        let a = try await tx.raw("SELECT owner_customer_id FROM api_hosts WHERE host_ascii=\(bind: hostname)").all(decoding: A.self)
+        let d = try await tx.raw("SELECT customer_id FROM domain_bindings WHERE host_ascii=\(bind: hostname) AND id<>\(bind: DB.bin(excluding ?? UUID()))").all(decoding: D.self)
+        guard !a.isEmpty || !d.isEmpty else { return }
+        let own = a.allSatisfy { $0.owner_customer_id.flatMap { DB.uuid($0.data) } == tenant } && d.allSatisfy { DB.uuid($0.customer_id.data) == tenant }
+        throw Abort(own ? .conflict : .notFound)
     }
     static func registerAPI(root: RoutesBuilder, guardian: AuthGuard, db: Database, perms: PermissionService, now: @escaping @Sendable () -> Date, adminHost: String) {
         let sql = db as! SQLDatabase
@@ -194,10 +200,16 @@ enum DomainRoutes {
             let result: APIResult = try await serialize(sql: sql) {
                 try await db.transaction { conn in
                     let tx = conn as! SQLDatabase
-                    struct H: Decodable { let id: Blob; let enabled: Int; let revision: UInt64 }
-                    let old = try await tx.raw("SELECT id,enabled,revision FROM api_hosts WHERE host_ascii=\(bind: hostname) FOR UPDATE").first(decoding: H.self)
-                    guard (old?.revision ?? 0) == b.expectedRevision else { throw Abort(.preconditionFailed) }
+                    struct H: Decodable { let id: Blob; let enabled: Int; let revision: UInt64; let owner_customer_id: Blob? }
+                    let old = try await tx.raw("SELECT id,enabled,revision,owner_customer_id FROM api_hosts WHERE host_ascii=\(bind: hostname) FOR UPDATE").first(decoding: H.self)
                     try await PermissionService(sql: tx).authorize(account: account, "domain.manage", on: .customer(tenant))
+                    // Ownership first: a host of another customer (or without owner) is invisible unless the caller manages the system.
+                    if let old, old.owner_customer_id.flatMap({ DB.uuid($0.data) }) != tenant {
+                        guard try await PermissionService(sql: tx).can(account: account, "system.manage", on: .system) else { throw Abort(.notFound) }
+                    }
+                    // An unknown host with a non-zero revision answers like a foreign one (404), not 412.
+                    if old == nil, b.expectedRevision != 0 { throw Abort(.notFound) }
+                    guard (old?.revision ?? 0) == b.expectedRevision else { throw Abort(.preconditionFailed) }
                     for form in b.formIds {
                         guard try await formExists(tx, tenant: tenant, form: form) else { throw ValidationFailed(detail: "Formular gehört nicht zum Kunden") }
                     }
@@ -210,9 +222,9 @@ enum DomainRoutes {
                         }
                         try await tx.raw("UPDATE api_hosts SET enabled=\(bind: b.enabled ? 1 : 0),revision=revision+1 WHERE id=\(bind: DB.bin(id))").run()
                     } else {
-                        try await available(tx, hostname: hostname)
+                        try await available(tx, hostname: hostname, tenant: tenant)
                         guard !b.enabled, bindings.isEmpty else { throw ValidationFailed(detail: "Neuer API-Host muss inaktiv und ungebunden sein") }
-                        try await tx.raw("INSERT INTO api_hosts (id,host_ascii,enabled,revision) VALUES (\(bind: DB.bin(id)),\(bind: hostname),0,1)").run()
+                        try await tx.raw("INSERT INTO api_hosts (id,host_ascii,enabled,revision,owner_customer_id) VALUES (\(bind: DB.bin(id)),\(bind: hostname),0,1,\(bind: DB.bin(tenant)))").run()
                     }
                     let aid = UUID(), time = DB.time(now())
                     try await ReleaseRoutes.audit(tx, tenant: tenant, form: nil, actor: account, action: "domain.api.configure", subject: id, at: time, id: aid, category: "domain").run()

@@ -1,5 +1,10 @@
 # Tatsächlicher Stand
 
+## API-Host-Eigentümer (14.11.2026, Worktree-Branch `worktree-agent-acdbad1e1851f594c`, lokal committet, ungemergt; Todolino A4EDE0BE)
+
+- Sicherheitsbefund (Opus, Abschnitt 3) behoben: `api_hosts.owner_customer_id` (Upgrade `0036-api-host-owner.sql`, in `MigrationRunner.upgrades`), `POST /api-hosts` und Domain-Anlage liefern Fremden 404 (kein 412/200-Orakel), Anhängen/Schalten nur Eigentümer oder `system.manage`. Bestand wird per Ersteller-Audit, sonst ältester Bindung zugeordnet (mehrdeutige Fälle: ADR 0045). ADR `docs/decisions/0045-api-host-eigentuemer.md`. PWA nutzt die Route nicht.
+- Grenze: kein DNS-Nachweis, freie Namen können weiter vorab belegt werden. Nicht geprüft: Playwright/PWA (unverändert), Produktiv-Upgrade.
+
 ## Große Anhänge in Rotation, Hold, Flow, Verifikation (14.11.2026, Worktree-Branch `worktree-agent-a2bbe3d8ce2321e43`, lokal committet, ungemergt; Todolino C4D13F4D, 14298EC0)
 
 - Lücke aus 985BC399 geschlossen (Prod-Blocker: Schlüsselrotation bei Anhang über ca. 12 MB scheiterte): `RotationRoutes` (Liste, Ersatzpaket-Schreiben), `HoldRewrapRoutes`, `FlowRunRoutes` (Kontext, Checkpoint-Read, Resume-Beweis), `FlowEngine` (Checkpoint-Insert/-Update), `MigrationVerificationRoutes` (Entschlüsselungsprobe) lesen/schreiben Objektzellen nur noch über `ChunkedBlob`; Zeilenabfragen laden `ciphertext` nicht mehr (`RotationRoutes.objectColumns`). `GET key-rotation/objects` begrenzt eine Seite auf ca. 32 MiB Pakete (mind. 1 Objekt, `next` wie bisher). Keine Vertrags-/Schema-Änderung.
