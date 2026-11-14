@@ -20,8 +20,8 @@ import { resetBudget, source, target, uuidBin } from './migration-helpers';
 // E2E_EXPECT_DRAFT_FIELDS overrides the expected total of draft fields (a deliberately wrong value must fail the run).
 
 const CUSTOMER = 'Konverter GmbH';
-// Old kinds of the synthetic dump -> editor kinds; 'datei' is not mappable (converter: "Dateifelder benötigen Anhangprüfung").
-const KIND_MAP: Record<string, string | null> = { text: 'text', email: 'email', datei: null };
+// Old kinds of the synthetic dump -> editor kinds; 'datei' becomes a file field (converter 6E571834, first file field only).
+const KIND_MAP: Record<string, string | null> = { text: 'text', email: 'email', datei: 'file' };
 
 async function checkSource(page: Page) {
   await page.getByRole('link', { name: 'Umstieg', exact: true }).first().click();
@@ -149,9 +149,11 @@ test('migration convert: drafts from the import, repetition, edit, publish, 409 
       .join(',');
     expect(got, `kinds of ${uuid}`).toBe(want);
   }
-  // the unmappable file field is named in the converter report, not silently dropped
+  // the file field is not silently adopted: the converter report names it ("Dateifeld übernommen ... Pflichtflag prüfen")
   expect(
-    target(`SELECT COUNT(*) FROM migration_form_drafts WHERE report_json LIKE '%nicht abbildbar%'`),
+    target(
+      `SELECT COUNT(*) FROM migration_form_drafts WHERE report_json LIKE '%Dateifeld übernommen%'`,
+    ),
   ).not.toBe('0');
   const before = draftRows();
 
@@ -173,7 +175,7 @@ test('migration convert: drafts from the import, repetition, edit, publish, 409 
   const formId = /\/f\/([0-9a-f-]{36})/.exec(page.url())![1];
   await page.getByRole('link', { name: 'Felder', exact: true }).click();
   await expect(page.getByText('nachricht', { exact: true }).first()).toBeVisible(); // label = old field name
-  await expect(page.getByText('anhang', { exact: true })).toHaveCount(0); // the file field was not converted
+  await expect(page.getByText('anhang', { exact: true }).first()).toBeVisible(); // the file field is converted (6E571834)
   await page.getByLabel('Titel des Formulars').fill('Kontaktformular Müller (geprüft)');
   await page.getByRole('button', { name: 'Titel speichern' }).click();
   await expect.poll(() => titleOf(formId)).toBe('Kontaktformular Müller (geprüft)');

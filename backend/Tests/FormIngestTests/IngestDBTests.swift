@@ -53,7 +53,7 @@ final class IngestDBTests: XCTestCase {
     private final class Box: @unchecked Sendable { var ip = "192.0.2.4"; var t = Date(timeIntervalSince1970: 1_793_012_400) }
     private let box = Box()
 
-    private func withFixture(seed: Bool = true, secrets: [String: Data]? = nil, rateLimited: Bool = false, clientIP: (@Sendable (Request) -> String)? = nil, _ body: (Fixture) async throws -> Void) async throws {
+    private func withFixture(seed: Bool = true, secrets: [String: Data]? = nil, rateLimited: Bool = false, clientIP: (@Sendable (Request) -> String)? = nil, trusted: [CIDR]? = nil, _ body: (Fixture) async throws -> Void) async throws {
         guard let port = env("P4A_DB_PORT").flatMap(Int.init), let pw = env("P4A_DB_PASSWORD") else {
             throw XCTSkip("P4A_DB_PORT/P4A_DB_PASSWORD not set; run backend/integration-test.sh")
         }
@@ -71,6 +71,7 @@ final class IngestDBTests: XCTestCase {
             var config = IngestConfig(secrets: Secrets(table: secrets ?? ["ref-1": digestSecret]), now: { [now] in now })
             config.abuseKey = Data(repeating: 99, count: 32)
             config.clientIP = clientIP ?? { [box] _ in box.ip }
+            if let trusted { config.useTrustedProxies(trusted) }
             if rateLimited { config.throttle = ThrottleService(db: app.db(.mysql), keys: try StaticServerKey(Data(repeating: 5, count: 32)), now: { [box] in box.t }) }
             LegacyAPI.register(app, backend: IngestSetup.register(app, config: config))
             let sql = Persistence.sql(app)
@@ -276,7 +277,7 @@ final class IngestDBTests: XCTestCase {
     }
 
     func testAbuseBanCountsClientsBehindTrustedProxySeparatelyAndIgnoresSpoofedHeaders() async throws {
-        try await withFixture(clientIP: IngestConfig.proxiedClientIP(trusted: [CIDR("10.0.0.0/8")!])) { fx in
+        try await withFixture(trusted: [CIDR("10.0.0.0/8")!]) { fx in
             try await fx.sql.raw("UPDATE form_versions SET definition_json='{\"security\":{\"abuse\":{\"siteKey\":\"synthetic\"}}}'").run()
             try await SystemSettings.write(fx.sql, key: "abuse.threshold", value: "2", at: SubmitHandler.dbTime(now))
             let pairs = [("a", "b")]
@@ -303,7 +304,7 @@ final class IngestDBTests: XCTestCase {
     }
 
     func testRequestBudgetUsesResolvedClientNotTheProxyAndSharesAnIPv6Prefix() async throws {
-        try await withFixture(rateLimited: true, clientIP: IngestConfig.proxiedClientIP(trusted: [CIDR("10.0.0.0/8")!])) { fx in
+        try await withFixture(rateLimited: true, trusted: [CIDR("10.0.0.0/8")!]) { fx in
             try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
             func go(_ key: String, peer: String = "10.0.0.5", xff: String?) async throws -> HTTPResponseStatus {
                 var h = try signedHeaders(pairs, key: key)
@@ -845,7 +846,8 @@ extension IngestDBTests {
     func testLegacyBudgetAppliesAndConfigHasItsOwnBucket() async throws {
         try await withFixture(rateLimited: true) { fx in
             try await compat(fx); try await dropKeys(fx)
-            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            // no visitor named (server to server): the per-(form, peer) legacy budget applies, not the visitor budget
+            try await SystemSettings.write(fx.sql, key: "ingest.legacyPeerRequestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
             for _ in 0..<2 { let r = try await send(fx.app, path: "/endpoint/", body: body(good)); XCTAssertEqual(r.status, .ok) }
             let limited = try await send(fx.app, path: "/endpoint/", body: body(good))
             XCTAssertEqual(limited.status, .tooManyRequests); XCTAssertEqual(limited.text, "429 - Too Many Requests")
@@ -858,6 +860,135 @@ extension IngestDBTests {
             let cfg = try await send(fx.app, path: "/api/getFormData.php", query: "z=\(formID)")
             XCTAssertEqual(cfg.status, .tooManyRequests)
             try await eq(try await count(fx.sql, "submissions"), 2)
+        }
+    }
+
+    // MARK: legacy + client address (ADR 0047 Nachtrag): old website integrations without any change to the website
+
+    /// Form without a stored signature key (imported form), old SDK headers, trusted nginx 10.0.0.5: visitors named by X-Forwarded-For are
+    /// counted separately on BOTH legacy submit paths; a good submission is 200, a field error 412, and the old encrypted-address headers
+    /// (opaque to the backend) neither block nor identify anybody.
+    func testLegacyFormBehindTrustedProxyCountsVisitorsSeparatelyAndNormalTrafficIsNeverRefused() async throws {
+        try await withFixture(rateLimited: true, trusted: [CIDR("10.0.0.0/8")!]) { fx in
+            try await compat(fx); try await dropKeys(fx); try await definition(fx, schema)
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "3", at: SubmitHandler.dbTime(now))
+            func go(_ xff: String, peer: String = "10.0.0.5", path: String = "/endpoint/", payload: [(String, String)]? = nil, extra: [String: String] = [:]) async throws -> Response {
+                var h = legacyHeaders; h["X-Forwarded-For"] = xff; h["X-Real-IP"] = xff
+                for (k, v) in extra { h[k] = v }
+                return try await send(fx.app, path: path, headers: h, peer: peer, body: body(payload ?? good))
+            }
+            // visitor A: 2 good (200) + 1 field error (412, counts as a request) = budget of 3 used; the 4th is 429
+            for _ in 0..<2 { let r = try await go("203.0.113.50"); XCTAssertEqual(r.status, .ok); XCTAssertEqual(r.text, "200 - OK") }
+            let fieldError = try await go("203.0.113.50", payload: bad); XCTAssertEqual(fieldError.status, .preconditionFailed)
+            let spent = try await go("203.0.113.50"); XCTAssertEqual(spent.status, .tooManyRequests)
+            // the old v2 path shares the bucket of the SAME visitor ...
+            let v2spent = try await go("203.0.113.50", path: "/api/v2/submit/")
+            XCTAssertEqual(v2spent.text, #"{"error":{"code":429,"status":"Too Many Requests"}}"#)
+            // ... but visitor B behind the same nginx runs on, on both paths, and so does a second website visitor with an IPv6 address
+            let b1 = try await go("203.0.113.51"); XCTAssertEqual(b1.status, .ok)
+            let b2 = try await go("203.0.113.51", path: "/api/v2/submit/"); XCTAssertEqual(b2.status, .ok)
+            let c = try await go("2001:db8:7:7::1"); XCTAssertEqual(c.status, .ok)
+            // the same address from an UNTRUSTED peer is the peer's own identity: a header cannot frame or reuse A's counter
+            let spoof = try await go("203.0.113.50", peer: "198.51.100.7"); XCTAssertEqual(spoof.status, .ok)
+            // old SDK headers alone (opaque values, no signature) do not make anyone a different visitor
+            let sameAgain = try await go("203.0.113.51", extra: ["CLIENTIP-ENCRYPT": "other", "CLIENTUA-ENCRYPT": "other"]); XCTAssertEqual(sameAgain.status, .ok)
+            try await eq(try await count(fx.sql, "submissions"), 7)
+        }
+    }
+
+    /// Abuse ban on the legacy path: a bot behind the trusted proxy gets banned, the other visitors of the SAME website are not
+    /// (no peer-wide ban while nginx names the visitor), and nobody is refused while behaving normally.
+    func testLegacyAbuseBanHitsOnlyTheOffendingVisitorBehindTrustedProxy() async throws {
+        try await withFixture(trusted: [CIDR("10.0.0.0/8")!]) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await definition(fx, #"{"fields":{"a":{"name":"name","kind":"text"}},"security":{"abuse":{"siteKey":"synthetic"}}}"#)
+            try await SystemSettings.write(fx.sql, key: "abuse.threshold", value: "2", at: SubmitHandler.dbTime(now))
+            func go(_ xff: String, peer: String = "10.0.0.5") async throws -> Response {
+                var h = legacyHeaders; h["X-Forwarded-For"] = xff
+                return try await send(fx.app, path: "/endpoint/", headers: h, peer: peer, body: body(good))
+            }
+            // no captcha token: the old backend answered 412; after the threshold the bot is banned (429)
+            for expected in [HTTPResponseStatus.preconditionFailed, .preconditionFailed, .tooManyRequests] { let r = try await go("203.0.113.50"); XCTAssertEqual(r.status, expected) }
+            let other = try await go("203.0.113.51"); XCTAssertEqual(other.status, .preconditionFailed, "second visitor of the same website must not inherit the ban")
+            let spoof = try await go("203.0.113.50", peer: "198.51.100.7"); XCTAssertEqual(spoof.status, .preconditionFailed)
+        }
+    }
+
+    /// WITHOUT a trusted proxy (website server calls the backend directly, or CIDRs unset) the TCP peer is the identity, but no visitor
+    /// is named: all visitors of one website share the generous per-(form, peer) budget `ingest.legacyPeerRequestsPerMinute`
+    /// INSTEAD of the visitor budget `ingest.requestsPerMinute` (documented in BETRIEB.md). 0 = off. `ingest.peerRequestsPerMinute`
+    /// does not apply (only to requests with a signed visitor claim; the old SDK never sends one).
+    func testLegacyWithoutTrustedProxySharesGenerousPeerBudgetAndSettingRelievesIt() async throws {
+        try await withFixture(rateLimited: true, trusted: []) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "1", at: SubmitHandler.dbTime(now))
+            try await SystemSettings.write(fx.sql, key: "ingest.legacyPeerRequestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            try await SystemSettings.write(fx.sql, key: "ingest.peerRequestsPerMinute", value: "1", at: SubmitHandler.dbTime(now))
+            func go(_ visitor: String) async throws -> HTTPResponseStatus {
+                var h = legacyHeaders; h["X-Forwarded-For"] = visitor; h["X-Real-IP"] = visitor
+                return try await send(fx.app, path: "/endpoint/", headers: h, peer: "198.51.100.7", body: body(good)).status
+            }
+            for v in ["203.0.113.50", "203.0.113.51"] { let s = try await go(v); XCTAssertEqual(s, .ok, "visitor budget 1 and peerRequestsPerMinute=1 must not touch server-to-server legacy requests") }
+            let shared = try await go("203.0.113.52"); XCTAssertEqual(shared, .tooManyRequests, "visitor 3 shares the peer's legacy budget")
+            try await SystemSettings.write(fx.sql, key: "ingest.legacyPeerRequestsPerMinute", value: "100", at: SubmitHandler.dbTime(now))
+            let relieved = try await go("203.0.113.52"); XCTAssertEqual(relieved, .ok)
+            // 0 = budget off
+            try await SystemSettings.write(fx.sql, key: "ingest.legacyPeerRequestsPerMinute", value: "0", at: SubmitHandler.dbTime(now))
+            for v in ["203.0.113.53", "203.0.113.54", "203.0.113.55"] { let s = try await go(v); XCTAssertEqual(s, .ok) }
+        }
+    }
+
+    /// Lino line: old website integrations work unchanged. 100 server-to-server requests in one minute (default settings: visitor budget
+    /// 60, legacy peer budget 600) are all accepted, on both legacy submit paths.
+    func testLegacyServerToServerHundredRequestsInOneMinuteAreAllAccepted() async throws {
+        try await withFixture(rateLimited: true, trusted: [CIDR("10.0.0.0/8")!]) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            for i in 0..<100 {
+                // peer = the website's server (not a trusted proxy), no visitor header; the opaque old headers change nothing
+                let r = try await send(fx.app, path: i % 2 == 0 ? "/endpoint/" : "/api/v2/submit/", headers: legacyHeaders, peer: "198.51.100.7", body: body(good))
+                XCTAssertEqual(r.status, .ok, "request \(i)")
+            }
+            try await eq(try await count(fx.sql, "submissions"), 100)
+        }
+    }
+
+    /// Bot attempts WITHOUT a named visitor never ban or net-block the website (its peer identity): the old integration keeps working.
+    /// With a trusted-proxy visitor the visitor ban applies as before (see testLegacyAbuseBanHitsOnlyTheOffendingVisitorBehindTrustedProxy).
+    func testLegacyFailedAttemptsWithoutVisitorNeverBanOrBlockTheWebsite() async throws {
+        try await withFixture(trusted: [CIDR("10.0.0.0/8")!]) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await definition(fx, #"{"fields":{"a":{"name":"name","kind":"text"}},"security":{"abuse":{"siteKey":"synthetic"}}}"#)
+            try await SystemSettings.write(fx.sql, key: "abuse.threshold", value: "2", at: SubmitHandler.dbTime(now))
+            try await SystemSettings.write(fx.sql, key: "abuse.blockedNets", value: "198.51.100.0/24", at: SubmitHandler.dbTime(now))
+            // untrusted peer (website server) and trusted peer without any visitor header: no token -> 412 every time, never 429/403
+            for peer in ["198.51.100.7", "10.0.0.5"] {
+                for i in 0..<5 { let r = try await send(fx.app, path: "/endpoint/", headers: legacyHeaders, peer: peer, body: body(good)); XCTAssertEqual(r.status, .preconditionFailed, "\(peer) #\(i)") }
+            }
+            struct C: Decodable { let c: Int }
+            try await eq(try await fx.sql.raw("SELECT COUNT(*) AS c FROM ingest_abuse_ips").first(decoding: C.self)?.c, 0, "no peer-only ban row")
+        }
+    }
+
+    /// X-Real-IP alone (nginx template sets both; some setups only the real-ip header) names the visitor behind a trusted proxy;
+    /// X-Forwarded-For wins when both are present; an untrusted peer's headers are ignored (no framing, no reuse of a counter).
+    func testLegacyXRealIPNamesVisitorBehindTrustedProxyAndSpoofIsIgnored() async throws {
+        try await withFixture(rateLimited: true, trusted: [CIDR("10.0.0.0/8")!]) { fx in
+            try await compat(fx); try await dropKeys(fx)
+            try await SystemSettings.write(fx.sql, key: "ingest.requestsPerMinute", value: "2", at: SubmitHandler.dbTime(now))
+            func go(_ headers: [String: String], peer: String = "10.0.0.5") async throws -> HTTPResponseStatus {
+                var h = legacyHeaders; for (k, v) in headers { h[k] = v }
+                return try await send(fx.app, path: "/endpoint/", headers: h, peer: peer, body: body(good)).status
+            }
+            for _ in 0..<2 { let s = try await go(["X-Real-IP": "203.0.113.50"]); XCTAssertEqual(s, .ok) }
+            let spent = try await go(["X-Real-IP": "203.0.113.50"]); XCTAssertEqual(spent, .tooManyRequests, "visitor budget counts the X-Real-IP visitor")
+            let other = try await go(["X-Real-IP": "203.0.113.51"]); XCTAssertEqual(other, .ok, "another visitor of the same website is not affected")
+            // X-Forwarded-For takes precedence over X-Real-IP
+            let viaXff = try await go(["X-Forwarded-For": "203.0.113.60", "X-Real-IP": "203.0.113.50"]); XCTAssertEqual(viaXff, .ok)
+            // malformed X-Real-IP: no visitor named -> generous peer budget, not a visitor budget
+            for _ in 0..<4 { let s = try await go(["X-Real-IP": "not-an-ip"]); XCTAssertEqual(s, .ok) }
+            // untrusted peer claiming the spent visitor: its headers are ignored (peer budget 600), A's counter is neither used nor framed
+            for _ in 0..<4 { let s = try await go(["X-Real-IP": "203.0.113.50", "X-Forwarded-For": "203.0.113.50"], peer: "198.51.100.7"); XCTAssertEqual(s, .ok) }
+            let stillSpent = try await go(["X-Real-IP": "203.0.113.50"]); XCTAssertEqual(stillSpent, .tooManyRequests)
         }
     }
 

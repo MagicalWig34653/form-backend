@@ -203,7 +203,17 @@ public struct RetentionReport: Codable, Equatable {
     /// Of those, how many would be due at once under the default period (received_at + defaultDays <= now).
     public var dueNowAtDefault = 0
 }
+/// Attachment information of the legacy submissions (counts only, no names). A name without a sealed package is NOT a review case.
+public struct AttachmentReport: Codable, Equatable {
+    /// Submissions whose sealed attachment package (`file1Enc`) is in the dump and was taken over.
+    public var migrated = 0
+    /// Of those: the plain file name (`file1Name`) exists only in the legacy dump (the new system has no plaintext name column).
+    public var namesOnlyInSource = 0
+    /// File name or plaintext file without sealed package: the attachment is NOT in the dump (or not takeable), the submission is imported normally.
+    public var notMigrated = 0
+}
 public struct ImportReport: Codable {
+    public var attachments: AttachmentReport?
     public var retention: RetentionReport?
     public var tables: [String:TableParity] = [:]
     public var inventory: [String:Int] = [:]
@@ -482,7 +492,7 @@ public struct LegacyImporter {
         if !dry && existing == nil {
             _ = try await insert(dst,"migration_runs",["id":runID,"source_namespace":val(p.namespace),"dump_sha256":bin(try unhex(p.dumpSHA256)),"mapping_sha256":bin(try unhex(mapping)),"importer_version":"'p9-1'","state":"'running'","started_at":"UTC_TIMESTAMP(6)","report_json":"'{}'"],key:["id":runID])
         }
-        var report = ImportReport(dryRun:dry); report.sourceFingerprint = startFingerprint; var processed = 0; var retention = RetentionReport()
+        var report = ImportReport(dryRun:dry); report.sourceFingerprint = startFingerprint; var processed = 0; var retention = RetentionReport(); var attachments = AttachmentReport()
         do { try await keyPreflight(src,dst,p) } catch { if !dry { try? await exec(dst,"UPDATE migration_runs SET state='failed' WHERE id=\(runID)") }; throw error }
         let inventory = try await src.raw("SELECT table_name AS v FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY table_name").all(decoding:TextRow.self)
         var manifest = ""
@@ -535,6 +545,10 @@ public struct LegacyImporter {
                         if mappingReview && !dry { try await reviewIssue(dst,p,table,key,"unmapped-column") }
                         let outcome = try await object(dst,p,runID,table,key,row,dry) { db in try await transform(src,db,p,table,row) }
                         parity.sourceCount += 1; sourceHashes.update(data:Data(mac(try json(dict)).utf8))
+                        if table == "anfragen" {
+                            let sealed = try row.text("file1Enc").map { !$0.isEmpty } ?? false, named = try row.text("file1Name") != nil
+                            if sealed { attachments.migrated += 1; if named { attachments.namesOnlyInSource += 1 } } else if try named || row.bytes("file1") != nil { attachments.notMigrated += 1 }
+                        }
                         if let digest = outcome {
                             if table == "anfragen" {
                                 retention.importedWithoutDeadline += 1
@@ -553,7 +567,7 @@ public struct LegacyImporter {
                     let mapped = try await scalar(dst,"SELECT CAST(COUNT(DISTINCT source_key) AS CHAR) AS v FROM migration_objects WHERE source_namespace=\(val(p.namespace)) AND source_table=\(val(table))")
                     if (Int(mapped ?? "0") ?? 0) > parity.sourceCount { try await reviewIssue(dst,p,table,"@table","source-deletion-review") }
                 }
-                parity.sourceHMAC = hex(Data(sourceHashes.finalize())); parity.targetHMAC = hex(Data(targetHashes.finalize())); report.tables[table] = parity; report.retention = retention
+                parity.sourceHMAC = hex(Data(sourceHashes.finalize())); parity.targetHMAC = hex(Data(targetHashes.finalize())); report.tables[table] = parity; report.retention = retention; if table == "anfragen" { report.attachments = attachments }
             }
             if !dry {
                 // Quiesce check: the snapshot transaction ends first, so the read is a fresh one (it sees writes after the snapshot).

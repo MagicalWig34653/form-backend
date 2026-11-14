@@ -189,10 +189,20 @@ public enum SetupMigrationRoutes {
         root.post("jobs", ":jobId", ":action") { req async throws -> Response in
             let actor = try await authorize(req, mutation: true, fresh: true)
             let id = try FormAdmin.uuidParam(req, "jobId"), action = req.parameters.get("action") ?? ""
-            guard ["pause", "resume", "import", "rehearse", "remove-source", "release-submissions"].contains(action) else { throw Abort(.notFound) }
-            let hmac = action == "release-submissions" ? try await service.key() : Data()
+            guard ["pause", "resume", "import", "rehearse", "remove-source", "release-submissions", "accept-review"].contains(action) else { throw Abort(.notFound) }
+            let hmac = ["release-submissions", "accept-review"].contains(action) ? try await service.key() : Data()
             var release: SubmissionRelease?
+            var acceptance: ReviewAcceptance?
             var withoutProbe = false
+            // accept-review is a decision: it needs a stated reason (JSON body {"reason": "..."}), recorded with the case and in the audit.
+            var reason = ""
+            if action == "accept-review" {
+                struct Input: Decodable { let reason: String }
+                let input: Input = try decode(req, allowed: ["reason"])
+                do { reason = try LegacyImporter.checkedReason(input.reason) }
+                catch ReviewAcceptanceError.reasonTooLong { throw Abort(.badRequest, reason: "reason-too-long") }
+                catch { throw Abort(.badRequest, reason: "reason-required") }
+            }
             try await db.transaction { conn in
                 let tx = conn as! SQLDatabase
                 guard let job = try await tx.raw("SELECT * FROM migration_jobs WHERE id=\(bind: DB.bin(id)) FOR UPDATE").first(decoding: MigrationJob.self) else { throw Abort(.notFound) }
@@ -217,6 +227,12 @@ public enum SetupMigrationRoutes {
                     let plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
                     do { release = try await LegacyImporter(source: tx, target: tx, secrets: secrets, hmacKey: hmac).releaseSubmissions(namespace: plan.namespace) }
                     catch ImportFailure.lock { throw Abort(.conflict, reason: "import-running") }
+                case "accept-review":
+                    // Same gate as the release: a real import in review (closed jobs and rehearsals are refused). No probe is needed: only the case state changes.
+                    guard job.state == "review", job.dry_run == 0 else { throw Abort(.conflict, reason: "job-not-releasable") }
+                    let plan = try JSONDecoder().decode(ImportPlan.self, from: Data(job.plan_json.utf8))
+                    do { acceptance = try await LegacyImporter(source: tx, target: tx, secrets: secrets, hmacKey: hmac).acceptReviewCases(namespace: plan.namespace, reason: reason) }
+                    catch ImportFailure.lock { throw Abort(.conflict, reason: "import-running") }
                 case "import":
                     guard job.state == "review", job.dry_run == 1 else { throw MigrationActionRefused.importNeedsRehearsal }
                     // The import compares the legacy data with the fingerprint of the rehearsal; jobs from before that have none.
@@ -240,9 +256,11 @@ public enum SetupMigrationRoutes {
                     }
                     try await tx.raw("UPDATE migration_jobs SET state='closed',source_json='{}' WHERE id=\(bind: DB.bin(id))").run()
                 }
+                let acceptedDetails: String? = try acceptance.map { String(decoding: try JSONSerialization.data(withJSONObject: ["accepted": $0.accepted, "reason": reason], options: [.sortedKeys]), as: UTF8.self) }
                 try await service.audit(tx, actor: actor, action: "migration.job." + action,
-                                        details: release.map { "{\"released\":\($0.released),\"newlyReleased\":\($0.newlyReleased),\"kept\":\($0.kept)}" } ?? (withoutProbe ? "{\"withoutProbe\":\"no-v2-packages\"}" : "{}"))
+                                        details: acceptedDetails ?? release.map { "{\"released\":\($0.released),\"newlyReleased\":\($0.newlyReleased),\"kept\":\($0.kept)}" } ?? (withoutProbe ? "{\"withoutProbe\":\"no-v2-packages\"}" : "{}"))
             }
+            if let acceptance { return try response(["status": "accepted", "accepted": acceptance.accepted]) }
             if let release { return try response(["status": "accepted", "released": release.released, "newlyReleased": release.newlyReleased, "kept": release.kept]) }
             return try response(["status": "accepted"])
         }

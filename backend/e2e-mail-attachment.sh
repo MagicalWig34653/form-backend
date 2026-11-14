@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Real end-to-end for attachments in the team mail (ADR 0049): throwaway MariaDB (max_allowed_packet 64 MiB) + Mailpit (real SMTP server) + real binary + Chromium
 # (configures the form), real signed SDK submissions with files; the mail in Mailpit must carry every file byte for byte (SHA-256 over the Mailpit part download),
-# umlaut names intact, a 19,9 MB file, and what exceeds FORM_MAIL_MAX_MB is named in the mail and flagged in the status, never lost. Synthetic data only.
+# umlaut names intact, a 19,9 MB file, the manual resend in the PWA (browser hands over the attachment keys) re-attaches them byte for byte, and what exceeds FORM_MAIL_MAX_MB is named in the mail and flagged in the status, never lost. Synthetic data only.
 # Containers/ports unique per run (backend/e2e-common.sh). Exit 0 ok, 1 failed, 2 environment problem.
 set -u
 cd "$(cd "$(dirname "$0")/.." && pwd -P)" || exit 1
@@ -41,10 +41,11 @@ LINK=$(printf '%s\n' "$OUT" | sed -n 's/.*): \(http[^ ]*\)$/\1/p' | head -1)
 "$BIN" serve >"$TMP/app.log" 2>&1 & APP_PID=$!
 for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
 export E2E_SETUP_LINK="$LINK" E2E_PASSWORD="$PASSWORD" E2E_PORT=$WPORT E2E_SPEC=real-mail-attachment.spec.ts E2E_TMP="$TMP" E2E_PUBLIC_URL=http://127.0.0.1:$PPORT
+export E2E_DB_CONTAINER="$NAME" E2E_DB_PASSWORD="$PW"
 export E2E_MAILPIT_SMTP=$MPSMTP E2E_MAILPIT_API=$MPAPI E2E_SUBMIT_DRIVER="$PWD/backend/e2e-mail-attach-submit.php"
 (cd pwa && npx playwright test -c e2e-real/playwright.config.ts) >"$TMP/playwright.log" 2>&1; prc=$?
 tail -25 "$TMP/playwright.log"
-if [ "$prc" = 0 ]; then echo "ok   uploaded files travel in the team mail byte for byte; too large ones are named, not lost (Mailpit)"; exit 0; fi
+if [ "$prc" = 0 ]; then echo "ok   uploaded files travel in the team mail byte for byte, also on the manual resend; too large ones are named, not lost (Mailpit)"; exit 0; fi
 echo "FAIL (playwright rc=$prc)"
 "$DOCKER" exec -e MYSQL_PWD="$PW" "$NAME" mariadb -uroot e2e -e 'SELECT mail_kind, state, attempts, last_error_code, transport_kind FROM mail_deliveries' 2>&1 | head -10
 tail -5 "$TMP/app.log"

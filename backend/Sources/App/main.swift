@@ -118,7 +118,7 @@ do { try HTTPSetup.configure(app, publicDirectory: config.publicDir, requireSche
     exit(78)
 }
 // The migrate command needs neither routes nor the key; and the catalog check needs the migrated schema.
-let isMigrate = ["migrate", "migrate-legacy", "bootstrap-admin", "enroll-passkey"].contains(CommandLine.arguments.dropFirst().first ?? "")
+let isMigrate = ["migrate", "migrate-legacy", "migrate-legacy-accept", "bootstrap-admin", "enroll-passkey"].contains(CommandLine.arguments.dropFirst().first ?? "")
 if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrate {
     // Admin API: server key from the operating environment (ADR 0008 F5). Fail closed on any problem.
     do {
@@ -188,7 +188,7 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
             var ingest = IngestConfig(secrets: StoreDigestSecrets(store: secrets), mail: mail, externalHost: { req in try StatisticsCollector.proxyHost(req, trusted: config.publicTrustedProxies) })
             ingest.throttle = guardian.throttles
             ingest.abuseKey = abuseKey.withUnsafeBytes { Data($0) }
-            ingest.clientIP = IngestConfig.proxiedClientIP(trusted: config.publicTrustedProxies)
+            ingest.useTrustedProxies(config.publicTrustedProxies)
             let backend = IngestSetup.register(app, config: ingest)
             LegacyAPI.register(app, backend: backend)
         }
@@ -214,6 +214,7 @@ let publicResponder = try ListenerRoutes.publicSurface(app, config: config,
 let servers = DualHTTPServer(app: app, config: config, internalResponder: internalResponder, publicResponder: publicResponder)
 app.servers.use { _ in servers }
 app.asyncCommands.use(MigrateLegacyCommand(), as: "migrate-legacy")
+app.asyncCommands.use(MigrateLegacyAcceptCommand(), as: "migrate-legacy-accept")
 app.asyncCommands.use(MigrateCommand(schemaFile: config.schemaFile), as: "migrate")
 app.asyncCommands.use(BootstrapAdminCommand(origin: ProcessInfo.processInfo.environment["FORM_ADMIN_ORIGIN"], requiresPassword: config.publicDashboard || config.internalSecondFactor), as: "bootstrap-admin")
 app.asyncCommands.use(EnrollPasskeyCommand(origin: ProcessInfo.processInfo.environment["FORM_ADMIN_ORIGIN"]), as: "enroll-passkey")

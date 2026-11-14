@@ -29,4 +29,13 @@ Feature-Matrix ALT/NEU (14.11.2026): Das Altsystem hängt den Upload an die Orga
 
 ## Nicht Teil
 
-- Wiederversand mit Anhängen (Folgekarte), Anhänge in Bestätigungsmails, Anhangsauswahl je Mailvorlage.
+- Anhänge in Flow-Mails, Anhänge in Bestätigungsmails, Anhangsauswahl je Mailvorlage.
+
+## Nachtrag 14.11.2026: Wiederversand mit Anhängen
+
+Befund im Altsystem (`providers/AnfrageResend.php`, `ausKlartext(..., $anhangInhalt, $anhangName, ...)`; `formulare/generisch.php`: `anhaenge()` hängt beim Resend die vom Browser entschlüsselte Datei an): ALT hängt Anhänge beim Wiederversand an. ALT kennt keine Flow-Mails.
+
+- NEU: `POST .../entries/{id}/resends` nimmt optional `attachmentKeys: [{ordinal, contentKey}]` (höchstens 16, je 32 Byte base64url, Ordinal einmalig; sonst 422). Der Browser liefert die Schlüssel (er entschlüsselt die Anhangspakete ohnehin lokal), der Server öffnet nur die eigenen gespeicherten Objekte im Speicher, prüft den SHA-256 gegen die signierten Metadaten der Einsendung, nimmt Name aus den signierten Metadaten und Typ aus der Endung (Upload-Allowlist). Klartext nie in DB/Logs/Audit; Schlüssel nie gespeichert.
+- Grenzen wie oben: `FORM_MAIL_MAX_MB` (Öffnen stoppt, wenn der Klartext allein das Mail-Limit überschreitet), Passform und Sendetor (2 Sendungen, 64 MiB wartend, sonst `busy`/`waiting-manual`), Mail-Proxy 1 Anhang. Nur Mail an das Team im Inhaltsmodus `full`.
+- Nie still: fehlender Schlüssel, fehlendes Objekt, falscher Schlüssel, Hash-Abweichung oder Überschreitung des Limits führen zu „nicht beigefügt“ im Mailtext plus `attachments_omitted`; die Mail geht trotzdem raus.
+- Flow-Mails: kein Gegenstück in ALT, nicht wiederholbar (409, kein unveränderliches Manifest) und ohne Bytes im Speicher; bleiben bei Hinweis + `attachments_omitted`. Der Abschnitt „Wiederversand und verzögerte Flow-Mails“ oben gilt nur noch für Flow-Mails.

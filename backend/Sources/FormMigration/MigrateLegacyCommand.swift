@@ -123,3 +123,46 @@ public struct MigrateLegacyCommand: AsyncCommand {
         } catch { throw finish(ImportFailure.database.description, 1) }
     }
 }
+
+/// `App migrate-legacy-accept`: accepts the open review cases of imported submissions by an explicit, reasoned decision (task 8E8CEC06).
+/// Same effect as the admin action "accept-review": only the case state changes (`accepted-with-decision`, reason in `decision_ref`); nothing is
+/// released or sent. Releasing the submissions stays a separate step (admin button "Importierte Einsendungen freigeben").
+public struct MigrateLegacyAcceptCommand: AsyncCommand {
+    public struct Signature: CommandSignature {
+        public init() {}
+        @Option(name:"plan", help:"JSON-Importplan (nennt den Namensraum)") var plan: String?
+        @Option(name:"reason", help:"Pflichtbegründung der Entscheidung, 8 bis 200 Zeichen (wird am Prüffall und im Audit festgehalten)") var reason: String?
+        @Option(name:"source-key", help:"nur diese Alt-Einsendung (anfragen.ID); ohne Angabe alle offenen Prüffälle der Einsendungen") var sourceKey: String?
+    }
+    public var help: String {
+        "Akzeptiert offene Prüffälle importierter Einsendungen per begründeter Entscheidung (Zustand accepted-with-decision, Audit-Eintrag). Gibt nichts frei und sendet nichts. Exit 0 = ok, 1 = Fehler/Import läuft, 2 = Parameter-/Planfehler."
+    }
+    public init() {}
+    public func run(using context: CommandContext, signature: Signature) async throws {
+        func finish(_ message: String, _ code: Int32) -> MigrateLegacyExit { context.console.error(message); return MigrateLegacyExit(code: code) }
+        let params: MigrateLegacyCommand.Parameters, plan: ImportPlan, reason: String
+        do {
+            params = try MigrateLegacyCommand.Parameters.read(plan: signature.plan, batchSize: nil, env: ProcessInfo.processInfo.environment)
+            guard let data = FileManager.default.contents(atPath: params.plan) else { throw CLIInputError.invalid("--plan", "Datei nicht lesbar") }
+            plan = try ImportPlan.decode(data)
+            guard let text = signature.reason else { throw CLIInputError.missing("--reason") }
+            do { reason = try LegacyImporter.checkedReason(text) } catch { throw CLIInputError.invalid("--reason", "erwartet 8 bis 200 Zeichen ohne Steuerzeichen") }
+            if let key = signature.sourceKey, key.isEmpty || key.utf8.count > 190 { throw CLIInputError.invalid("--source-key", "leer oder zu lang") }
+        } catch { throw finish(String(describing: error), MigrateLegacyCommand.exitCode(for: error)) }
+        let target = context.application.db(.mysql)
+        do {
+            let result = try await target.transaction { conn -> ReviewAcceptance in
+                let tx = conn as! SQLDatabase
+                let importer = try LegacyImporter(source: tx, target: tx, secrets: SecretStore(db: conn, keys: FileServerKey(path: params.serverKey)), hmacKey: params.hmac)
+                let result = try await importer.acceptReviewCases(namespace: plan.namespace, reason: reason, sourceKey: signature.sourceKey)
+                let details = String(decoding: try JSONSerialization.data(withJSONObject: ["accepted": result.accepted, "reason": reason], options: [.sortedKeys]), as: UTF8.self)
+                try await tx.raw("INSERT INTO audit_events(id,actor_kind,category,action_code,occurred_at,safe_details_json,source_namespace) VALUES(\(bind: DB.bin(UUID())),'migration','system','migration.job.accept-review',\(bind: DB.time(Date())),\(bind: details),\(bind: plan.namespace))").run()
+                return result
+            }
+            context.console.print("\(result.accepted) Prüffälle akzeptiert (Zustand accepted-with-decision). Freigabe der Einsendungen: Knopf \"Importierte Einsendungen freigeben\" in der Umstieg-Ansicht.")
+        } catch ImportFailure.lock {
+            throw finish("Ein Import läuft noch (Sperre form_legacy_import); später erneut aufrufen.", 1)
+        } catch let failure as ImportFailure { throw finish(failure.description, 1)
+        } catch { throw finish(ImportFailure.database.description, 1) }
+    }
+}

@@ -77,26 +77,45 @@ public struct CIDR: Sendable, Equatable {
     public func contains(_ ip: IPAddr) -> Bool { CIDR.mask(ip.bytes, prefix) == network }
 }
 
-/// Client address for throttling and audit. The TCP peer is used unless it is a trusted proxy; then `X-Forwarded-For`
-/// is read from the right and the first hop that is NOT a trusted proxy is the client (the left part is client-controlled
-/// and ignored). Any malformed entry on the way makes the result fall back to the peer (never to a spoofable value).
+/// Client address for throttling and audit. The TCP peer is used unless it is a trusted proxy; then the client is taken in
+/// this fixed order (documented in docs/BETRIEB.md):
+///  1. `X-Forwarded-For`, read from the right: the first hop that is NOT a trusted proxy is the client (the left part is
+///     client-controlled and ignored). A malformed entry makes the result fall back to the peer.
+///  2. otherwise `X-Real-IP` (exactly one well-formed address, set by the trusted proxy).
+///  3. otherwise the peer.
+/// Headers of an UNTRUSTED peer are never read. `Resolution.viaProxy` tells whether a real visitor address was named by a
+/// trusted proxy (false = the identity is the peer itself, e.g. a website server calling the backend directly).
 public struct ClientIPResolver: Sendable {
+    public struct Resolution: Sendable, Equatable { public let ip: String; public let viaProxy: Bool }
     public let trusted: [CIDR]
     public init(trusted: [CIDR]) { self.trusted = trusted }
 
     func isTrusted(_ ip: IPAddr) -> Bool { trusted.contains { $0.contains(ip) } }
 
-    public func resolve(peer: String?, forwardedFor: String?) -> String {
-        guard let peer, let peerIP = IPAddr(peer) else { return "unknown" }
-        guard !trusted.isEmpty, isTrusted(peerIP), let xff = forwardedFor, !xff.isEmpty else { return peerIP.text }
-        let hops = xff.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
-        guard hops.count <= 20 else { return peerIP.text }
-        var leftmost: IPAddr?
-        for hop in hops.reversed() {
-            guard let ip = IPAddr(hop) else { return peerIP.text }
-            if !isTrusted(ip) { return ip.text }
-            leftmost = ip
+    public func resolve(peer: String?, forwardedFor: String?, realIP: String? = nil) -> String {
+        resolveDetailed(peer: peer, forwardedFor: forwardedFor, realIP: realIP).ip
+    }
+
+    public func resolveDetailed(peer: String?, forwardedFor: String?, realIP: String? = nil) -> Resolution {
+        guard let peer, let peerIP = IPAddr(peer) else { return Resolution(ip: "unknown", viaProxy: false) }
+        let own = Resolution(ip: peerIP.text, viaProxy: false)
+        guard !trusted.isEmpty, isTrusted(peerIP) else { return own }
+        if let xff = forwardedFor, !xff.isEmpty {
+            let hops = xff.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard hops.count <= 20 else { return own }
+            var leftmost: IPAddr?
+            for hop in hops.reversed() {
+                guard let ip = IPAddr(hop) else { return own }
+                if !isTrusted(ip) { return Resolution(ip: ip.text, viaProxy: true) }
+                leftmost = ip
+            }
+            // every hop is a trusted proxy: the original client is inside the trusted network (no real visitor named)
+            return Resolution(ip: leftmost?.text ?? peerIP.text, viaProxy: false)
         }
-        return leftmost?.text ?? peerIP.text   // every hop is a trusted proxy: the original client is inside the trusted network
+        if let real = realIP?.trimmingCharacters(in: .whitespaces), !real.isEmpty {
+            guard let ip = IPAddr(real) else { return own }
+            return Resolution(ip: ip.text, viaProxy: !isTrusted(ip))
+        }
+        return own
     }
 }

@@ -34,15 +34,29 @@ public struct IngestConfig: Sendable {
     func visitorIP(_ req: Request) -> String { req.storage[VerifiedVisitorIPKey.self] ?? clientIP(req) }
     /// Identity of the abuse ban and the per-visitor budget: the verified visitor if present, otherwise the peer (`clientKey`).
     func visitorKey(_ req: Request) -> String { IPAddr.quotaKey(visitorIP(req)) }
-    /// `X-Forwarded-For` is only believed when the socket peer is inside `trusted` (`ClientIPResolver`: read from the right,
-    /// all header lines joined, first non-trusted hop wins). Empty `trusted` = peer only, so a header can never spoof the identity.
+    /// Whether a real visitor address was named by a trusted proxy (`proxiedClientIP`). Default false: peer only.
+    public var clientIPResolved: @Sendable (Request) -> Bool = { _ in false }
+    /// `X-Forwarded-For` (from the right, first non-trusted hop), else `X-Real-IP`, else the peer; only believed when the socket
+    /// peer is inside `trusted` (`ClientIPResolver`). Empty `trusted` = peer only, so a header can never spoof the identity.
     public static func proxiedClientIP(trusted: [CIDR]) -> @Sendable (Request) -> String {
         let resolver = ClientIPResolver(trusted: trusted)
-        return { req in
-            let lines = req.headers[canonicalForm: "x-forwarded-for"]
-            return resolver.resolve(peer: req.remoteAddress?.ipAddress, forwardedFor: lines.isEmpty ? nil : lines.joined(separator: ", "))
-        }
+        return { req in proxiedResolution(resolver, req).ip }
     }
+    static func proxiedResolution(_ resolver: ClientIPResolver, _ req: Request) -> ClientIPResolver.Resolution {
+        let lines = req.headers[canonicalForm: "x-forwarded-for"]
+        let real = req.headers[canonicalForm: "x-real-ip"]
+        return resolver.resolveDetailed(peer: req.remoteAddress?.ipAddress, forwardedFor: lines.isEmpty ? nil : lines.joined(separator: ", "),
+                                        realIP: real.count == 1 ? String(real[0]) : nil)
+    }
+    /// Production wiring: address resolution behind trusted proxies, including the "visitor named by a trusted proxy" flag.
+    public mutating func useTrustedProxies(_ trusted: [CIDR]) {
+        clientIP = Self.proxiedClientIP(trusted: trusted)
+        let resolver = ClientIPResolver(trusted: trusted)
+        clientIPResolved = { req in Self.proxiedResolution(resolver, req).viaProxy }
+    }
+    /// True when the request names a visitor: a verified signed claim (ADR 0048) or a trusted proxy (X-Forwarded-For/X-Real-IP).
+    /// Legacy requests without one come from a website server (server to server) and get the generous peer budget and no ban.
+    func visitorKnown(_ req: Request) -> Bool { req.storage[VerifiedVisitorIPKey.self] != nil || clientIPResolved(req) }
     /// Per-(form, client) request budget (FA-015). nil = no budget (tests, unconfigured deployments).
     public var throttle: ThrottleService? = nil
     public var secrets: DigestSecretProvider
@@ -137,12 +151,16 @@ struct SubmitHandler: Sendable {
     }
 
     /// `ingest.requestsPerMinute` (0 = off), per (form, visitor): the verified visitor if the SDK named one, else the peer.
+    /// Legacy request without any named visitor (server to server, ADR 0047): instead the generous per-(form, peer) budget
+    /// `ingest.legacyPeerRequestsPerMinute` (0 = off), because the peer is a website server and its visitors are not told apart.
     /// Counters live in `auth_throttles` as HMAC only; the IP is never stored in clear.
     func enforceBudget(_ req: Request, sql: SQLDatabase, form: UUID, scope: String = "ingest") async throws {
         guard let throttle = config.throttle else { return }
-        let limit = Int(try await SystemSettings.value("ingest.requestsPerMinute", sql: sql))!
+        let peerOnlyLegacy = LegacyIngestBackend.isLegacy(req) && !config.visitorKnown(req)
+        let limit = Int(try await SystemSettings.value(peerOnlyLegacy ? "ingest.legacyPeerRequestsPerMinute" : "ingest.requestsPerMinute", sql: sql))!
         guard limit > 0 else { return }
-        do { try await throttle.consume(.adminRoute, "\(scope)|\(form.uuidString.lowercased())|\(config.visitorKey(req))", limit: limit, window: 60) }
+        let key = "\(scope)\(peerOnlyLegacy ? "-legacypeer" : "")|\(form.uuidString.lowercased())|\(config.visitorKey(req))"
+        do { try await throttle.consume(.adminRoute, key, limit: limit, window: 60) }
         catch let e as RateLimited { throw IngestRateLimited(retryAfterSeconds: e.retryAfter) }
     }
 

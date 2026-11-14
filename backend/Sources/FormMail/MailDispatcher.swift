@@ -46,6 +46,8 @@ public struct MailDispatcher: Sendable {
     let adminOrigin: String?
     /// Size limit of one whole mail with attachments (wire form), FORM_MAIL_MAX_BYTES; default 30 MiB.
     let maxMailBytes: Int
+    /// Size limit of one whole mail (wire form); the resend route stops opening attachments beyond it.
+    public var mailByteLimit: Int { maxMailBytes }
     /// Sends that carry attachments run at most `heavyConcurrent` at a time (each builds a ~1.4x copy of its attachments) and keep at most
     /// `heavyQueuedBytes` of attachment bytes waiting; beyond that the mail goes to `waiting-manual` (`busy`) instead of filling the 512 MiB container.
     static let heavyConcurrent = 2, heavyQueuedBytes = 64 * 1024 * 1024
@@ -166,7 +168,7 @@ public struct MailDispatcher: Sendable {
     /// Manual resend of ONE existing delivery (wiederanlauf.md): the message is rendered again from the pinned release's plan and the
     /// submission's own fields (never from client-supplied content), and the SAME row is claimed (waiting-manual/uncertain -> leased).
     /// `uncertain` is only taken over when the caller states that the earlier attempt was checked.
-    public func prepareResend(tx: SQLDatabase, plan: MailPlan, customer: Blob, form: Blob, delivery: UUID, kind: String, allowUncertain: Bool, expectedFence: UInt64?, fields: [String: Any]) async throws -> PreparedMail {
+    public func prepareResend(tx: SQLDatabase, plan: MailPlan, customer: Blob, form: Blob, delivery: UUID, kind: String, allowUncertain: Bool, expectedFence: UInt64?, fields: [String: Any], attachments: [MailAttachment] = [], uploadedFileCount: Int = 0) async throws -> PreparedMail {
         var values = MailTemplate.values(fromFields: fields)
         plan.apply(derived: &values, now: now())
         guard let conn = try await connection(tx, customer: customer, form: form), ["smtp", "mail-proxy"].contains(conn.kind) else { throw ResendError.noConnection }
@@ -191,8 +193,12 @@ public struct MailDispatcher: Sendable {
         do {
             message = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: reply, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
                                         customer: customer, form: form, submission: submission)
-            // The resend only holds the data object's key, not the attachments' keys: the files cannot be re-attached here and the mail says so.
-            if kind == "organisation" && !notify { warning = attach(to: &message, attachments: [], unavailable: try await storedAttachmentCount(tx, submission: submission), maxCount: conn.kind == "mail-proxy" ? 1 : MailAttachment.maxPerMail) }
+            // `attachments` = files the caller could open with the attachment keys the browser handed over (ADR 0049 Nachtrag, parity with ALT's AnfrageResend).
+            // `uploadedFileCount` = files listed in the signed data (also counts objects that are gone). Files that are not among them (key or object missing, over the budget) are named as "not attached" and the row gets `attachments_omitted`.
+            if kind == "organisation" && !notify {
+                let stored = try await storedAttachmentCount(tx, submission: submission)
+                warning = attach(to: &message, attachments: attachments, unavailable: max(0, max(stored, uploadedFileCount) - attachments.count), maxCount: conn.kind == "mail-proxy" ? 1 : MailAttachment.maxPerMail)
+            }
             try Self.validate(message)
         } catch { throw ResendError.messageInvalid }
         guard try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else { throw ResendError.recipientInvalid }

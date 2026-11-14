@@ -159,7 +159,9 @@ extension ImportRehearsalTests {
     func testReleasedSubmissionsAppearInEntryListAndDetail() async throws {
         try await withHarness { h in
             let id = try await importedJob(h)
-            let form = RehearsalSource.formA
+            // formB: its row with error text + plaintext file stays in review but has a ready data package (formA's review rows had that only through
+            // `file1Name`, which is no review cause any more, task 8E8CEC06).
+            let form = RehearsalSource.formB
             let customer = uuidText(try await h.scalar("SELECT HEX(customer_id) AS v FROM forms WHERE id=\(unhexUUID(form))") ?? "")
             let tenant = try XCTUnwrap(UUID(uuidString: customer))
             // The importer leaves customers disabled until the human cutover; the entries routes need an active one.

@@ -120,9 +120,21 @@
       resendMessage = t.admin.entries.resendFailed;
       return;
     }
+    // The files travel in the team mail again (ADR 0049): hand over the content key of each attachment (the server opens its own stored objects in memory).
+    // A file whose key cannot be unwrapped is left out; the server then names it in the mail as not attached.
+    const attachmentKeys: { ordinal: number; contentKey: string }[] = [];
+    for (let n = 0; n < attachments.length; n++) {
+      const a = await adminApi.attachment(tenant, form, entryId, n);
+      const k = a.ok ? await contentKey(a.data.package, openKey).catch(() => null) : null;
+      if (k) {
+        attachmentKeys.push({ ordinal: n, contentKey: toBase64Url(k) });
+        k.fill(0);
+      }
+    }
     const r = await adminApi.resend(tenant, form, entryId, {
       deliveryId: d.id,
       contentKey: toBase64Url(cek),
+      attachmentKeys: attachmentKeys.length > 0 ? attachmentKeys : undefined,
       confirmUncertain: d.state === 'uncertain' ? true : undefined,
       expectedFence: d.state === 'uncertain' ? d.fence : undefined,
     });

@@ -5,6 +5,7 @@
 #   B  dry run: exit 0, target unchanged
 #   C  import without statisticsReview/statisticsPublicKeys: counts like the web route, statistics rows become review cases (statistics-review-missing), nothing statistical written; exit 3 = finished with open review cases
 #   D  repetition: exit 0, target fingerprint unchanged
+#   D2 `App migrate-legacy-accept`: reason mandatory (exit 2), accepts the open submission cases (accepted-with-decision, reason, audit), other tables stay open, nothing else changes
 #   E  statistics with approved review + public keys (fresh target): encrypted statistics-metadata, NO clear text in the target dump, IP presence flag
 #   F  SIGINT/SIGTERM in the middle of a run on an enlarged source: exit 130/143 at an object boundary, run not 'running', lock free; resume by calling again; end state equals an undisturbed import (fingerprint)
 #   G  no secret (source password, target password, server key, HMAC key) in any output
@@ -187,6 +188,29 @@ check "repetition exit code (open cases remain)" 3 "$r"
 check "repetition left the target fingerprint unchanged" "$FP1" "$(fp e2e)"
 check "repetition left all row counts unchanged" "$R1" "$(rowsum e2e)"
 check "exactly one run row" 1 "$(tgt 'SELECT COUNT(*) FROM migration_runs')"
+
+# ---------------- D2: accept open review cases (task 8E8CEC06) ----------------
+echo "-- D2 migrate-legacy-accept"
+cli_accept() { local db=$1 log=$2; shift 2; cli_prep "$db" "$@"; local -a c=(); local x; for x in "${CMD[@]}"; do [ "$x" = migrate-legacy ] && x=migrate-legacy-accept; c+=("$x"); done; "${c[@]}" >"$log" 2>&1; }
+OPEN_A=$(tgt "SELECT COUNT(DISTINCT source_key) FROM migration_issues WHERE source_table='anfragen' AND state='open'")
+OPEN_O=$(tgt "SELECT COUNT(*) FROM migration_issues WHERE source_table<>'anfragen' AND state='open'")
+[ "$OPEN_A" -gt 0 ] && ok "open review cases of submissions before: $OPEN_A" || bad "no open submission cases to accept"
+FP_D2=$(fp e2e | grep -v "^issues" | cksum)
+cli_accept e2e "$TMP/d2-noreason.log" --plan "$TMP/plan.json"; r=$?
+check "accept without --reason: exit code" 2 "$r"; grep -q "Parameter fehlt: --reason" "$TMP/d2-noreason.log" && ok "accept without --reason names the parameter" || bad "no named cause: $(head -c 200 "$TMP/d2-noreason.log")"
+cli_accept e2e "$TMP/d2-short.log" --plan "$TMP/plan.json" --reason "kurz"; r=$?
+check "accept with a too short reason: exit code" 2 "$r"
+check "refused calls changed nothing" "$OPEN_A" "$(tgt "SELECT COUNT(DISTINCT source_key) FROM migration_issues WHERE source_table='anfragen' AND state='open'")"
+cli_accept e2e "$TMP/d2-ok.log" --plan "$TMP/plan.json" --reason "Betreiber hat die Altdaten geprueft"; r=$?
+check "accept: exit code" 0 "$r"
+grep -q "$OPEN_A Prüffälle akzeptiert" "$TMP/d2-ok.log" && ok "accept reports the count" || bad "count message missing: $(head -c 200 "$TMP/d2-ok.log")"
+check "no open submission case left" 0 "$(tgt "SELECT COUNT(*) FROM migration_issues WHERE source_table='anfragen' AND state='open'")"
+check "decided cases carry the reason" "$OPEN_A" "$(tgt "SELECT COUNT(DISTINCT source_key) FROM migration_issues WHERE state='accepted-with-decision' AND decision_ref='Betreiber hat die Altdaten geprueft'")"
+check "cases of other tables stay open" "$OPEN_O" "$(tgt "SELECT COUNT(*) FROM migration_issues WHERE source_table<>'anfragen' AND state='open'")"
+check "audit entry with reason" 1 "$(tgt "SELECT COUNT(*) FROM audit_events WHERE action_code='migration.job.accept-review' AND actor_kind='migration' AND JSON_VALUE(safe_details_json,'$.reason')='Betreiber hat die Altdaten geprueft'")"
+check "submissions and packages unchanged (fingerprint without the open-case lines)" "$FP_D2" "$(fp e2e | grep -v "^issues" | cksum)"
+cli_accept e2e "$TMP/d2-again.log" --plan "$TMP/plan.json" --reason "zweiter Aufruf ohne Wirkung"; r=$?
+check "second call: exit code" 0 "$r"; grep -q "0 Prüffälle akzeptiert" "$TMP/d2-again.log" && ok "second call accepts nothing" || bad "second call: $(head -c 200 "$TMP/d2-again.log")"
 
 # ---------------- E: statistics with review and public keys ----------------
 echo "-- E statistics with approved review and public keys"

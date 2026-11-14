@@ -5,6 +5,10 @@
 # backend (LEGACY_SDK_DIR, default ../form-backend_bvk: providers/Clients/BackendV2.php = v2, Backend.php = v1 with only its hard-coded host
 # replaced) and talks to the PUBLIC listener: loadForm(), valid send() -> 200, invalid send() -> 412 with the old end-user text,
 # nothing stored for the invalid one. Part 2 restarts the app with FORM_COMPAT_LEGACY=false: the same old SDK gets 404 (switch proof).
+# Part 3 (client address behind nginx): the app trusts 127.0.0.1 like deploy/proxy/nginx.conf.example would (FORM_PUBLIC_TRUSTED_PROXIES) with a
+# budget of 6 per minute (part 1 already used 4 of the website's own, see below); the real old SDK (peer = the website, no visitor header: its CLIENTIP-ENCRYPT is ignored) and two simulated visitors
+# named by X-Forwarded-For/X-Real-IP (what nginx sets) are counted separately: visitor A runs into 429, visitor B and the website go on. The website's own server-to-server calls (no visitor header) use the legacy peer budget
+# (ingest.legacyPeerRequestsPerMinute, default 600), not the visitor budget of 6: 8 in a row are all 200.
 # E2E_LEGACY_MUTATION=1 expects the checks to FAIL (the script then exits 0 only if a check failed): used as mutation proof together with a
 # deliberately broken build; not needed normally.
 # Synthetic data only. Exit 0 ok, 1 failed, 2 environment (no docker, no old SDK checkout, no php with curl/sodium).
@@ -98,5 +102,24 @@ off=$(curl -s -H 'X-Real-IP: 203.0.113.9' "$SITE/?sdk=v2")
 [ "$(printf '%s' "$off" | json status)" = 404 ] && ok "switch off: old v2 config call -> 404" || fail "switch off v2: $off"
 off1=$(curl -s -H 'X-Real-IP: 203.0.113.9' "$SITE/?sdk=v1")
 [ "$(printf '%s' "$off1" | json status)" = 404 ] && ok "switch off: old v1 config call -> 404" || fail "switch off v1: $off1"
+
+# --- part 3: two visitors behind nginx-style headers (trusted proxy), old SDK headers present ---
+kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null
+FORM_PUBLIC_TRUSTED_PROXIES=127.0.0.1/32 FORM_INGEST_REQUESTS_PER_MINUTE=6 "$BIN" serve >"$TMP/app3.log" 2>&1 & APP_PID=$!
+for _ in $(seq 30); do curl -fs "http://localhost:$WPORT/health" >/dev/null 2>&1 && break; sleep 1; done
+visitor() {  # $1 = address; prints the HTTP status of one legacy submission as nginx would forward it
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$PUBLIC/endpoint/?f=$FORM" -H "X-Forwarded-For: $1" -H "X-Real-IP: $1" \
+    -H 'CLIENTIP-ENCRYPT: opaque' -H 'CLIENTUA-ENCRYPT: opaque' --data-urlencode "name=Max Beispiel" --data-urlencode "email=max@example.org"
+}
+a=""; for _ in 1 2 3 4 5 6 7; do a="$a $(visitor 203.0.113.50)"; done
+[ "$a" = " 200 200 200 200 200 200 429" ] && ok "visitor A: 6 x 200, then 429 (own budget)" || fail "visitor A statuses:$a"
+[ "$(visitor 203.0.113.51)" = 200 ] && ok "visitor B behind the same nginx still 200" || fail "visitor B refused although A exhausted only its own budget"
+for _ in 1 2 3 4 5; do visitor 203.0.113.51 >/dev/null; done
+[ "$(visitor 203.0.113.51)" = 429 ] && ok "visitor B has its own budget too" || fail "visitor B budget not enforced"
+site=$(curl -s -c "$TMP/jar-p3" "$SITE/?sdk=v2"); csrf=$(printf '%s' "$site" | json csrf)
+sdkr=$(curl -s -b "$TMP/jar-p3" --data-urlencode "csrf_token=$csrf" --data-urlencode "name=Max Beispiel" --data-urlencode "email=max@example.org" "$SITE/?sdk=v2")
+[ "$(printf '%s' "$sdkr" | json status)" = 200 ] && ok "real old SDK from the website itself (own peer budget) -> 200 while visitors A and B are spent" || fail "old SDK refused: $sdkr"
+s2s=""; for _ in 1 2 3 4 5 6 7 8; do s2s="$s2s $(curl -s -o /dev/null -w '%{http_code}' -X POST "$PUBLIC/endpoint/?f=$FORM" -H 'CLIENTIP-ENCRYPT: opaque' -H 'CLIENTUA-ENCRYPT: opaque' --data-urlencode "name=Max Beispiel" --data-urlencode "email=max@example.org")"; done
+[ "$s2s" = " 200 200 200 200 200 200 200 200" ] && ok "server-to-server (no visitor header): 8 x 200 although the visitor budget is 6 (legacy peer budget)" || fail "server-to-server statuses:$s2s"
 if [ "${E2E_LEGACY_MUTATION:-0}" = 1 ]; then [ $rc = 0 ] && { echo "MUTATION NOT DETECTED"; exit 1; } || { echo "mutation detected (checks failed as expected)"; exit 0; }; fi
 exit $rc

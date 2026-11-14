@@ -4,7 +4,7 @@
 // Usage: php e2e-mail-attach-submit.php CREDENTIALS URL MARKER KEY MODE   -> prints the submission id, then one "sha256 name" line per file
 // MODE multi: two small files (umlaut and special characters in the names); big: one file of 19,900,000 bytes; over: 19,900,000 + 6,000,000 bytes.
 declare(strict_types=1);
-foreach (['Exception/FormBackendException', 'Exception/ConfigurationException', 'Exception/InvalidInputException', 'Exception/RejectedException', 'Exception/TransportException', 'Credentials', 'Transport', 'CurlTransport', 'Submission', 'Canonical', 'Client'] as $f) {
+foreach (['Exception/FormBackendException', 'Exception/ConfigurationException', 'Exception/InvalidInputException', 'Exception/RejectedException', 'Exception/TransportException', 'Credentials', 'Transport', 'CurlTransport', 'VisitorIp', 'Submission', 'Canonical', 'Client'] as $f) {
     require __DIR__ . '/../sdk/php/src/' . $f . '.php';
 }
 use FormBackend\Client;

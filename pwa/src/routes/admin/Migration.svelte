@@ -337,6 +337,27 @@
     if (r) released = { released: r.released, kept: r.kept };
     await load();
   }
+  let acceptReason = $state('');
+  let acceptedCount = $state<number>();
+  async function acceptReview(job: Job) {
+    error = '';
+    notice = '';
+    acceptedCount = undefined;
+    busy = true;
+    const r = await request<{ accepted: number }>(
+      'POST',
+      `/migration/jobs/${job.id}/accept-review`,
+      {
+        reason: acceptReason.trim(),
+      },
+    );
+    busy = false;
+    if (r) {
+      acceptedCount = r.accepted;
+      acceptReason = '';
+    }
+    await load();
+  }
   async function getProbe(job: Job) {
     error = '';
     privateKey = '';
@@ -471,6 +492,14 @@
               .replace('{due}', String(sum.retention.dueNowAtDefault))}
           </Banner>
         </div>
+      {/if}
+      {#if sum.attachments && (sum.attachments.migrated || sum.attachments.notMigrated)}
+        <p class="text-muted-foreground m-0 text-sm" data-testid="migration-attachments">
+          {f.run.attachmentNote
+            .replace('{migrated}', String(sum.attachments.migrated))
+            .replace('{names}', String(sum.attachments.namesOnlyInSource))
+            .replace('{not}', String(sum.attachments.notMigrated))}
+        </p>
       {/if}
       {#if sum.issues.length}
         <div class="flex flex-col gap-1">
@@ -1218,6 +1247,40 @@
                 {f.review.releaseResult
                   .replace('{released}', String(released.released))
                   .replace('{kept}', String(released.kept))}
+              </p>{/if}
+          </section>
+          <section class="flex flex-col gap-3 rounded-lg border p-4" data-testid="migration-accept">
+            <h3 class="m-0 text-base font-semibold">{f.review.acceptTitle}</h3>
+            <p class="m-0 text-sm">{f.review.acceptHint}</p>
+            <form
+              class="flex flex-col gap-3"
+              onsubmit={(e) => {
+                e.preventDefault();
+                void acceptReview(importJob);
+              }}
+            >
+              <fieldset disabled={busy} class="m-0 grid min-w-0 gap-4 border-0 p-0">
+                <Row id="mig-accept-reason" label={f.review.acceptReason}>
+                  <Input
+                    id="mig-accept-reason"
+                    bind:value={acceptReason}
+                    maxlength={200}
+                    autocomplete="off"
+                  />
+                </Row>
+                <div>
+                  <Button type="submit" variant="outline" disabled={acceptReason.trim().length < 8}
+                    >{f.review.acceptButton}</Button
+                  >
+                </div>
+              </fieldset>
+            </form>
+            {#if acceptedCount !== undefined}<p
+                class="m-0 text-sm"
+                role="status"
+                data-testid="migration-accepted"
+              >
+                {f.review.acceptResult.replace('{n}', String(acceptedCount))}
               </p>{/if}
           </section>
           <section class="flex flex-col gap-3 rounded-lg border p-4" data-testid="migration-adopt">

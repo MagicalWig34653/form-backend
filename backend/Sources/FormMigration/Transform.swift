@@ -233,7 +233,11 @@ extension LegacyImporter {
                     } else { review = true }
                 }
             }
-            if try r.bytes("file1") != nil || r.text("errors") != nil || (sentText != nil && sentServer == nil) || r.text("file1Name") != nil { review = true }
+            if try r.bytes("file1") != nil || r.text("errors") != nil || (sentText != nil && sentServer == nil) { review = true }
+            // `file1Name` alone is NO review reason (QA 14.11., task 8E8CEC06): the legacy ingest sets it for every attachment, and the sealed
+            // attachment package (`file1Enc`) is taken over byte-identical above (role "attachment"). The plain file name exists only in the
+            // legacy dump (the new system keeps names inside the sealed packages); the report counts it (`ImportReport.attachments`).
+            // A plaintext `file1` blob (never sealed) still stays an examination case.
             // Preserve the submission even when packages require browser-assisted conversion.
             if review { try await reviewIssue(db,p,table,try r.required("ID"),"unsupported-content") }
             return refs

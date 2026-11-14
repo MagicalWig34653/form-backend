@@ -24,6 +24,7 @@ FORM_WEBHOOK_MAX_BACKLOG_PER_CUSTOMER	Webhook-Limits	int	1000		0	10000000		live	
 FORM_MCP_TOKEN_RATE_LIMIT	MCP-Token-Ratelimit	int	60		1	100000		live	0	MCP-Anfragen je Token und Minute; Einstellung mcp.requestsPerMinute.
 FORM_INGEST_REQUESTS_PER_MINUTE	Ingest-Ratelimit	int	60		0	1000000		live	0	Einsendungen je Minute und Quelle (0 = aus); Einstellung ingest.requestsPerMinute.
 FORM_INGEST_PEER_REQUESTS_PER_MINUTE	Ingest-Ratelimit	int	1200		0	10000000		live	0	Obergrenze je Minute und Webserver bei signierter Besucher-IP (0 = aus); Einstellung ingest.peerRequestsPerMinute.
+FORM_INGEST_LEGACY_PEER_REQUESTS_PER_MINUTE	Ingest-Ratelimit	int	600		0	10000000		live	0	Obergrenze je Minute und Webserver bei alten Einbindungen ohne Besucher-IP (0 = aus); Einstellung ingest.legacyPeerRequestsPerMinute.
 FORM_OAUTH_AUTHORIZE_BASE_URL	MCP-OAuth	text:origin				255		restart	0	Öffentliche Basis-Origin der OAuth-Autorisierung (https, leer = Admin-Origin); Einstellung oauth.authorizeBaseURL.
 FORM_OAUTH_REGISTRATIONS_PER_HOUR	MCP-OAuth	int	200		1	100000		live	0	OAuth-Client-Registrierungen je Stunde; Einstellung oauth.registrationsPerHour.
 FORM_OAUTH_MAX_UNUSED_CLIENTS	MCP-OAuth	int	1000		1	100000		live	0	Höchstzahl unbenutzter OAuth-Clients; Einstellung oauth.maxUnusedClients.

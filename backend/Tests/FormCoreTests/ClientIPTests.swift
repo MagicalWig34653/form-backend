@@ -61,4 +61,24 @@ final class ClientIPTests: XCTestCase {
         XCTAssertEqual(try AppConfig(env: ["FORM_DB_PASSWORD": "x"]).trustedProxies.count, 0)
         XCTAssertThrowsError(try AppConfig(env: ["FORM_DB_PASSWORD": "x", "FORM_TRUSTED_PROXIES": "10.0.0.0/8,evil"]))
     }
+
+    func testRealIPOrderAndSpoofing() {
+        let res = r("10.0.0.0/8")
+        // trusted peer: X-Forwarded-For first, then X-Real-IP, then the peer
+        XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: nil, realIP: "198.51.100.9"), "198.51.100.9")
+        XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: "198.51.100.8", realIP: "198.51.100.9"), "198.51.100.8")
+        XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: nil, realIP: nil), "10.0.0.2")
+        XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: "", realIP: "2001:db8::5"), "2001:db8::5")
+        XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: nil, realIP: "garbage"), "10.0.0.2")
+        // untrusted peer / no trusted proxies: X-Real-IP is never believed
+        XCTAssertEqual(res.resolve(peer: "203.0.113.7", forwardedFor: nil, realIP: "1.1.1.1"), "203.0.113.7")
+        XCTAssertEqual(ClientIPResolver(trusted: []).resolve(peer: "10.0.0.2", forwardedFor: nil, realIP: "1.1.1.1"), "10.0.0.2")
+        // viaProxy: only a real (non-trusted) visitor named by a trusted proxy counts as resolved
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: nil, realIP: "198.51.100.9"), .init(ip: "198.51.100.9", viaProxy: true))
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: "198.51.100.8", realIP: nil).viaProxy, true)
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: nil, realIP: nil).viaProxy, false)
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: "10.0.0.3", realIP: nil).viaProxy, false, "internal hop is no visitor")
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: nil, realIP: "10.0.0.9").viaProxy, false)
+        XCTAssertEqual(res.resolveDetailed(peer: "203.0.113.7", forwardedFor: "1.1.1.1", realIP: "1.1.1.1").viaProxy, false)
+    }
 }

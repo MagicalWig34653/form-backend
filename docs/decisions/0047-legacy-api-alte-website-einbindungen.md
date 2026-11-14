@@ -39,3 +39,20 @@ Setting `compat.legacy` (ENV `FORM_COMPAT_LEGACY`, Gruppe „Umstieg“, Standar
 - Das Alt-SDK v1 hat die Backend-URL hart im Code (`alt-backend.example.invalid`): DNS/Proxy muss den Namen auf das neue Backend lenken.
 - Besucher-IP: Alt-Köpfe `CLIENTIP-ENCRYPT` bleiben ignoriert (siehe Client-IP-Karte); die Sperre zählt die aufgelöste Peer-IP.
 - Alt-Statistik, Mail-Proxy-424, Idempotenz-Konflikt-Code des Alt-Systems nicht nachgebildet; Idempotenz-Konflikt bleibt 409.
+
+## Nachtrag 14.11.2026: Client-Adresse alter Einbindungen (Karte 4D037986)
+
+- Das Alt-SDK sendet nie die signierte Besucher-IP (ADR 0048); `CLIENTIP-ENCRYPT`/`CLIENTUA-ENCRYPT` bleiben opak und ändern keine Identität. Auf den Legacy-Pfaden zählen Budget (`ingest.requestsPerMinute`) und Missbrauchssperre (`abuse.threshold`) deshalb die Adresse, die `proxiedClientIP` liefert: Peer, oder bei vertrauenswürdigem Peer (`FORM_PUBLIC_TRUSTED_PROXIES`) der erste nicht vertraute Eintrag von rechts in `X-Forwarded-For` (`X-Real-IP` wird nicht gelesen). `ingest.peerRequestsPerMinute` gilt nur für Anfragen mit Besucheranspruch und trifft Legacy-Anfragen nie.
+- Belegt (`IngestDBTests`, drei neue Tests; Mutationsprobe: Header ignorieren + Peer-Deckel auf unsignierte Anfragen = 6 Fehlschläge): hinter vertrautem nginx werden Besucher getrennt gezählt (A erschöpft = 429, B läuft weiter, beide Legacy-Pfade teilen den Eimer je Besucher), 200/412 für normales Verhalten, Bann trifft nur den auffälligen Besucher, von unvertrautem Peer gesendete Header wirken nicht. E2E `backend/e2e-legacy.sh` Teil 3 mit echtem Alt-SDK.
+- Ohne vertrauten Proxy teilen alle Besucher einer Website EIN Budget und EINE Sperre (Peer). Entschärfung: `ingest.requestsPerMinute` erhöhen (0 = aus), `abuse.threshold` hoch lassen. Das ist hier ohnehin der Normalfall: Der Alt-Webserver ruft das Backend selbst auf, nginx sieht dessen Adresse als `$remote_addr`; die Besucher unterscheidet nur das neue SDK (ADR 0048).
+
+## Nachtrag 14.11.2026 (2): Server-zu-Server-Budget statt Peer-Bann, X-Real-IP (Karte 4D037986)
+
+Entscheidung (Linie: alte Einbindungen laufen ohne Änderung der Website, nie ganze Websites sperren). Sie ersetzt die Aussage des vorigen Nachtrags, alle Besucher einer Website teilten EIN Besucherbudget und EINE Sperre:
+
+- Legacy-Anfrage ohne benannten Besucher (kein verifizierter Anspruch, kein vertrauter Proxy mit nicht vertrauter Besucher-IP): Budget je (Formular, Peer) `ingest.legacyPeerRequestsPerMinute` (Standard 600, 0 = aus) anstelle von `ingest.requestsPerMinute` (60). Keine Sperre allein auf Peer-Identität: weder `abuse.threshold`-Bann noch `abuse.blockedNets`; Fehlversuche (Turnstile, Malware-Treffer) werden beantwortet, aber nicht gezählt. Die Fehlerantworten selbst (412/406/451) bleiben.
+- Ist der Besucher vertraut aufgelöst, bleibt es bei Besucherbudget und -bann. Die Pfade `/api/v2/submit/` ändern sich nicht.
+- Reihenfolge der Client-IP hinter vertrautem Proxy (`ClientIPResolver`, alle Aufrufer): `X-Forwarded-For` von rechts, sonst `X-Real-IP` (ein gültiger Wert), sonst Peer. Unvertraute Peers: Header wirkungslos. Eine Kette, die nur aus vertrauten Hops besteht, gilt nicht als Besucher.
+- Umsetzung: `IngestConfig.clientIPResolved`/`useTrustedProxies`, `SubmitHandler.enforceBudget` und `AbuseProtection.check` unterscheiden `LegacyIngestBackend.isLegacy` und `visitorKnown`.
+- Offen: `CLIENTIP-ENCRYPT` wird erst nach Import der Alt-Schlüssel ausgewertet (Folgekarte).
+

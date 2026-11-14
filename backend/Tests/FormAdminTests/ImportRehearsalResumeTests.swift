@@ -135,7 +135,8 @@ extension ImportRehearsalTests {
                 return Dictionary(uniqueKeysWithValues: items.map { ($0["code"] as? String ?? "?", $0["count"] as? Int ?? -1) })
             }
             XCTAssertEqual(issueSummary(again), issueSummary(done), "open cases vanished from the report after a repeated run")
-            XCTAssertEqual(issueSummary(done)["unsupported-content"], 10)
+            // 3 real causes (defective package, old format, plaintext file + error text); a file name alone is no cause any more (task 8E8CEC06; before: 10).
+            XCTAssertEqual(issueSummary(done)["unsupported-content"], 3)
         }
     }
 

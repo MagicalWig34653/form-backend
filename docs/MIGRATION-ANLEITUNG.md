@@ -82,6 +82,9 @@ Menü **Umstieg**:
 4. **Import starten.** **Du siehst:** den Schritt „Prüfung“ mit dem Prüfbericht.
 5. **Prüfung:** Bei deinen Daten steht dort „Keine :2-Einsendungen importiert: Die Entschlüsselungsprobe entfällt“ und „10 Einsendungen im
    Altformat (:1/CBC) sind nicht übernehmbar und bleiben in der Prüfung“. Das ist erwartet. Die Entwürfe der Formulare sind schon erzeugt.
+   Hat ein Altbestand Einsendungen mit Anhang, werden die verschlüsselten Anhänge übernommen; ein Dateiname allein ist kein Prüffall. Der
+   Bericht nennt die Anzahl der Anhänge (die Klartext-Dateinamen bleiben nur im Altdump). Offene Prüffälle akzeptierst du bewusst unter
+   „Offene Prüffälle akzeptieren“ (Begründung Pflicht) oder per `App migrate-legacy-accept`; Details in `docs/UMSTIEG-CHECKLISTE.md`.
 
 **Wiederholung:** Ein Import, der bis zum Ende gelaufen ist, wird nicht wiederholt. Ein zweiter Lauf mit demselben Snapshot meldet
 „Dieser Snapshot ist bereits importiert“ und schreibt nichts (keine Duplikate). Ein unterbrochener Lauf wird dagegen über „Fortsetzen“ weitergeführt.

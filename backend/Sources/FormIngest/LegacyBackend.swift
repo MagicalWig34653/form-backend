@@ -63,6 +63,7 @@ extension SubmitHandler {
     /// needs a valid `/api/v2/form` signature on the v2 route, exactly like the old backend; the budget has its own bucket
     /// (`ingestcfg`) with the same limit so page renders cannot exhaust the submit budget.
     func legacyConfig(_ req: Request, parameter: String, requireSignatureIfKeyed: Bool) async throws -> LegacyIngestBackend.FormConfig {
+        LegacyIngestBackend.markLegacy(req)   // the config call is a legacy call by definition (budget semantics of ADR 0047)
         guard let value = try? req.query.get(String?.self, at: parameter), !value.isEmpty else { throw Abort(.unauthorized) }
         guard let formUUID = Self.canonicalUUID(value) else { throw Abort(.notFound) }
         let sql = req.db(.mysql) as! SQLDatabase

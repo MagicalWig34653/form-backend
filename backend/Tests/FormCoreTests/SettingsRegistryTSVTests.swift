@@ -35,6 +35,7 @@ final class SettingsRegistryTSVTests: XCTestCase {
         "mcp.requestsPerMinute": "MCP-Anfragen je Token und Minute; Einstellung mcp.requestsPerMinute.",
         "ingest.requestsPerMinute": "Einsendungen je Minute und Quelle (0 = aus); Einstellung ingest.requestsPerMinute.",
         "ingest.peerRequestsPerMinute": "Obergrenze je Minute und Webserver bei signierter Besucher-IP (0 = aus); Einstellung ingest.peerRequestsPerMinute.",
+        "ingest.legacyPeerRequestsPerMinute": "Obergrenze je Minute und Webserver bei alten Einbindungen ohne Besucher-IP (0 = aus); Einstellung ingest.legacyPeerRequestsPerMinute.",
         "oauth.authorizeBaseURL": "Öffentliche Basis-Origin der OAuth-Autorisierung (https, leer = Admin-Origin); Einstellung oauth.authorizeBaseURL.",
         "oauth.registrationsPerHour": "OAuth-Client-Registrierungen je Stunde; Einstellung oauth.registrationsPerHour.",
         "oauth.maxUnusedClients": "Höchstzahl unbenutzter OAuth-Clients; Einstellung oauth.maxUnusedClients.",

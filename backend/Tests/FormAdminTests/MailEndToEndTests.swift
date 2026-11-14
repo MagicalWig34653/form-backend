@@ -799,4 +799,100 @@ final class MailEndToEndTests: XCTestCase {
             XCTAssertNil(rows.first { $0.mail_kind == "confirmation" }?.last_error_code)
         }
     }
+
+    /// ADR 0049 Nachtrag (parity with ALT's AnfrageResend): the manual resend re-attaches the uploaded files, opened in memory with the attachment keys the browser hands over.
+    /// Missing key, missing object and wrong key are never silent: the mail names the file as not attached and the delivery gets `attachments_omitted`.
+    func testManualResendReattachesTheFilesByteForByteAndNeverDropsThemSilently() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: defaultMail)
+            let a = pdfBytes(40_000, seed: 1), b = pdfBytes(70_001, seed: 2)
+            let names = ["Überweisung Ärzte.pdf", "Befund Nr 2.pdf"]
+            for k in ["r-all", "r-nokey", "r-gone", "r-wrong"] { try await submitFiles(w, [("a", names[0], a), ("b", names[1], b)], key: k) }
+            let initial = try await deliveries(f)
+            XCTAssertTrue(initial.allSatisfy { $0.state == "waiting-manual" })
+            try await connect(w, smtp)
+            for r in ["content.resend", "content.decrypt"] { try await f.grant(w.userID, r, customer: w.tenant, by: w.root) }
+            // submission -> (data key, attachment keys by ordinal), as the browser unwraps them with the customer's private key
+            struct Obj: Decodable { let submission_id: Blob; let object_role: String; let ordinal_no: Int; let ciphertext: Blob }
+            var dataKey: [UUID: Data] = [:], attKeys: [UUID: [Int: Data]] = [:]
+            for o in try await f.sql.raw("SELECT submission_id, object_role, ordinal_no, ciphertext FROM stored_objects").all(decoding: Obj.self) {
+                let pkg = try PackageV2(String(decoding: o.ciphertext.data, as: UTF8.self))
+                let cek = try HPKE.open(pkg.b, enc: pkg.a, recipient: w.customerKey, info: Data("kubus-anfrage v2".utf8), aad: Data(pkg.kid.utf8))
+                let sid = try XCTUnwrap(DB.uuid(o.submission_id.data))
+                if o.object_role == "data" { dataKey[sid] = cek } else { attKeys[sid, default: [:]][o.ordinal_no] = cek }
+            }
+            var orgOf: [UUID: String] = [:]
+            try await w.user.get("tenants/\(w.tenant)/forms/\(w.form)/mail-deliveries") { res async throws in
+                for d in (obj(res)["items"] as? [[String: Any]]) ?? [] where d["kind"] as? String == "organisation" {
+                    orgOf[UUID(uuidString: d["submissionId"] as? String ?? "")!] = d["id"] as? String
+                }
+            }
+            let subs = Array(orgOf.keys)
+            XCTAssertEqual(subs.count, 4)
+            try XCTSkipIf(subs.count != 4)
+            func resend(_ sid: UUID, keys: [(Int, Data)]?, expect: HTTPStatus = .accepted) async throws {
+                var body = "{\"deliveryId\":\"\(orgOf[sid]!)\",\"contentKey\":\"\(dataKey[sid]!.base64URLString)\""
+                if let keys { body += ",\"attachmentKeys\":[" + keys.map { "{\"ordinal\":\($0.0),\"contentKey\":\"\($0.1.base64URLString)\"}" }.joined(separator: ",") + "]" }
+                try await w.user.send(.POST, "tenants/\(w.tenant)/forms/\(w.form)/entries/\(sid.uuidString.lowercased())/resends", body: body + "}") { XCTAssertEqual($0.status, expect, text($0)) }
+            }
+            struct St: Decodable { let state: String; let last_error_code: String? }
+            func status(_ sid: UUID) async throws -> St? {
+                try await f.sql.raw("SELECT state, last_error_code FROM mail_deliveries WHERE id = \(bind: DB.bin(UUID(uuidString: orgOf[sid]!)!))").first(decoding: St.self)
+            }
+            func sentMail(_ n: Int) async throws -> (attachments: [(disposition: String, bytes: Data)], text: String) {
+                try await until { smtp.mails.count == n }
+                let m = try XCTUnwrap(smtp.mails.last)
+                let parts = mimeParts(m.data)   // no attachment: single-part mail
+                return (attachmentParts(m.data), parts.first.map { String(decoding: $0.bytes, as: UTF8.self) } ?? decoded(m.data).body)
+            }
+            let all = subs[0], nokey = subs[1], gone = subs[2], wrong = subs[3]
+            // malformed attachmentKeys: 422, nothing sent
+            try await resend(all, keys: [(0, Data(repeating: 1, count: 5))], expect: .unprocessableEntity)
+            try await resend(all, keys: [(0, attKeys[all]![0]!), (0, attKeys[all]![0]!)], expect: .unprocessableEntity)
+            XCTAssertTrue(smtp.mails.isEmpty)
+
+            // 1. both keys: both files byte for byte, complete (no token, no notice)
+            try await resend(all, keys: [(0, attKeys[all]![0]!), (1, attKeys[all]![1]!)])
+            var m = try await sentMail(1)
+            XCTAssertEqual(m.attachments.count, 2); try XCTSkipIf(m.attachments.count != 2)
+            XCTAssertEqual(m.attachments[0].bytes, a); XCTAssertEqual(m.attachments[1].bytes, b)
+            XCTAssertTrue(m.attachments[0].disposition.contains("filename*=UTF-8''%C3%9Cberweisung%20%C3%84rzte.pdf"), m.attachments[0].disposition)
+            XCTAssertFalse(m.text.contains("Hinweis"))
+            try await until { try await status(all)?.state == "smtp-accepted" }
+            let complete = try await status(all); XCTAssertNil(complete?.last_error_code)
+
+            // 2. no attachment keys at all (older client): the mail goes out, the files are named as not attached, the status flags it
+            try await resend(nokey, keys: nil)
+            m = try await sentMail(2)
+            XCTAssertEqual(m.attachments.count, 0); XCTAssertTrue(m.text.contains("Hinweis")); XCTAssertTrue(m.text.contains("nicht beigefügt"))
+            try await until { try await status(nokey)?.state == "smtp-accepted" }
+            let s2 = try await status(nokey); XCTAssertEqual(s2?.last_error_code, "attachments_omitted")
+
+            // 3. one object is gone: the other file is attached, the missing one is flagged
+            try await f.sql.raw("DELETE FROM stored_objects WHERE submission_id = \(bind: DB.bin(gone)) AND object_role = 'attachment' AND ordinal_no = 1").run()
+            try await resend(gone, keys: [(0, attKeys[gone]![0]!), (1, attKeys[gone]![1]!)])
+            m = try await sentMail(3)
+            XCTAssertEqual(m.attachments.count, 1); XCTAssertEqual(m.attachments.first?.bytes, a); XCTAssertTrue(m.text.contains("Hinweis"))
+            try await until { try await status(gone)?.state == "smtp-accepted" }
+            let s3 = try await status(gone); XCTAssertEqual(s3?.last_error_code, "attachments_omitted")
+
+            // 4. a wrong key for one file: not attached and flagged; the correct one still travels
+            try await resend(wrong, keys: [(0, Data(repeating: 9, count: 32)), (1, attKeys[wrong]![1]!)])
+            m = try await sentMail(4)
+            XCTAssertEqual(m.attachments.count, 1); XCTAssertEqual(m.attachments.first?.bytes, b); XCTAssertTrue(m.text.contains("Hinweis"))
+            try await until { try await status(wrong)?.state == "smtp-accepted" }
+            let s4 = try await status(wrong); XCTAssertEqual(s4?.last_error_code, "attachments_omitted")
+
+            // no plaintext of a file lands in the delivery or audit tables
+            for table in ["mail_deliveries", "audit_events"] {
+                let cols = try await f.sql.raw("SELECT COLUMN_NAME AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = \(bind: table)").all(decoding: ColName.self)
+                for col in cols {
+                    let hits = try await f.sql.raw("SELECT COUNT(*) AS c FROM \(ident: table) WHERE CAST(\(ident: col.n) AS CHAR CHARACTER SET latin1) LIKE '%PDF-1.4%'").first(decoding: C.self)?.c
+                    XCTAssertEqual(hits, 0, "\(table).\(col.n)")
+                }
+            }
+        }
+    }
 }

@@ -2274,6 +2274,11 @@ try {
           hint: 'Obergrenze der Anfragen je Kunden-Webserver, wenn das SDK die Besucher-IP signiert mitsendet.',
           unit: 'perMinute',
         },
+        'ingest.legacyPeerRequestsPerMinute': {
+          title: 'Einsendungen je Webserver (alte Einbindung)',
+          hint: 'Gemeinsame Obergrenze je Kunden-Webserver für alte Einbindungen ohne Besucher-IP (0 = aus).',
+          unit: 'perMinute',
+        },
         'oauth.authorizeBaseURL': {
           title: 'OAuth-Autorisierungsadresse',
           hint: 'Öffentliche Adresse (https) für die OAuth-Zustimmung.',
@@ -2486,6 +2491,8 @@ try {
           tablesCaption: 'Übernommene Zeilen je Tabelle des Altsystems',
           retentionNote:
             '{n} importierte Einsendungen bleiben ohne Aufbewahrungsfrist (keine automatische Löschung). Bei der Standardfrist von {d} Tagen wären {due} davon sofort fällig und gelöscht worden. Legen Sie die Aufbewahrung nach dem Import unter Datenschutz bewusst fest.',
+          attachmentNote:
+            'Anhänge: {migrated} Einsendungen mit Anhang übernommen (verschlüsselt, unverändert). Die Dateinamen stehen nur im Altdump (Quelle bleibt unverändert), nicht in der neuen Datenbank: {names}. Anhang nicht migriert (Dateiname oder Klartextdatei ohne verschlüsseltes Paket): {not}.',
           colTable: 'Tabelle',
           colSource: 'Quelle',
           colImported: 'Ziel',
@@ -2631,6 +2638,12 @@ try {
           releaseNeedsProbe:
             'Erst nach bestandener Entschlüsselungsprobe möglich. Laden und bestätigen Sie zuerst die Probe.',
           releaseResult: '{released} freigegeben, {kept} bleiben in der Prüfung.',
+          acceptTitle: 'Offene Prüffälle akzeptieren',
+          acceptHint:
+            'Entscheidung des Betreibers: Die offenen Prüffälle der importierten Einsendungen werden als geprüft akzeptiert. Dafür ist eine Begründung Pflicht; sie wird am Prüffall und im Audit festgehalten. Es wird nichts freigegeben, gelöscht oder gesendet. Danach „Importierte Einsendungen freigeben“ wählen: freigegeben werden nur Einsendungen mit lesbarem :2-Datenpaket, nicht übernehmbare Pakete (CBC, :1, defekt) bleiben in der Prüfung. Die Quelle bleibt unverändert.',
+          acceptReason: 'Begründung (8 bis 200 Zeichen)',
+          acceptButton: 'Prüffälle akzeptieren',
+          acceptResult: '{n} Prüffälle akzeptiert.',
           adoptTitle: 'Altschlüssel übernehmen',
           adoptHint:
             'Der Import überträgt die Einsendungen und die öffentlichen Schlüsselgenerationen, aber keine Zugänge. Bis der alte Datenschlüssel übernommen ist, lassen sich die importierten Einsendungen im normalen Betrieb nicht öffnen. Übernehmen Sie ihn im Konto mit dem alten privaten X25519-Schlüssel oder, falls die Recovery-Hülle importiert wurde, mit dem alten Recovery-Code.',

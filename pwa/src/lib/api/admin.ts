@@ -433,6 +433,7 @@ export function createAdminApi(http: Http) {
       body: {
         deliveryId: string;
         contentKey: string;
+        attachmentKeys?: { ordinal: number; contentKey: string }[];
         confirmUncertain?: boolean;
         expectedFence?: number;
       },

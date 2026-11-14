@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import Crypto
 import FormStorage
 import Fluent
 import FormAuth
@@ -249,9 +250,10 @@ enum MailRoutes {
             try await perms.authorize(account: account, "content.decrypt", on: target)
             try await guardian.requireFreshAuthentication(s, now: now())
             guard let dispatcher else { throw Abort(.serviceUnavailable) }
-            let obj = try jsonObject(req, allowed: ["deliveryId", "contentKey", "confirmUncertain", "expectedFence"])
+            let obj = try jsonObject(req, allowed: ["deliveryId", "contentKey", "attachmentKeys", "confirmUncertain", "expectedFence"])
             guard let did = (obj["deliveryId"] as? String).flatMap(lowerUUID), let keyText = obj["contentKey"] as? String,
                   let cek = Data(base64URLString: keyText), cek.count == 32 else { throw ValidationFailed(detail: "deliveryId und contentKey (32 Byte, base64url) erforderlich") }
+            let attachmentKeys = try Self.attachmentKeys(obj["attachmentKeys"])
             let allowUncertain = obj["confirmUncertain"] as? Bool ?? false
             // A confirmation of an uncertain delivery is bound to the exact state the human looked at (review M1).
             let expectedFence = (obj["expectedFence"] as? Int).flatMap { $0 >= 0 ? UInt64($0) : nil }
@@ -278,12 +280,17 @@ enum MailRoutes {
             guard let doc = (try? JSONSerialization.jsonObject(with: plain)) as? [String: Any] else { throw Abort(.conflict) }
             let fields = doc["fields"] as? [String: Any] ?? [:]
             guard let plan = try await MailDispatcher.plan(db: sql, customer: DB.bin(tenant), form: DB.bin(form), release: release) else { throw Abort(.conflict) }
+            // Attachments (ADR 0049 Nachtrag): only for the organisation mail with the full content; opened in memory with the keys the browser handed over.
+            var attachments: [MailAttachment] = []
+            if d.mail_kind == "organisation", !attachmentKeys.isEmpty {
+                attachments = await Self.openAttachments(req, sql: sql, tenant: tenant, form: form, entry: entry, doc: doc, keys: attachmentKeys, limit: dispatcher.mailByteLimit)
+            }
             let ts = DB.time(now())
             let prepared: PreparedMail
             do {
                 prepared = try await db.transaction { conn in
                     let tx = conn as! SQLDatabase
-                    let m = try await dispatcher.prepareResend(tx: tx, plan: plan, customer: DB.bin(tenant), form: DB.bin(form), delivery: did, kind: d.mail_kind, allowUncertain: allowUncertain, expectedFence: expectedFence, fields: fields)
+                    let m = try await dispatcher.prepareResend(tx: tx, plan: plan, customer: DB.bin(tenant), form: DB.bin(form), delivery: did, kind: d.mail_kind, allowUncertain: allowUncertain, expectedFence: expectedFence, fields: fields, attachments: attachments, uploadedFileCount: Self.fileEntries(doc["files"]).count)
                     try await audit(tx, actor: account, action: "mail.resend", subject: did, at: ts, customer: tenant, form: form)
                     return m
                 }
@@ -321,6 +328,66 @@ enum MailRoutes {
                 return o
             }])
         }
+    }
+
+    /// `attachmentKeys`: `[{"ordinal": n, "contentKey": base64url(32 bytes)}]`, absent = none. Malformed input is a 422, never ignored.
+    static func attachmentKeys(_ raw: Any?) throws -> [Int: Data] {
+        guard let raw else { return [:] }
+        guard let list = raw as? [[String: Any]], list.count <= 16 else { throw ValidationFailed(detail: "attachmentKeys: Liste von {ordinal, contentKey}") }
+        var out: [Int: Data] = [:]
+        for e in list {
+            guard Set(e.keys).isSubset(of: ["ordinal", "contentKey"]), let n = e["ordinal"] as? Int, (0..<16).contains(n), out[n] == nil,
+                  let k = (e["contentKey"] as? String).flatMap({ Data(base64URLString: $0) }), k.count == 32 else { throw ValidationFailed(detail: "attachmentKeys: ordinal 0..15 einmalig, contentKey 32 Byte base64url") }
+            out[n] = k
+        }
+        return out
+    }
+
+    /// The uploaded files in ordinal order (ingest: field names sorted bytewise, list order inside a field), from the `files` entry of the opened data package.
+    static func fileEntries(_ node: Any?) -> [[String: Any]] {
+        if let d = node as? [String: Any] {
+            if d["name"] is String && d["size"] != nil { return [d] }
+            return d.keys.sorted { Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8)) }.flatMap { fileEntries(d[$0]) }
+        }
+        if let a = node as? [Any] { return a.flatMap { fileEntries($0) } }
+        return []
+    }
+
+    static func contentType(forFilename name: String) -> String {
+        switch (name as NSString).pathExtension.lowercased() {
+        case "pdf": return "application/pdf"
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "heic": return "image/heic"
+        case "heif": return "image/heif"
+        default: return "application/octet-stream"
+        }
+    }
+
+    /// Opens the stored attachment objects the caller supplied a key for. The plaintext only lives in the returned values (memory). Whatever cannot be opened
+    /// (object gone, key wrong, content does not match the signed hash, over the size budget) is simply not returned: the dispatcher names the missing ones in the
+    /// mail and marks the delivery `attachments_omitted`, so nothing is lost silently. Stops once the plaintext alone would exceed the mail limit (memory).
+    static func openAttachments(_ req: Request, sql: SQLDatabase, tenant: UUID, form: UUID, entry: UUID, doc: [String: Any], keys: [Int: Data], limit: Int) async -> [MailAttachment] {
+        struct O: Decodable { let id: Blob; let ordinal_no: Int; let ciphertext_sha256: Blob; let byte_count: Int; let ciphertext: Blob? }
+        let files = fileEntries(doc["files"])
+        guard let rows = try? await sql.raw("""
+            SELECT o.id, o.ordinal_no, o.ciphertext_sha256, o.byte_count, CASE WHEN o.byte_count <= 1048576 THEN o.ciphertext END AS ciphertext FROM stored_objects o
+            JOIN submissions s ON s.customer_id = o.customer_id AND s.form_id = o.form_id AND s.id = o.submission_id
+            WHERE o.customer_id = \(bind: DB.bin(tenant)) AND o.form_id = \(bind: DB.bin(form)) AND o.submission_id = \(bind: DB.bin(entry))
+              AND o.object_role = 'attachment' AND o.state = 'ready' AND s.state = 'accepted' ORDER BY o.ordinal_no
+            """).all(decoding: O.self) else { return [] }
+        var out: [MailAttachment] = [], total = 0
+        for r in rows {
+            guard let cek = keys[r.ordinal_no], total + r.byte_count <= limit else { continue }
+            guard let bytes = try? await StoredContent.read(req, sql: sql, customer: tenant, form: form, object: r.id, fallback: r.ciphertext, hash: r.ciphertext_sha256),
+                  let package = try? PackageV2(String(decoding: bytes, as: UTF8.self)), let plain = try? package.open(withCEK: cek) else { continue }
+            let meta = r.ordinal_no < files.count ? files[r.ordinal_no] : [:]
+            if let expected = meta["sha256"] as? String, Data(SHA256.hash(data: plain)).map({ String(format: "%02x", $0) }).joined() != expected { continue }
+            let name = (meta["name"] as? String) ?? "anhang-\(r.ordinal_no + 1)"
+            total += plain.count
+            out.append(MailAttachment(filename: name, contentType: contentType(forFilename: name), data: plain))
+        }
+        return out
     }
 
     // MARK: helpers

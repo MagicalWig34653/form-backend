@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
+import { resetBudget, sql, unlockWithPasskey, uuidBin } from './unlock-helpers';
 import {
   addAuthenticator,
   addField,
@@ -151,4 +152,48 @@ test('uploaded files travel in the team mail byte for byte (ADR 0049)', async ({
   expect(await partSha256(m3, m3.Attachments[0]!)).toBe(over.files[0]!.sha);
   expect(m3.Text).toContain('zweite-Datei.pdf');
   expect(m3.Text).toContain('nicht an diese Mail angehängt');
+
+  // 4. manual resend in the PWA (ADR 0049 Nachtrag, parity with ALT): the browser opens the entry, hands over the attachment keys, the server re-attaches the files
+  sql(
+    `UPDATE mail_deliveries SET state = 'waiting-manual', last_error_code = 'no_connection' WHERE mail_kind = 'organisation' AND submission_id = ${uuidBin(multi.id)}`,
+  );
+  await fetch(mailpit('/api/v1/messages'), { method: 'DELETE' });
+  resetBudget();
+  // in-app navigation only: a page load would lock the keyring (RAM only)
+  // the earlier page loads locked the RAM-only keyring: unlock with the passkey (PRF), then back to the entries by in-app navigation
+  await unlockWithPasskey(page);
+  await expect(async () => {
+    await page.getByRole('link', { name: 'Kunden', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Öffnen: E2E Kunde' }).click({ timeout: 15_000 });
+  }).toPass({ timeout: 75_000 });
+  await page
+    .getByRole('link', { name: /Kontakt/ })
+    .first()
+    .click();
+  await page.getByRole('link', { name: 'Einsendungen', exact: true }).last().click();
+  const rows = page.getByRole('button', { name: /^Aktionen für Einsendung/ });
+  await expect(rows).toHaveCount(3);
+  // oldest entry = the first submission (list is newest first); repeat the click path if the list re-renders under the cursor
+  await expect(async () => {
+    await rows.last().click();
+    await page.getByRole('menuitem', { name: 'Öffnen' }).click({ timeout: 5_000 });
+  }).toPass({ timeout: 45_000 });
+  const detail = page.getByRole('dialog');
+  await expect(detail.getByText(`Vorname-MULTI-4711`)).toBeVisible();
+  await detail.getByRole('button', { name: 'Erneut senden' }).click();
+  await expect(detail.getByText('Der Versand wurde gestartet.')).toBeVisible();
+  const again = await teamMail(multi.id);
+  expect(again.Attachments.map((a) => a.FileName).sort()).toEqual(
+    multi.files.map((f) => f.name).sort(),
+  );
+  for (const f of multi.files) {
+    const a = again.Attachments.find((x) => x.FileName === f.name)!;
+    expect(await partSha256(again, a)).toBe(f.sha);
+  }
+  expect(again.Text).not.toContain('nicht beigefügt');
+  expect(
+    sql(
+      `SELECT state, IFNULL(last_error_code,'-') FROM mail_deliveries WHERE mail_kind = 'organisation' AND submission_id = ${uuidBin(multi.id)}`,
+    ),
+  ).toMatch(/^smtp-accepted\s+-$/);
 });

@@ -52,3 +52,27 @@ it('gibt nach der Probe frei und zeigt freigegebene und verbleibende Einsendunge
     body: undefined,
   });
 });
+
+it('akzeptiert Prüffälle nur mit Begründung und sendet sie an den Server', async () => {
+  request.mockImplementation(async (method, path) => {
+    if (method === 'GET' && path === '/migration/jobs')
+      return { ok: true, data: { items: [reviewJob({ probeConfirmed: true })] } };
+    if (method === 'POST' && path === '/migration/jobs/j1/accept-review')
+      return { ok: true, data: { status: 'accepted', accepted: 4 } };
+    return { ok: false, error: { status: 404 } };
+  });
+  render(Migration);
+  await screen.findByRole('heading', { name: 'Offene Prüffälle akzeptieren' });
+  const button = screen.getByRole('button', { name: 'Prüffälle akzeptieren' }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  const reason = screen.getByLabelText('Begründung (8 bis 200 Zeichen)');
+  await fireEvent.input(reason, { target: { value: 'kurz' } });
+  expect(button.disabled).toBe(true);
+  await fireEvent.input(reason, { target: { value: '  Betreiber hat die Anhänge geprüft  ' } });
+  expect(button.disabled).toBe(false);
+  await fireEvent.click(button);
+  expect(await screen.findByText('4 Prüffälle akzeptiert.')).toBeTruthy();
+  expect(request).toHaveBeenCalledWith('POST', '/migration/jobs/j1/accept-review', {
+    body: { reason: 'Betreiber hat die Anhänge geprüft' },
+  });
+});

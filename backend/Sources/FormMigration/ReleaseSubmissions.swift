@@ -60,3 +60,42 @@ extension LegacyImporter {
         return result
     }
 }
+
+/// Why an acceptance of review cases was refused (task 8E8CEC06): a decision needs a stated reason.
+public enum ReviewAcceptanceError: Error, Equatable { case reasonRequired, reasonTooLong }
+
+/// Outcome of accepting review cases.
+public struct ReviewAcceptance: Equatable {
+    /// Open review cases (one per submission) that were set to `accepted-with-decision`.
+    public var accepted: Int
+}
+
+extension LegacyImporter {
+    public static let acceptanceReasonRange = 8...200
+    /// Normalised reason: trimmed, 8 to 200 characters, no control characters.
+    public static func checkedReason(_ text: String) throws -> String {
+        let reason = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard reason.count >= acceptanceReasonRange.lowerBound, !reason.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw ReviewAcceptanceError.reasonRequired }
+        guard reason.count <= acceptanceReasonRange.upperBound else { throw ReviewAcceptanceError.reasonTooLong }
+        return reason
+    }
+
+    /// Accepts the open review cases of imported submissions (`migration_issues.source_table = 'anfragen'`) by an explicit decision:
+    /// state `accepted-with-decision`, the reason in `decision_ref`. Only the case state changes: no submission, package or ledger proof is touched,
+    /// nothing is released (that stays the separate release action, which still demands a ready :2 data package and a matching target proof,
+    /// so an unreadable CBC/:1 package stays in review even when its case is accepted) and nothing is sent. The legacy dump stays untouched.
+    /// `sourceKey` limits the call to one legacy row (`anfragen.ID`). Other tables (unmapped tables, statistics) are never accepted here.
+    /// `target` must be inside the caller's transaction. A running import (session lock) makes this fail with `ImportFailure.lock`.
+    public func acceptReviewCases(namespace: String, reason: String, sourceKey: String? = nil) async throws -> ReviewAcceptance {
+        let reason = try Self.checkedReason(reason)
+        guard try await scalar(target, "SELECT CAST(GET_LOCK('form_legacy_import',0) AS CHAR) AS v") == "1" else { throw ImportFailure.lock }
+        do {
+            let filter = sourceKey.map { " AND i.source_key=\(bin(Data($0.utf8)))" } ?? ""
+            let scope = "FROM migration_issues i JOIN migration_runs r ON r.id=i.run_id WHERE r.source_namespace=\(val(namespace)) AND i.source_table='anfragen' AND i.state='open'\(filter)"
+            let n = Int(try await scalar(target, "SELECT CAST(COUNT(DISTINCT i.source_key) AS CHAR) AS v \(scope)") ?? "0") ?? 0
+            try await exec(target, "UPDATE migration_issues i JOIN migration_runs r ON r.id=i.run_id SET i.state='accepted-with-decision', i.decision_ref=\(val(reason)) WHERE r.source_namespace=\(val(namespace)) AND i.source_table='anfragen' AND i.state='open'\(filter)")
+            try await exec(target, "SELECT RELEASE_LOCK('form_legacy_import')")
+            return ReviewAcceptance(accepted: n)
+        } catch { try? await exec(target, "SELECT RELEASE_LOCK('form_legacy_import')"); throw error }
+    }
+}

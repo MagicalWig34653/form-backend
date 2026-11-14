@@ -144,7 +144,7 @@ struct RehearsalSource {
                 INSERT INTO anfragen (UUID,time,formularUUID,sentServer,data,file1,file1Enc,file1Name,malwareScanStatus,errors,mailBody,mailBodyFiller,removable)
                 VALUES (\(bind: id),\(bind: time),\(bind: form),\(bind: sent),\(bind: data),\(bind: raw.map { Blob($0) }),\(bind: file),\(bind: fileName),\(bind: scan),\(bind: errors),\(bind: mailBody),\(bind: mailFiller),\(bind: n % 3 == 0 ? 0 : 1))
                 """).run()
-            var item = Expected(uuid: id, reviewCause: cause ?? (fileName != nil ? "file1Name" : nil))
+            var item = Expected(uuid: id, reviewCause: cause)   // a file name alone is no review cause (task 8E8CEC06)
             for (role, wire, plain, k) in packages { item.packages[role] = (wire, plain, k) }
             expected[id] = item
         }
@@ -173,7 +173,8 @@ struct RehearsalSource {
             }
         }
         // Special cases. NULL / empty fields, no time, a form without any package, and a large attachment (3 MB plaintext).
-        try await add(formA, alphaActive, time: nil, data: nil)
+        // A file name without a sealed attachment package (the attachment is not in the dump) is no review cause: counted as "not migrated".
+        try await add(formA, alphaActive, time: nil, data: nil, fileName: "Nur-Name.pdf")
         try await add(formA, alphaActive, time: 0, data: "", file: "", mailBody: "")
         let big = Data((0..<3_000_000).map { UInt8(($0 &* 131 &+ 7) & 0xff) })
         let bigWire = seal(big, alphaActive), bigData = plain(n + 1, formA)

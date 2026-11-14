@@ -75,12 +75,14 @@ enum AbuseProtection {
         func setting(_ key: String) throws -> String { try SettingsRegistry.resolve(SettingsRegistry.entries.first { $0.key == key }!, env: ProcessInfo.processInfo.environment, stored: stored).value! }
         let ip = config.visitorIP(req)   // verified visitor (ADR 0047) or the peer
         // Separate purpose and form scope; no raw addresses, UAs or hashes in audit.
-        let identity = IPAddr(ip).map { _ in config.visitorKey(req) }.flatMap { subject in config.abuseKey.map { key in Blob(Data(HMAC<SHA256>.authenticationCode(for: Data("abuse-ip-v1|\(form.uuidString)|\(subject)".utf8), using: SymmetricKey(data: key)))) } }
+        // Legacy request without a named visitor (server to server): the peer is a whole website, never banned or net-blocked on its own.
+        let peerOnlyLegacy = LegacyIngestBackend.isLegacy(req) && !config.visitorKnown(req)
+        let identity = peerOnlyLegacy ? nil : IPAddr(ip).map { _ in config.visitorKey(req) }.flatMap { subject in config.abuseKey.map { key in Blob(Data(HMAC<SHA256>.authenticationCode(for: Data("abuse-ip-v1|\(form.uuidString)|\(subject)".utf8), using: SymmetricKey(data: key)))) } }
         if let identity, !policy.testMode {
             struct Ban: Decodable { let c: Int }
             if try await sql.raw("SELECT COUNT(*) AS c FROM ingest_abuse_ips WHERE form_id=\(bind: DB.bin(form)) AND ip_digest=\(bind: identity) AND blocked_until>\(bind: DB.time(now))").first(decoding: Ban.self)?.c == 1 { throw Abort(.tooManyRequests) }
         }
-        let listed = try blocked(ip: ip, ua: String((req.headers.first(name: .userAgent) ?? "").prefix(1024)), nets: setting("abuse.blockedNets"), patterns: list(setting("abuse.uaPatterns")))
+        let listed = try blocked(ip: peerOnlyLegacy ? "" : ip, ua: String((req.headers.first(name: .userAgent) ?? "").prefix(1024)), nets: setting("abuse.blockedNets"), patterns: list(setting("abuse.uaPatterns")))
         var captcha: CaptchaResult = .disabled
         if policy.siteKey != nil && !listed {
             let root = try JSONSerialization.jsonObject(with: canonical) as? [String: Any]

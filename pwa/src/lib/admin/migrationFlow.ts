@@ -497,6 +497,8 @@ export interface ReportSummary {
   issues: Array<{ code: string; count: number }>;
   /** Imported submissions stay without a retention date; `dueNowAtDefault` would have been due at once under the default period. */
   retention: { defaultDays: number; imported: number; dueNowAtDefault: number } | null;
+  /** Attachment counts: sealed packages taken over, file names that exist only in the legacy dump, attachments not in the dump. */
+  attachments: { migrated: number; namesOnlyInSource: number; notMigrated: number } | null;
 }
 /** Reads the job report into table counts and open cases for display; unknown shapes yield empty lists. */
 export function summarizeReport(report: unknown): ReportSummary {
@@ -522,7 +524,17 @@ export function summarizeReport(report: unknown): ReportSummary {
           dueNowAtDefault: num(ret.dueNowAtDefault),
         }
       : null;
+  const att = r.attachments as Record<string, unknown> | undefined;
+  const attachments =
+    att && typeof att === 'object'
+      ? {
+          migrated: num(att.migrated),
+          namesOnlyInSource: num(att.namesOnlyInSource),
+          notMigrated: num(att.notMigrated),
+        }
+      : null;
   return {
+    attachments,
     processed: typeof r.processed === 'number' ? r.processed : null,
     tables,
     issues,

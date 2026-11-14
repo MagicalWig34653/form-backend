@@ -203,6 +203,52 @@ test('migration verification: probe, local test message, remove source', async (
   expect(afterDump.includes(OLD_KEY), 'old private key in target dump').toBe(false);
   expect(afterDump.includes('KLARTEXT-MARKER'), 'plaintext marker in target dump').toBe(false);
 
+  // 2b. accept open review cases (task 8E8CEC06): reason is mandatory (button disabled), only the case state changes, audit with reason, nothing released.
+  const openBefore = Number(
+    target("SELECT COUNT(*) FROM migration_issues WHERE state='open' AND source_table='anfragen'"),
+  );
+  const acceptedBefore = target("SELECT COUNT(*) FROM submissions WHERE state='accepted'");
+  const objectsBefore = target(
+    'SELECT COUNT(*), MD5(GROUP_CONCAT(HEX(ciphertext_sha256) ORDER BY id)) FROM stored_objects',
+  );
+  const acceptBox = page.getByTestId('migration-accept');
+  await expect(acceptBox.getByRole('button', { name: 'Prüffälle akzeptieren' })).toBeDisabled();
+  expect(
+    openBefore,
+    'the synthetic dump has open review cases (CBC, :1, plaintext file)',
+  ).toBeGreaterThan(0);
+  {
+    resetBudget();
+    await acceptBox.getByLabel('Begründung (8 bis 200 Zeichen)').fill('kurz');
+    await expect(acceptBox.getByRole('button', { name: 'Prüffälle akzeptieren' })).toBeDisabled();
+    await acceptBox
+      .getByLabel('Begründung (8 bis 200 Zeichen)')
+      .fill('Betreiber hat die Altdaten geprüft');
+    await acceptBox.getByRole('button', { name: 'Prüffälle akzeptieren' }).click();
+    await expect(page.getByTestId('migration-accepted')).toContainText('Prüffälle akzeptiert.');
+    expect(
+      target(
+        "SELECT COUNT(*) FROM migration_issues WHERE state='open' AND source_table='anfragen'",
+      ),
+    ).toBe('0');
+    expect(
+      target(
+        "SELECT COUNT(*) FROM migration_issues WHERE state='accepted-with-decision' AND decision_ref='Betreiber hat die Altdaten geprüft'",
+      ),
+    ).toBe(String(openBefore));
+    expect(target("SELECT COUNT(*) FROM submissions WHERE state='accepted'")).toBe(acceptedBefore);
+    expect(
+      target(
+        'SELECT COUNT(*), MD5(GROUP_CONCAT(HEX(ciphertext_sha256) ORDER BY id)) FROM stored_objects',
+      ),
+    ).toBe(objectsBefore);
+    expect(
+      target(
+        "SELECT safe_details_json FROM audit_events WHERE action_code='migration.job.accept-review'",
+      ),
+    ).toContain('Betreiber hat die Altdaten geprüft');
+  }
+
   // 3. remove source
   const fpBefore = fingerprint();
   resetBudget();

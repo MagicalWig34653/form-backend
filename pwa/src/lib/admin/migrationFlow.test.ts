@@ -388,6 +388,13 @@ describe('describeJobError', () => {
 });
 
 describe('summarizeReport', () => {
+  it('liest die Anhangzähler (Dateiname allein ist kein Prüffall)', () => {
+    const s = summarizeReport({
+      attachments: { migrated: 100, namesOnlyInSource: 100, notMigrated: 2 },
+    });
+    expect(s.attachments).toEqual({ migrated: 100, namesOnlyInSource: 100, notMigrated: 2 });
+    expect(summarizeReport({}).attachments).toBeNull();
+  });
   it('nennt importierte Einsendungen ohne Frist und die bei der Standardfrist sofort fälligen', () => {
     const s = summarizeReport({
       tables: {},
@@ -408,6 +415,7 @@ describe('summarizeReport', () => {
     expect(s.tables[0]).toEqual({ table: 'anfragen', source: 5, imported: 5, review: 1 });
     expect(s.issues).toEqual([{ code: 'unsupported-content', count: 1 }]);
     expect(summarizeReport({ processed: 12 })).toEqual({
+      attachments: null,
       processed: 12,
       tables: [],
       issues: [],

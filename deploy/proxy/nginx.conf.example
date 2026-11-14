@@ -66,6 +66,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto https;
+        # Besucher-IP fuers Backend: X-Forwarded-For (von rechts) hat Vorrang, sonst X-Real-IP, sonst die Peer-Adresse;
+        # beides nur bei Peer in FORM_PUBLIC_TRUSTED_PROXIES. Immer BEIDE auf $remote_addr ueberschreiben (kein $proxy_add_x_forwarded_for).
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
