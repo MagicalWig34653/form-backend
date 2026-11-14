@@ -37,11 +37,17 @@ public struct MailMessage: Sendable, Equatable {
     public var isHTML: Bool
     public var date: Date
     public var messageIDDomain: String
+    /// Files attached to the mail (ADR 0049). Empty = the plain single-part form, byte-identical to before.
+    public var attachments: [MailAttachment]
+    /// Upper bound of the whole wire form when attachments are present (provider limit, FORM_MAIL_MAX_BYTES); the text part alone stays <= `maxBytes`.
+    public var maxWireBytes: Int = MailMessage.defaultMaxWireBytes
 
     public static let maxBytes = 10 * 1024 * 1024
+    /// Default size limit of a whole mail with attachments: 30 MiB (a 19.9 MB attachment is ~26.9 MB as base64).
+    public static let defaultMaxWireBytes = 30 * 1024 * 1024
 
     public init(fromAddress: String, fromName: String? = nil, to: [String], bcc: [String] = [], replyTo: String? = nil, subject: String, body: String,
-                isHTML: Bool, date: Date = Date(), messageIDDomain: String? = nil) throws {
+                isHTML: Bool, date: Date = Date(), messageIDDomain: String? = nil, attachments: [MailAttachment] = []) throws {
         guard let f = MailAddress.parse(fromAddress) else { throw MailError.invalidAddress }
         let tos = try to.map { guard let a = MailAddress.parse($0) else { throw MailError.invalidAddress }; return a }
         let bccs = try bcc.map { guard let a = MailAddress.parse($0) else { throw MailError.invalidAddress }; return a }
@@ -51,7 +57,7 @@ public struct MailMessage: Sendable, Equatable {
         if let n = fromName, Self.hasControl(n) { throw MailError.invalidHeader }
         if Self.hasControl(subject) { throw MailError.invalidHeader }
         self.fromAddress = f; self.fromName = fromName?.isEmpty == true ? nil : fromName; self.to = tos; self.bcc = bccs; self.replyTo = rt
-        self.subject = subject; self.body = body; self.isHTML = isHTML; self.date = date
+        self.attachments = attachments; self.subject = subject; self.body = body; self.isHTML = isHTML; self.date = date
         self.messageIDDomain = messageIDDomain ?? String(f.split(separator: "@").last!)
     }
 
@@ -87,7 +93,38 @@ public struct MailMessage: Sendable, Equatable {
         f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss '+0000'"; return f.string(from: d)
     }
 
+    /// multipart/mixed: the text part (as in the single-part form) followed by one base64 part per attachment. The boundary is random and
+    /// cannot occur in base64 text. The result buffer is the only full copy besides the base64 of the current attachment.
+    private func rfc822WithAttachments() throws -> Data {
+        var h: [String] = []
+        h.append("Date: " + Self.httpDate(date))
+        h.append("From: " + (fromName.map { Self.displayName($0) + " <\(fromAddress)>" } ?? fromAddress))
+        if !to.isEmpty { h.append("To: " + to.joined(separator: ", ")) }
+        if let r = replyTo { h.append("Reply-To: " + r) }
+        h.append("Subject: " + Self.encodedWords(subject))
+        h.append("Message-ID: <\(UUID().uuidString.lowercased())@\(messageIDDomain)>")
+        h.append("MIME-Version: 1.0")
+        let boundary = "=_fb_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        h.append("Content-Type: multipart/mixed; boundary=\"\(boundary)\"")
+        let normalised = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+        let text = MailAttachment.base64Lines(Data(normalised.utf8))
+        guard text.count <= Self.maxBytes else { throw MailError.tooLarge }
+        var out = Data()
+        out.reserveCapacity(text.count + attachments.reduce(0) { $0 + $1.wireBytes } + 1024)
+        let partHead = "\r\n\r\n--\(boundary)\r\nContent-Type: text/\(isHTML ? "html" : "plain"); charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+        out.append(Data((h.joined(separator: "\r\n") + partHead).utf8))
+        out.append(text)
+        for a in attachments {
+            out.append(Data(("--\(boundary)\r\n" + a.header() + "\r\n").utf8))
+            out.append(MailAttachment.base64Lines(a.data))
+        }
+        out.append(Data("--\(boundary)--\r\n".utf8))
+        guard out.count <= maxWireBytes else { throw MailError.tooLarge }
+        return out
+    }
+
     public func rfc822() throws -> Data {
+        if !attachments.isEmpty { return try rfc822WithAttachments() }
         var h: [String] = []
         h.append("Date: " + Self.httpDate(date))
         h.append("From: " + (fromName.map { Self.displayName($0) + " <\(fromAddress)>" } ?? fromAddress))

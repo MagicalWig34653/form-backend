@@ -367,7 +367,8 @@ struct SubmitHandler: Sendable {
                 }
                 // Delivery rows commit atomically with the submission; a replay (idempotent duplicate) never reaches this point.
                 if let plan = mailPlan, let dispatcher = config.mail {
-                    prepared = try await dispatcher.prepare(tx: t, plan: plan, customer: form.customer_id, form: Self.bin(formUUID), submission: submissionID, fields: submittedFields)
+                    prepared = try await dispatcher.prepare(tx: t, plan: plan, customer: form.customer_id, form: Self.bin(formUUID), submission: submissionID, fields: submittedFields,
+                                                      attachments: uploadsForTx.map { MailAttachment(filename: $0.filename, contentType: $0.detectedType, data: $0.content) })
                 }
             }
         } catch {

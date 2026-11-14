@@ -149,7 +149,8 @@ if ProcessInfo.processInfo.environment["FORM_SERVER_KEY_FILE"] != nil, !isMigrat
         app.storage[StorageServiceKey.self] = storage
         app.lifecycle.use(StorageScheduler(service: storage))
         let mail = MailDispatcher(db: app.db(.mysql), secrets: StoreMailSecrets(store: secrets), allowedNets: config.mailAllowedNets,
-                                  allowInsecure: config.allowInsecureDev, logger: app.logger, adminOrigin: guardian.config.adminOrigin)
+                                  allowInsecure: config.allowInsecureDev, logger: app.logger, adminOrigin: guardian.config.adminOrigin,
+                                  maxMailBytes: try mailMaxBytes(effectiveEnvironment["FORM_MAIL_MAX_MB"]))
         // The SDK shipped with this server (ADR 0011): FORM_SDK_DIR, default /app/sdk.
         let sdkDir = URL(fileURLWithPath: effectiveEnvironment["FORM_SDK_DIR"] ?? "/app/sdk")
         let deploy = DeployService(db: app.db(.mysql), secrets: StoreDeploySecrets(store: secrets), bundle: { try SDKBundle.load(from: sdkDir) },
@@ -226,3 +227,11 @@ do { try await app.execute() } catch let end as MigrateLegacyExit {
     exit(1)
 }
 try await app.asyncShutdown()
+
+
+/// FORM_MAIL_MAX_MB: size limit of one whole mail with attachments (wire form, base64 included), 10 to 100 MiB, default 30 (ADR 0049).
+func mailMaxBytes(_ raw: String?) throws -> Int {
+    guard let raw, !raw.isEmpty else { return MailMessage.defaultMaxWireBytes }
+    guard raw.utf8.allSatisfy({ (48...57).contains($0) }), let mb = Int(raw), (10...100).contains(mb) else { throw ConfigError(variable: "FORM_MAIL_MAX_MB", reason: "expected an integer from 10 to 100") }
+    return mb * 1024 * 1024
+}

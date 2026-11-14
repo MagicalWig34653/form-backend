@@ -18,6 +18,8 @@ public struct PreparedMail: Sendable {
     public let leaseToken: UUID
     public let message: MailMessage
     let connection: ConnectionRow?
+    /// Token stored in `last_error_code` when the mail is accepted but incomplete (`attachments_omitted`); nil = complete.
+    var warning: String? = nil
 }
 
 /// Plain JSON values only (decoded from `safe_config_json`), immutable after creation.
@@ -42,9 +44,15 @@ public struct MailDispatcher: Sendable {
     let queue: SendQueue
     /// Origin of the PWA (FORM_ADMIN_ORIGIN) for the link in notification mails; nil = mail without link.
     let adminOrigin: String?
+    /// Size limit of one whole mail with attachments (wire form), FORM_MAIL_MAX_BYTES; default 30 MiB.
+    let maxMailBytes: Int
+    /// Sends that carry attachments run at most `heavyConcurrent` at a time (each builds a ~1.4x copy of its attachments) and keep at most
+    /// `heavyQueuedBytes` of attachment bytes waiting; beyond that the mail goes to `waiting-manual` (`busy`) instead of filling the 512 MiB container.
+    static let heavyConcurrent = 2, heavyQueuedBytes = 64 * 1024 * 1024
+    let heavy = AttachmentGate(maxConcurrent: MailDispatcher.heavyConcurrent, maxQueuedBytes: MailDispatcher.heavyQueuedBytes)
 
-    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, adminOrigin: String? = nil, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.db = db; self.secrets = secrets; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.logger = logger; self.adminOrigin = adminOrigin; self.now = now
+    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, adminOrigin: String? = nil, maxMailBytes: Int = MailMessage.defaultMaxWireBytes, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.maxMailBytes = max(MailMessage.maxBytes, maxMailBytes); self.db = db; self.secrets = secrets; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.logger = logger; self.adminOrigin = adminOrigin; self.now = now
         queue = SendQueue(maxConcurrent: Self.maxConcurrent, maxQueued: Self.maxQueued)
     }
 
@@ -82,7 +90,7 @@ public struct MailDispatcher: Sendable {
 
     /// Creates the delivery rows (inside `tx`) and renders the messages from the in-memory submission.
     /// `fields` are the submitted fields (`{"name": "value" | [..] | {..}}`).
-    public func prepare(tx: SQLDatabase, plan: MailPlan, customer: Blob, form: Blob, submission: UUID, fields: [String: Any], identityScope: String = "form-mail", effectID: UUID? = nil, onlyKind: String? = nil) async throws -> [PreparedMail] {
+    public func prepare(tx: SQLDatabase, plan: MailPlan, customer: Blob, form: Blob, submission: UUID, fields: [String: Any], identityScope: String = "form-mail", effectID: UUID? = nil, onlyKind: String? = nil, attachments: [MailAttachment]? = nil) async throws -> [PreparedMail] {
         var values = MailTemplate.values(fromFields: fields)
         plan.apply(derived: &values, now: now())
         let t = DB.time(now())
@@ -120,15 +128,20 @@ public struct MailDispatcher: Sendable {
             guard let conn else { try await row(kind: kind, state: "waiting-manual", code: "no_connection", token: nil, id: id); return }
             let received = kind == "organisation" ? try await receivedAt(tx, submission: submission) : nil
             do {
-                let msg = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: replyTo, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
+                var msg = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: replyTo, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
                                             customer: customer, form: form, submission: submission)
+                var warning: String? = nil
+                if kind == "organisation" && !notify {
+                    let unavailable = attachments == nil ? try await storedAttachmentCount(tx, submission: submission) : 0
+                    warning = attach(to: &msg, attachments: attachments ?? [], unavailable: unavailable, maxCount: conn.kind == "mail-proxy" ? 1 : MailAttachment.maxPerMail)
+                }
                 guard try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else {
                     try await row(kind: kind, state: "abandoned", code: "recipient_not_allowed", token: nil, id: id); return
                 }
-                _ = try msg.rfc822()   // size/format problems surface now, not at send time
+                try Self.validate(msg)   // size/format problems surface now, not at send time
                 let token = UUID()
                 try await row(kind: kind, state: "leased", code: nil, token: token, id: id)
-                out.append(PreparedMail(deliveryID: id, leaseToken: token, message: msg, connection: conn))
+                out.append(PreparedMail(deliveryID: id, leaseToken: token, message: msg, connection: conn, warning: warning))
             } catch is MailError {
                 try await row(kind: kind, state: "abandoned", code: "message_invalid", token: nil, id: id)
             }
@@ -172,12 +185,15 @@ public struct MailDispatcher: Sendable {
         struct Submission: Decodable { let submission_id: Blob }
         guard let source = try await tx.raw("SELECT submission_id FROM mail_deliveries WHERE id=\(bind: DB.bin(delivery)) AND customer_id=\(bind: customer) AND form_id=\(bind: form)").first(decoding: Submission.self),
               let submission = DB.uuid(source.submission_id.data) else { throw ResendError.recipientInvalid }
-        let message: MailMessage
+        var message: MailMessage
+        var warning: String? = nil
         let received = kind == "organisation" ? try await receivedAt(tx, submission: submission) : nil
         do {
             message = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: reply, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
                                         customer: customer, form: form, submission: submission)
-            _ = try message.rfc822()
+            // The resend only holds the data object's key, not the attachments' keys: the files cannot be re-attached here and the mail says so.
+            if kind == "organisation" && !notify { warning = attach(to: &message, attachments: [], unavailable: try await storedAttachmentCount(tx, submission: submission), maxCount: conn.kind == "mail-proxy" ? 1 : MailAttachment.maxPerMail) }
+            try Self.validate(message)
         } catch { throw ResendError.messageInvalid }
         guard try await recipientsAllowed(tx: tx, recipients: to + bcc, submission: submission) else { throw ResendError.recipientInvalid }
         let token = UUID(), t = DB.time(now())
@@ -190,7 +206,34 @@ public struct MailDispatcher: Sendable {
               \(unsafeRaw: expectedFence == nil ? "" : "AND fence = \(expectedFence!)")
             """).run()
         guard try await tx.raw("SELECT ROW_COUNT() AS n").first(decoding: N.self)?.n ?? 0 == 1 else { throw ResendError.notResendable }
-        return PreparedMail(deliveryID: delivery, leaseToken: token, message: message, connection: conn)
+        return PreparedMail(deliveryID: delivery, leaseToken: token, message: message, connection: conn, warning: warning)
+    }
+
+    /// Text part and header checks without building the attachment parts (those are sized arithmetically by `MailAttachmentFit`).
+    static func validate(_ msg: MailMessage) throws {
+        var probe = msg; probe.attachments = []
+        _ = try probe.rfc822()
+    }
+
+    /// Number of attachment objects stored for the submission whose bytes are NOT at hand (flow mail, manual resend).
+    private func storedAttachmentCount(_ tx: SQLDatabase, submission: UUID) async throws -> Int {
+        struct N: Decodable { let n: Int }
+        return try await tx.raw("SELECT COUNT(*) AS n FROM stored_objects WHERE submission_id=\(bind: DB.bin(submission)) AND object_role='attachment' AND state='ready'").first(decoding: N.self)?.n ?? 0
+    }
+
+    /// Attaches what fits, names what does not (in the mail text) and returns the status token for the delivery row (nil = complete).
+    /// `unavailable` = stored attachments whose bytes are not at hand: named only as a count, token as well.
+    func attach(to msg: inout MailMessage, attachments: [MailAttachment], unavailable: Int, maxCount: Int) -> String? {
+        guard !attachments.isEmpty || unavailable > 0 else { return nil }
+        // reserve for the notice (names of left-out files) on top of the base64 text part
+        let base = msg.body.utf8.count / 3 * 4 + 8192 + attachments.count * 400
+        let fit = MailAttachmentFit(attachments, baseBytes: base, limit: maxMailBytes, maxCount: maxCount)
+        if !fit.omitted.isEmpty || unavailable > 0 {
+            msg.body += MailAttachmentNotice.render(omitted: fit.omitted, unavailable: unavailable, limit: maxMailBytes, html: msg.isHTML)
+        }
+        msg.attachments = fit.attached
+        msg.maxWireBytes = maxMailBytes
+        return fit.omitted.isEmpty && unavailable == 0 ? nil : "attachments_omitted"
     }
 
     /// Renders one message. `notify` (organisation mail in the explicitly chosen notification mode, ADR 0041) ignores the template and the submitted values completely;
@@ -247,6 +290,7 @@ public struct MailDispatcher: Sendable {
         // still ours: a row already turned `uncertain` must never be sent (a manual resend would then duplicate it).
         guard await renewLease(m) else { await queue.leave(); return }
         var code: String? = nil
+        var heavyHeld = false
         do {
             guard let conn = m.connection else { throw MailTransportError("no_connection", transient: false) }
             let secret = try await conn.credentialRef.asyncMap { try await secrets.secret(ref: $0) } ?? nil
@@ -254,9 +298,15 @@ public struct MailDispatcher: Sendable {
             let transport: any MailTransport
             do { transport = try MailConnection.transport(kind: conn.kind, safeConfig: conn.safeConfig, secret: secret, allowedNets: allowedNets, allowInsecure: allowInsecure) }
             catch { throw MailTransportError("connection_invalid", transient: false) }
+            // Mails with attachments build a large wire copy: only a few at a time (never more waiting than the memory budget allows).
+            let weight = m.message.attachments.reduce(0) { $0 + $1.data.count }
+            if weight > 0 {
+                guard await heavy.enter(weight) else { throw MailTransportError("busy", transient: true) }
+                heavyHeld = true
+            }
             // Queueing and secret resolution can suspend for a long time. Recheck both leases at the crossing point.
-            guard await renewLease(m) else { await queue.leave(); return }
-            if let beforeSend, try await !beforeSend() { await queue.leave(); return }
+            guard await renewLease(m) else { if heavyHeld { await heavy.leave() }; await queue.leave(); return }
+            if let beforeSend, try await !beforeSend() { if heavyHeld { await heavy.leave() }; await queue.leave(); return }
             struct Source: Decodable { let submission_id: Blob }
             let sql = db as! SQLDatabase
             guard let source = try await sql.raw("SELECT submission_id FROM mail_deliveries WHERE id=\(bind: DB.bin(m.deliveryID))").first(decoding: Source.self),
@@ -264,6 +314,7 @@ public struct MailDispatcher: Sendable {
                   try await recipientsAllowed(tx: sql, recipients: m.message.to + m.message.bcc, submission: submission) else { throw MailTransportError("recipient_not_allowed", transient: false) }
             try await transport.send(m.message)
         } catch let e as MailTransportError { code = e.code } catch { code = "internal" }
+        if heavyHeld { await heavy.leave() }
         await queue.leave()
         await finish(m, ok: code == nil, code: code)
     }
@@ -294,7 +345,7 @@ public struct MailDispatcher: Sendable {
     func finish(_ m: PreparedMail, ok: Bool, code: String?) async {
         do {
             try await (db as! SQLDatabase).raw("""
-                UPDATE mail_deliveries SET state = \(bind: ok ? "smtp-accepted" : "waiting-manual"), attempts = attempts + 1, last_error_code = \(bind: ok ? nil : code),
+                UPDATE mail_deliveries SET state = \(bind: ok ? "smtp-accepted" : "waiting-manual"), attempts = attempts + 1, last_error_code = \(bind: ok ? m.warning : code),
                   lease_token = NULL, lease_until = NULL, fence = fence + 1, updated_at = \(bind: DB.time(now()))
                 WHERE id = \(bind: DB.bin(m.deliveryID)) AND lease_token = \(bind: DB.bin(m.leaseToken)) AND state = 'leased'
                 """).run()
@@ -325,6 +376,22 @@ public struct MailDispatcher: Sendable {
             try await s.raw("UPDATE mail_deliveries SET state = 'uncertain', lease_token = NULL, lease_until = NULL, fence = fence + 1, last_error_code = 'lease_expired', updated_at = \(bind: DB.time(now)) WHERE state = 'leased' AND lease_until < \(bind: DB.time(now))").run()
             return try await s.raw("SELECT ROW_COUNT() AS n").first(decoding: N.self)?.n ?? 0
         }
+    }
+
+    /// Bounds sends with attachments: `maxConcurrent` in flight, waiting ones limited by their attachment bytes.
+    actor AttachmentGate {
+        let maxConcurrent: Int, maxQueuedBytes: Int
+        private var running = 0, queuedBytes = 0
+        private var waiters: [(bytes: Int, c: CheckedContinuation<Void, Never>)] = []
+        init(maxConcurrent: Int, maxQueuedBytes: Int) { self.maxConcurrent = maxConcurrent; self.maxQueuedBytes = maxQueuedBytes }
+        func enter(_ bytes: Int) async -> Bool {
+            if running < maxConcurrent { running += 1; return true }
+            guard queuedBytes + bytes <= maxQueuedBytes else { return false }
+            queuedBytes += bytes
+            await withCheckedContinuation { waiters.append((bytes, $0)) }
+            return true
+        }
+        func leave() { if let w = waiters.first { waiters.removeFirst(); queuedBytes -= w.bytes; w.c.resume() } else { running -= 1 } }
     }
 
     /// Bounded concurrency with a bounded backlog; beyond it a mail goes to `waiting-manual` (`busy`) instead of piling up in memory.

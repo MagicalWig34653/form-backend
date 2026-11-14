@@ -1,6 +1,6 @@
 # ADR 0041: Inhalt der Mail an das Team: Standard „mit allen Angaben“, Benachrichtigung nur als Wahl
 
-Status: Entscheidung geändert durch Nutzer am 13.11.2026 (Review `request_changes` zu Karte 4287D708). Ursprünglich (12.11.2026) war die Benachrichtigung der Standard; das ist aufgehoben. Ergänzt ADR 0010.
+Status: Entscheidung geändert durch Nutzer am 13.11.2026 (Review `request_changes` zu Karte 4287D708). Ursprünglich (12.11.2026) war die Benachrichtigung der Standard; das ist aufgehoben. Ergänzt ADR 0010. **Teilweise abgelöst durch [ADR 0049](0049-anhaenge-in-der-team-mail.md) (14.11.2026): Anhänge gehören in die Team-Mail; die Aussage „Anhänge (existieren in Mails noch nicht)“ unter „Nicht Teil“ gilt nicht mehr.**
 
 ## Anlass
 
@@ -27,5 +27,5 @@ Keine Änderung zum Altbackend: bereits konfigurierte, veröffentlichte und impo
 
 ## Nicht Teil
 
-- Feldauswahl je Mailvorlage; Anhänge (existieren in Mails noch nicht); Einzeleintrags-Deep-Link in der PWA.
+- Feldauswahl je Mailvorlage; Anhänge (seit ADR 0049 Teil der Team-Mail; hier nicht behandelt); Einzeleintrags-Deep-Link in der PWA.
 - Reihenfolge der Standard-Feldliste nach Ansichts-Layout (die Liste folgt den Feld-IDs, nicht der Ansicht).

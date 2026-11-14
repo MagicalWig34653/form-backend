@@ -6,6 +6,9 @@ import Vapor
 
 struct Upload {
     let content: Data
+    /// Original file name and the SERVER-DETECTED content type (never the declared one): what a mail attachment carries (ADR 0049).
+    var filename = ""
+    var detectedType = "application/octet-stream"
     var wire = Data()
     var kid = ""
     var payloadHash = Data()
@@ -55,9 +58,9 @@ enum Uploads {
             let signed = SignedFile(name: f.filename, type: f.declaredType, error: 0, size: Int64(f.data.count), content: f.data)
             if let i = groups.firstIndex(where: { $0.name == base }) {
                 guard groups[i].list, list else { throw Abort(.unsupportedMediaType) }   // the same field twice without [] would lose a file in PHP
-                groups[i].items.append((Upload(content: f.data), signed))
+                groups[i].items.append((Upload(content: f.data, filename: f.filename, detectedType: real), signed))
             } else {
-                groups.append((base, list, [(Upload(content: f.data), signed)]))
+                groups.append((base, list, [(Upload(content: f.data, filename: f.filename, detectedType: real), signed)]))
             }
         }
         var fileFields: [(String, FileField)] = []

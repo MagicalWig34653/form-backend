@@ -32,16 +32,19 @@ public struct MailProxyTransport: MailTransport {
         func json(_ v: Any) -> String { b64(String(decoding: (try? JSONSerialization.data(withJSONObject: v)) ?? Data("[]".utf8), as: UTF8.self)) }
         let html = message.isHTML ? message.body : "<pre style=\"font-family:inherit;white-space:pre-wrap\">\(MailTemplate.escapeHTML(message.body))</pre>"
         guard Data(html.utf8).count <= MailMessage.maxBytes else { throw MailTransportError("too_large", transient: false) }
+        // The legacy proxy carries exactly one attachment (`mailAttachment` = base64 of the bytes, `mailAttachmentName` = base64 of the name).
+        guard message.attachments.count <= 1 else { throw MailTransportError("proxy_single_attachment", transient: false) }
+        let attachment = message.attachments.first
         let fields: [(String, String)] = [
             ("mailTo", json(message.to)), ("mailBcc", json(message.bcc)),
             ("mailFrom", json(["address": message.fromAddress, "name": message.fromName ?? ""])),
             ("mailBody", b64(html)), ("mailSubject", b64(message.subject)), ("mailReplyTo", b64(message.replyTo ?? message.fromAddress)),
-            ("mailAttachment", ""), ("mailAttachmentName", ""),
+            ("mailAttachment", ""), ("mailAttachmentName", attachment.map { b64($0.filename) } ?? ""),
         ]
-        _ = try await post(fields: fields, test: false)
+        _ = try await post(fields: fields, test: false, attachment: attachment?.data)
     }
 
-    private func post(fields: [(String, String)]?, test: Bool) async throws -> Int {
+    private func post(fields: [(String, String)]?, test: Bool, attachment: Data? = nil) async throws -> Int {
         do { try Self.validate(url: url, allowInsecure: allowInsecure) } catch { throw error }
         let host = url.host!
         let ip: String
@@ -58,8 +61,14 @@ public struct MailProxyTransport: MailTransport {
         if test { req.headers.add(name: "TEST", value: "1") }
         req.headers.add(name: "Content-Type", value: "application/x-www-form-urlencoded")
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
-        let body = (fields ?? []).map { "\($0.0)=\($0.1.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")" }.joined(separator: "&")
-        req.body = .bytes(ByteBuffer(string: body))
+        var body = Data()
+        for (i, f) in (fields ?? []).enumerated() {
+            if i > 0 { body.append(0x26) }
+            body.append(Data("\(f.0)=".utf8))
+            if f.0 == "mailAttachment", let attachment { body.append(Self.percentEncodedBase64(attachment)) }
+            else { body.append(Data((f.1.addingPercentEncoding(withAllowedCharacters: allowed) ?? "").utf8)) }
+        }
+        req.body = .bytes(ByteBuffer(data: body))
         let status: Int
         do {
             let res = try await client.execute(req, timeout: timeout + .seconds(5))
@@ -73,5 +82,20 @@ public struct MailProxyTransport: MailTransport {
         case (_, 500...599): throw MailTransportError("proxy_\(status)", transient: true)
         default: throw MailTransportError("proxy_\(status)", transient: false)
         }
+    }
+
+    /// base64 of `d` as form-urlencoded bytes (`+` `/` `=` escaped), built in one pass without an intermediate String.
+    static func percentEncodedBase64(_ d: Data) -> Data {
+        let raw = d.base64EncodedData()
+        var out = Data(); out.reserveCapacity(raw.count + raw.count / 8)
+        for b in raw {
+            switch b {
+            case 0x2B: out.append(contentsOf: Array("%2B".utf8))
+            case 0x2F: out.append(contentsOf: Array("%2F".utf8))
+            case 0x3D: out.append(contentsOf: Array("%3D".utf8))
+            default: out.append(b)
+            }
+        }
+        return out
     }
 }

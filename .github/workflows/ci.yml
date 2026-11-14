@@ -234,6 +234,9 @@ jobs:
       - name: E2E 16 parallel 30 MiB bodies without login (ingest, rotation, hold) with 512m memory limit, container must not be OOM killed (fb-sec 1/2)
         if: ${{ !cancelled() }}
         run: E2E_LOG_DIR=e2e-logs BB_SCRATCH=$RUNNER_TEMP/fb-bb-build bash backend/e2e-body-budget.sh
+      - name: E2E Anhänge in der Team-Mail (Mailpit, SHA-256 je Datei, Umlaut-Namen, 19,9 MB, zu große Datei in der Mail genannt; ADR 0049)
+        if: ${{ !cancelled() }}
+        run: P3B_PORT=33795 E2E_PORT=4395 E2E_LOG_DIR=e2e-logs bash backend/e2e-mail-attachment.sh
       - name: Upload logs on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7

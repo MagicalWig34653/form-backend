@@ -107,6 +107,11 @@ public struct SMTPTransport: MailTransport {
             catch { throw MailTransportError(error is NIOSSLError || error is BoringSSLError ? "tls_failed" : "connection_closed", transient: true) }
         }
 
+        func write(_ d: Data) async throws {
+            do { try await channel.writeAndFlush(ByteBuffer(data: d)).get() }
+            catch { throw MailTransportError(error is NIOSSLError || error is BoringSSLError ? "tls_failed" : "connection_closed", transient: true) }
+        }
+
         func expect(_ phase: String, _ ok: Set<Int>) async throws -> SMTPReply {
             let r = try await read(phase)
             guard ok.contains(r.code) else { throw MailTransportError("smtp_\(r.code)_\(phase)", transient: r.code / 100 == 4) }
@@ -205,16 +210,26 @@ public struct SMTPTransport: MailTransport {
             catch let e as MailTransportError where e.code.hasPrefix("smtp_") { _ = try? await s.command("RSET", "rset", [250]); throw MailTransportError("rcpt_rejected", transient: e.transient) }
         }
         _ = try await s.command("DATA", "data", [354])
-        try await s.write(Self.dotStuffed(wire))
+        try await s.write(Self.dotStuffedData(wire))
         _ = try await s.expect("data_end", [250])
     }
 
     /// Dot-stuffing and the terminating `.` line (RFC 5321 §4.5.2). The message is built with CRLF line ends.
-    static func dotStuffed(_ wire: Data) -> String {
-        var out = [UInt8](); out.reserveCapacity(wire.count + 16)
+    static func dotStuffed(_ wire: Data) -> String { String(decoding: dotStuffedData(wire), as: UTF8.self) }
+
+    /// Same as `dotStuffed`, as bytes: one output buffer, no String round trip (a mail with a 20 MB attachment is ~27 MB on the wire).
+    static func dotStuffedData(_ wire: Data) -> Data {
+        var out = Data(); out.reserveCapacity(wire.count + 16)
         var atLineStart = true
-        for b in wire { if atLineStart && b == 0x2E { out.append(0x2E) }; out.append(b); atLineStart = (b == 0x0A) }
-        if !(out.count >= 2 && out[out.count - 2] == 0x0D && out[out.count - 1] == 0x0A) { out += [0x0D, 0x0A] }
-        return String(decoding: out, as: UTF8.self) + ".\r\n"
+        var start = wire.startIndex
+        for i in wire.indices {
+            let b = wire[i]
+            if atLineStart && b == 0x2E { out.append(wire[start..<i]); out.append(0x2E); start = i }
+            atLineStart = (b == 0x0A)
+        }
+        out.append(wire[start..<wire.endIndex])
+        if !(out.count >= 2 && out[out.count - 2] == 0x0D && out[out.count - 1] == 0x0A) { out.append(contentsOf: [0x0D, 0x0A]) }
+        out.append(contentsOf: Array(".\r\n".utf8))
+        return out
     }
 }
