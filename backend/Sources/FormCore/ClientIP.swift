@@ -88,6 +88,7 @@ public struct CIDR: Sendable, Equatable {
 public struct ClientIPResolver: Sendable {
     public struct Resolution: Sendable, Equatable { public let ip: String; public let viaProxy: Bool }
     public let trusted: [CIDR]
+    static let maxTrustedHops = 20
     public init(trusted: [CIDR]) { self.trusted = trusted }
 
     func isTrusted(_ ip: IPAddr) -> Bool { trusted.contains { $0.contains(ip) } }
@@ -101,13 +102,22 @@ public struct ClientIPResolver: Sendable {
         let own = Resolution(ip: peerIP.text, viaProxy: false)
         guard !trusted.isEmpty, isTrusted(peerIP) else { return own }
         if let xff = forwardedFor, !xff.isEmpty {
-            let hops = xff.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard hops.count <= 20 else { return own }
+            // Walk from the right only: the left part is client-controlled and may be arbitrarily long or malformed, so it must never
+            // decide the result (a long chain used to fall back to the peer = "no visitor named", D98A9893). Only the hops the trusted
+            // proxies appended are looked at; more than `maxTrustedHops` trusted hops in a row are refused (bounded work).
             var leftmost: IPAddr?
-            for hop in hops.reversed() {
+            var rest = Substring(xff)
+            var trustedHops = 0
+            while true {
+                let comma = rest.lastIndex(of: ",")
+                let hop = (comma.map { rest[rest.index(after: $0)...] } ?? rest).trimmingCharacters(in: .whitespaces)
                 guard let ip = IPAddr(hop) else { return own }
                 if !isTrusted(ip) { return Resolution(ip: ip.text, viaProxy: true) }
+                trustedHops += 1
+                guard trustedHops <= Self.maxTrustedHops else { return own }
                 leftmost = ip
+                guard let c = comma else { break }
+                rest = rest[..<c]
             }
             // every hop is a trusted proxy: the original client is inside the trusted network (no real visitor named)
             return Resolution(ip: leftmost?.text ?? peerIP.text, viaProxy: false)

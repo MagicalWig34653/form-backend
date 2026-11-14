@@ -23,6 +23,7 @@ struct AdminFixture {
     let guardian: AuthGuard
     let sessions: SessionService
     let deploy: DeployService
+    let mail: MailDispatcher
     var sql: SQLDatabase { Persistence.sql(app) }
 
     static func with(webhookLimits: WebhookLimits = WebhookLimits(), singleConnection: Bool = false, secondFactorRequired: Bool = true, clientIP: @escaping @Sendable (Request) -> String = { _ in "203.0.113.9" }, _ body: (AdminFixture) async throws -> Void) async throws {
@@ -70,7 +71,7 @@ struct AdminFixture {
                 try DomainRoutes.host(req.headers.first(name: "X-Forwarded-Host") ?? "", adminHost: "")
             })
             IngestSetup.register(app, config: IngestConfig(secrets: Digest(store: secrets), mail: dispatcher, webhookLimits: webhookLimits, externalHost: { $0.headers.first(name: "X-Forwarded-Host") }))
-            try await body(AdminFixture(app: app, guardian: guardian, sessions: SessionService(db: app.db(.mysql), keys: key), deploy: deploy))
+            try await body(AdminFixture(app: app, guardian: guardian, sessions: SessionService(db: app.db(.mysql), keys: key), deploy: deploy, mail: dispatcher))
         } catch {
             try? await app.asyncShutdown(); await cleanup(); throw error
         }

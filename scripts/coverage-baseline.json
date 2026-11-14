@@ -1,0 +1,8 @@
+{
+  "_comment": "Ratchet baseline in percent; values only go up (scripts/coverage-ratchet.sh --update). null = not measured yet, reported but not enforced. tolerance (percentage points) absorbs run-to-run noise. swift 93.5 is provisional (macOS measurement 94.0 minus margin); the first Linux CI value should be committed with --update.",
+  "tolerance": 0.2,
+  "diff_min": 90,
+  "swift": { "lines": 93.5 },
+  "pwa": { "lines": 58.26, "branches": 50.02 },
+  "php": { "lines": null }
+}

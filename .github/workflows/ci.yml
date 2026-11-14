@@ -41,13 +41,30 @@ jobs:
         php: ["8.2", "8.3", "8.4"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           extensions: sodium, curl, json, mbstring
+          # Coverage is measured once (PHP 8.4); pcov is not loaded on the other versions.
+          coverage: ${{ matrix.php == '8.4' && 'pcov' || 'none' }}
       - run: php sdk/php/tests/sdk_test.php
       - name: Crypto library cross-test (PHP side without Swift output)
         run: php -l sdk/php/src/Client.php && php -l sdk/php/bin/submit.php
+      - name: Coverage (pcov, line coverage of sdk/php/src)
+        if: matrix.php == '8.4'
+        run: bash scripts/coverage-php.sh
+      - name: Coverage ratchet and diff coverage (PHP)
+        if: matrix.php == '8.4'
+        run: bash scripts/coverage-ratchet.sh php coverage/php/coverage.json ${{ github.event_name == 'pull_request' && format('--diff-base {0}', github.event.pull_request.base.sha) || '' }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && matrix.php == '8.4' }}
+        with:
+          name: coverage-php
+          path: coverage/php
+          if-no-files-found: ignore
+          retention-days: 14
 
   backend-linux:
     name: Backend (Linux, ${{ matrix.arch }})
@@ -64,9 +81,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Swift tests incl. database tests (Docker, private network)
+        if: matrix.arch != 'amd64'
         run: bash backend/ci-linux.sh
       - name: Large uploads with the documented 64 MiB max_allowed_packet
         run: DB_ARGS=--max-allowed-packet=67108864 bash backend/ci-linux.sh --filter "LargeUploadIngestTests|LargeObjectRoundTripTests"
+      - name: Swift tests incl. database tests, with code coverage (amd64 only)
+        if: matrix.arch == 'amd64'
+        run: bash scripts/coverage-swift.sh
+      - name: Coverage ratchet (Swift, lines)
+        if: ${{ !cancelled() && matrix.arch == 'amd64' && hashFiles('coverage/swift/codecov.json') != '' }}
+        run: bash scripts/coverage-ratchet.sh swift coverage/swift/codecov.json
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && matrix.arch == 'amd64' }}
+        with:
+          name: coverage-swift
+          path: coverage/swift
+          if-no-files-found: ignore
+          retention-days: 14
 
   secret-scan:
     name: Secret scan (gitleaks, full history)
@@ -88,6 +119,8 @@ jobs:
         working-directory: pwa
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -96,7 +129,17 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run check
-      - run: npm test
+      - name: Unit tests with coverage (v8, all of src/**)
+        run: npm run test:coverage
+      - name: Coverage ratchet and diff coverage (PWA)
+        run: bash ../scripts/coverage-ratchet.sh pwa coverage/lcov.info ${{ github.event_name == 'pull_request' && format('--diff-base {0}', github.event.pull_request.base.sha) || '' }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-pwa
+          path: pwa/coverage
+          if-no-files-found: ignore
+          retention-days: 14
       - run: npm run build
       - name: Install Chromium
         run: |

@@ -109,7 +109,7 @@ var env = try Environment.detect()
 // Vapor's logger bootstrap reads LOG_LEVEL; honour FORM_LOG_LEVEL via the application logger below.
 let app = try await Application.make(env)
 app.logger.logLevel = Logger.Level(rawValue: config.logLevel) ?? .info
-app.bodyBudget = BodyBudget(capacity: config.bodyBudgetBytes)   // shared by ingest and the large admin bodies on both listeners
+app.bodyBudget = BodyBudget(capacity: config.bodyBudgetBytes, maxWait: BodyBudget.defaultMaxWait)   // shared by ingest and the large admin bodies on both listeners
 app.http.server.configuration.hostname = config.httpHost
 app.http.server.configuration.port = config.httpPort
 Persistence.configure(app, config)

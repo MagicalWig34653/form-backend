@@ -50,10 +50,24 @@ final class ClientIPTests: XCTestCase {
 
     func testMalformedOrMissingHeaderFallsBackToPeer() {
         let res = r("10.0.0.0/8")
-        for bad in ["", "garbage", "198.51.100.9, junk", "198.51.100.9,", String(repeating: "1.1.1.1,", count: 25) + "1.1.1.1"] {
+        for bad in ["", "garbage", "198.51.100.9, junk", "198.51.100.9,"] {
             XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: bad), "10.0.0.2", bad)
         }
         XCTAssertEqual(res.resolve(peer: "10.0.0.2", forwardedFor: nil), "10.0.0.2")
+    }
+
+    /// D98A9893: a long client-controlled left part must not push the result back to the (trusted) peer, which would count as "no
+    /// visitor named" (generous server-to-server budget, no ban). Only the hops the trusted proxy appended on the right matter.
+    func testLongClientControlledForwardedChainStillResolvesFromTheRight() {
+        let res = r("10.0.0.0/8")
+        let junk = String(repeating: "6.6.6.6, ", count: 30)
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: junk + "198.51.100.9"), .init(ip: "198.51.100.9", viaProxy: true))
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: String(repeating: "garbage, ", count: 30) + "198.51.100.9"),
+                       .init(ip: "198.51.100.9", viaProxy: true), "unparsable text left of the first untrusted hop is never read")
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: junk + "198.51.100.9, 10.0.0.3").ip, "198.51.100.9")
+        // a genuinely endless trusted chain is still refused (bounded work), falling back to the peer
+        XCTAssertEqual(res.resolveDetailed(peer: "10.0.0.2", forwardedFor: String(repeating: "10.0.0.3, ", count: 30) + "10.0.0.4"),
+                       .init(ip: "10.0.0.2", viaProxy: false))
     }
 
     func testConfigParsing() throws {

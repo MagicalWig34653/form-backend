@@ -38,8 +38,11 @@ crypto_decrypt "$backup/$BACKUP_DATA_FILE" 2>"$probe" | head -c 1 >/dev/null
 status=("${PIPESTATUS[@]}")
 set -e
 [[ "${status[0]}" == 0 || "${status[0]}" == 141 ]] || { cat "$probe" >&2; db_fail 'Entschlüsselung fehlgeschlagen (falscher Schlüssel?)'; }
+# A hex-blob dump line is twice the object size; the server must accept the longest line (plus reserve) or the import dies midway. Measured on the decrypted stream (the key was verified above).
+longest=$(crypto_decrypt "$backup/$BACKUP_DATA_FILE" | LC_ALL=C awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')
+db_require_packet $((longest + 1048576))
 db_tool mariadb -e "CREATE DATABASE \`$target\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-crypto_decrypt "$backup/$BACKUP_DATA_FILE" | strip_definer | db_tool mariadb "$target"
+crypto_decrypt "$backup/$BACKUP_DATA_FILE" | strip_definer | db_tool mariadb --max-allowed-packet=1073741824 "$target"
 db_counts "$target" > "$actual"
 diff -u "$backup/counts.tsv" "$actual"
 echo "Restore geprüft: Zeilenzahlen in $target stimmen überein. DB bleibt zur fachlichen Prüfung bestehen."

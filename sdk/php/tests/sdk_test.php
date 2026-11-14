@@ -107,6 +107,28 @@ ok($e instanceof RejectedException && !$e->isRetryable() && count($t5->requests)
 $t6 = new Fake([['status' => 429, 'headers' => ['retry-after' => '7'], 'body' => '{"code":"ingest_rate_limited"}'], $accepted]);
 $e = throws(RejectedException::class, fn() => (new Client('https://h.example', $creds, $t6, sleep: $noSleep))->submit(['a' => '1']), 'ingest budget 429 surfaces');
 ok($e instanceof RejectedException && $e->isRetryable() && $e->retryAfter === 7 && $e->errorCode === 'ingest_rate_limited' && count($t6->requests) === 1, 'ingest_rate_limited is retryable by the caller after Retry-After, not immediately');
+// --- busy 503 (ingest_busy / body_budget_exhausted): Retry-After is honoured within the budget, no outage marker (card AF71CA8A)
+foreach (['ingest_busy', 'body_budget_exhausted'] as $busyCode) {
+    $busy = ['status' => 503, 'headers' => ['retry-after' => '2'], 'body' => '{"code":"' . $busyCode . '"}'];
+    $tb = new Fake([$busy, $busy, $accepted]); $sl = [];
+    $r = (new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }))->submit(['a' => '1']);
+    ok($r->id !== '' && count($tb->requests) === 3 && $sl === [2_000_000, 2_000_000], "$busyCode: waits Retry-After between attempts and then succeeds");
+    ok(count(array_unique(array_column(array_column($tb->requests, 'headers'), 'Idempotency-Key'))) === 1, "$busyCode: same idempotency key");
+    $tb = new Fake([['status' => 503, 'headers' => ['retry-after' => '60'], 'body' => '{"code":"' . $busyCode . '"}'], $accepted]); $sl = [];
+    $r = (new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }, totalBudget: 30.0))->submit(['a' => '1']);
+    ok($sl === [5_000_000], "$busyCode: pause is capped (5 s)");
+    // Retry-After larger than the remaining budget: no pointless sleep, the busy answer surfaces
+    $tb = new Fake([['status' => 503, 'headers' => ['retry-after' => '9'], 'body' => '{"code":"' . $busyCode . '"}'], $accepted]); $sl = [];
+    $e = throws(RejectedException::class, fn() => (new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }, totalBudget: 3.0))->submit(['a' => '1']), "$busyCode: budget too small for the pause");
+    ok($sl === [] && count($tb->requests) === 1 && $e instanceof RejectedException && $e->isRetryable() && $e->retryAfter === 9, "$busyCode: surfaces as retryable rejection without sleeping");
+}
+$tb = new Fake([['status' => 503, 'headers' => [], 'body' => '{"code":"ingest_busy"}'], $accepted]); $sl = [];
+(new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }))->submit(['a' => '1']);
+ok($sl === [1_000_000], 'busy 503 without Retry-After waits 1 s');
+$tb = new Fake([['status' => 503, 'headers' => ['retry-after' => '1'], 'body' => 'gateway'], $accepted]); $sl = [];
+(new Client('https://h.example', $creds, $tb, sleep: function (int $us) use (&$sl) { $sl[] = $us; }))->submit(['a' => '1']);
+ok($sl === [], 'a plain gateway 503 keeps the immediate retry');
+
 foreach (['', 'not json', '{"submission":{"id":"x"}}', '{"submission":{}}', '[]'] as $badBody) {
     throws(\FormBackend\Exception\FormBackendException::class, fn() => Submission::fromResponse($badBody), 'unexpected 200 body');
 }

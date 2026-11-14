@@ -42,5 +42,14 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
     setupFiles: ['src/test-setup.ts'],
+    coverage: {
+      provider: 'v8',
+      // "all files under src" so that never-loaded files count as uncovered (the default only counts loaded files).
+      include: ['src/**/*.{ts,svelte}'],
+      // Justified exclusions: see /coverage-exclusions (keep both lists identical; scripts/coverage-ratchet.sh checks it).
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/test-setup.ts', 'src/main.ts'],
+      reporter: ['text-summary', 'json-summary', 'lcov'],
+      reportsDirectory: 'coverage',
+    },
   },
 });

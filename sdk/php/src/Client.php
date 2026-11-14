@@ -25,7 +25,7 @@ final class Client
     private readonly string $failoverKey;
     private const SESSION_KEY = 'kubus_form_failover';
 
-    /** $sleep is retained for source compatibility; failover sends immediately without backoff. */
+    /** $sleep (microseconds) is only used to honour Retry-After of a busy 503 on the same host; failover itself sends immediately. */
     public function __construct(
         string|array|null $baseUrl,
         private readonly Credentials $credentials,
@@ -134,6 +134,18 @@ final class Client
             }
             $last = $this->rejection($res);
             if (!$last->isRetryable() || $last->status === 429) { throw $last; }
+            if ($this->isBusy($last)) {
+                // The replica is alive but momentarily full (ingest_busy / body_budget_exhausted): not an outage, so no failover marker.
+                // Honour Retry-After within the remaining time budget, but only when the next attempt would hit the same host again.
+                $nextEndpoint = $order[min($attempt, count($order) - 1)];
+                $wait = min($last->retryAfter ?? 1, self::MAX_BUSY_WAIT_SECONDS);
+                $left = $deadline - $this->monotonicMs();
+                if ($attempt < $this->maxAttempts && $nextEndpoint === $endpoint && $wait > 0) {
+                    if ($wait * 1000 >= $left - 1) { throw $last; }   // the pause would eat the whole budget
+                    $this->pause($wait * 1_000_000);
+                }
+                continue;
+            }
             $this->rememberPrimaryFailure($endpoint);
         }
         throw $last ?? new TransportException('request time budget exhausted');
@@ -190,6 +202,20 @@ final class Client
         if (session_status() === PHP_SESSION_ACTIVE && is_array($_SESSION[self::SESSION_KEY] ?? null)) {
             unset($_SESSION[self::SESSION_KEY][$this->failoverKey]);
         }
+    }
+
+    /** Longest Retry-After pause between attempts (seconds); the remaining time budget caps it further. */
+    private const MAX_BUSY_WAIT_SECONDS = 5;
+
+    /** 503 from the load gates: the server is healthy but full. */
+    private function isBusy(RejectedException $e): bool
+    {
+        return $e->status === 503 && in_array($e->errorCode, ['ingest_busy', 'body_budget_exhausted'], true);
+    }
+
+    private function pause(int $microseconds): void
+    {
+        if ($this->sleep) { ($this->sleep)($microseconds); } else { usleep($microseconds); }
     }
 
     private function now(): int

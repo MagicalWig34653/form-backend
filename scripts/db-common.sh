@@ -79,6 +79,29 @@ db_counts() {
     db_tool mariadb -N -B -e "SELECT COUNT(*) FROM \`$database\`.\`$escaped\`" </dev/null
   done <<< "$tables"
 }
+# Recommended server-side max_allowed_packet (bytes): a sealed object of 32 MiB becomes a ~80 MiB hex-blob dump line (docs/BETRIEB.md).
+DB_RECOMMENDED_PACKET=268435456
+# Prints the server's max_allowed_packet in bytes, or nothing when it cannot be read.
+db_packet_limit() {
+  local v
+  v=$(db_tool mariadb -N -B -e 'SELECT @@max_allowed_packet' </dev/null 2>/dev/null | tr -d '[:space:]') || return 0
+  [[ "$v" =~ ^[0-9]+$ ]] && printf '%s' "$v"
+  return 0
+}
+# db_require_packet NEEDED_BYTES: abort when the server limit is known and below NEEDED; warn below the recommendation.
+db_require_packet() {
+  local needed=$1 limit
+  limit=$(db_packet_limit)
+  if [[ -z "$limit" ]]; then
+    echo 'Warnung: max_allowed_packet des DB-Servers nicht lesbar; Mindestwert 256M (docs/BETRIEB.md) selbst prüfen.' >&2; return 0
+  fi
+  if (( limit < needed )); then
+    db_fail "max_allowed_packet des DB-Servers ($((limit / 1048576)) MiB) ist zu klein; benötigt mindestens $(((needed + 1048575) / 1048576)) MiB (Empfehlung 256M). Beispiel: SET GLOBAL max_allowed_packet=268435456 und in der Serverkonfiguration dauerhaft setzen. Es wurde nichts geschrieben."
+  fi
+  if (( limit < DB_RECOMMENDED_PACKET )); then
+    echo "Warnung: max_allowed_packet des DB-Servers ($((limit / 1048576)) MiB) liegt unter der Empfehlung 256M; sehr große versiegelte Objekte (bis 32 MiB, als Hex-Dump ~80 MiB) lassen sich sonst nicht wiederherstellen." >&2
+  fi
+}
 checksum() { openssl dgst -sha256 "$1" | awk '{print $NF}'; }
 
 # Entfernt DEFINER=`u`@`h` aus CREATE-Anweisungen von Triggern/Routinen/Events/Views im Dump (nur in Zeilen, die mit CREATE bzw. /*!NNNNN CREATE*/ beginnen,

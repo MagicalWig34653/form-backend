@@ -111,3 +111,35 @@ it('importierte Einsendungen: mit Häkchen wird applyToImported erst nach Bestä
     expect(api.setRetention).toHaveBeenCalledWith('tenant', 'form', 30, { applyToImported: true }),
   );
 });
+
+it('Verkürzen mit Häkchen zeigt genau EINEN zusammengefassten Dialog mit beiden Folgen (1698259A)', async () => {
+  api.retention.mockResolvedValue({
+    ok: true,
+    data: { days: 30, importedCount: 5, importedWithoutDeadline: 5 },
+  });
+  api.setRetention.mockImplementation(
+    async (_t: string, _f: string, d: number, o?: { dryRun?: boolean }) => ({
+      ok: true,
+      data: { days: d, importedWithoutDeadline: o?.dryRun ? 5 : 0, dueNowImported: 4 },
+    }),
+  );
+  render(RetentionPanel, { tenant: 'tenant', form: 'form' });
+  const input = await screen.findByLabelText('Aufbewahrung in Tagen');
+  await fireEvent.input(input, { target: { value: '10' } });
+  await fireEvent.click(
+    await screen.findByLabelText('Frist auch auf die importierten Einsendungen anwenden'),
+  );
+  await fireEvent.click(screen.getByRole('button', { name: 'Aufbewahrung speichern' }));
+  await waitFor(() => expect(confirmState.current).toBeTruthy());
+  expect(confirmState.current?.description).toContain('älter als 10 Tage');
+  expect(confirmState.current?.description).toContain('4 importierte Einsendungen');
+  expect(api.setRetention).not.toHaveBeenCalledWith('tenant', 'form', 10, {
+    applyToImported: true,
+  });
+  confirmState.settle(true);
+  await waitFor(() =>
+    expect(api.setRetention).toHaveBeenCalledWith('tenant', 'form', 10, { applyToImported: true }),
+  );
+  // no second dialog
+  expect(confirmState.current).toBeFalsy();
+});

@@ -773,6 +773,51 @@ final class MailEndToEndTests: XCTestCase {
         }
     }
 
+    /// EE0E1DD9: a resend with attachments reserves its memory BEFORE reading/decrypting anything. With the process budget exhausted the
+    /// route answers 503 + Retry-After, changes and sends nothing and leaks no reservation; afterwards it works and gives everything back.
+    func testResendWithAttachmentsReservesMemoryFirstAnd503WhenExhausted() async throws {
+        let smtp = FakeSMTPServer(); try await smtp.start()
+        defer { Task { await smtp.stop() } }
+        try await AdminFixture.with { f in
+            let w = try await world(f, mail: defaultMail)
+            let a = pdfBytes(40_000, seed: 1)
+            try await submitFiles(w, [("a", "x.pdf", a)], key: "budget")
+            try await connect(w, smtp)
+            for r in ["content.resend", "content.decrypt"] { try await f.grant(w.userID, r, customer: w.tenant, by: w.root) }
+            struct Obj: Decodable { let submission_id: Blob; let object_role: String; let ciphertext: Blob }
+            var dataKey = Data(), attKey = Data(), sid = UUID()
+            for o in try await f.sql.raw("SELECT submission_id, object_role, ciphertext FROM stored_objects").all(decoding: Obj.self) {
+                let pkg = try PackageV2(String(decoding: o.ciphertext.data, as: UTF8.self))
+                let cek = try HPKE.open(pkg.b, enc: pkg.a, recipient: w.customerKey, info: Data("kubus-anfrage v2".utf8), aad: Data(pkg.kid.utf8))
+                sid = try XCTUnwrap(DB.uuid(o.submission_id.data))
+                if o.object_role == "data" { dataKey = cek } else { attKey = cek }
+            }
+            var org = ""
+            try await w.user.get("tenants/\(w.tenant)/forms/\(w.form)/mail-deliveries") { res async throws in
+                org = ((obj(res)["items"] as? [[String: Any]]) ?? []).first { $0["kind"] as? String == "organisation" }?["id"] as? String ?? ""
+            }
+            let url = "tenants/\(w.tenant)/forms/\(w.form)/entries/\(sid.uuidString.lowercased())/resends"
+            let body = "{\"deliveryId\":\"\(org)\",\"contentKey\":\"\(dataKey.base64URLString)\",\"attachmentKeys\":[{\"ordinal\":0,\"contentKey\":\"\(attKey.base64URLString)\"}]}"
+            // exhaust the budget (as parallel large resends would): refused before any read, nothing changes
+            let limit = f.mail.resendMemory.limit
+            let taken = await f.mail.resendMemory.tryReserve(limit)
+            XCTAssertTrue(taken)
+            try await w.user.send(.POST, url, body: body) { res async throws in
+                XCTAssertEqual(res.status, .serviceUnavailable, text(res)); XCTAssertNotNil(res.headers.first(name: "Retry-After"))
+            }
+            let still = await f.mail.resendMemory.reserved
+            XCTAssertEqual(still, limit, "the refused request must not leak or steal a reservation")
+            let states = try await deliveries(f).map(\.state)
+            XCTAssertEqual(states, ["waiting-manual", "waiting-manual"]); XCTAssertTrue(smtp.mails.isEmpty)
+            await f.mail.resendMemory.release(limit)
+            // budget free again: the resend goes through and everything is given back once the mail is delivered
+            try await w.user.send(.POST, url, body: body) { XCTAssertEqual($0.status, .accepted, text($0)) }
+            try await until { smtp.mails.count == 1 }
+            XCTAssertEqual(attachmentParts(try XCTUnwrap(smtp.mails.first).data).first?.bytes, a)
+            try await until { await f.mail.resendMemory.reserved == 0 }
+        }
+    }
+
     /// Too large in total: what does not fit is named in the mail and flagged in the delivery status, the rest still goes; never lost silently.
     func testFilesBeyondTheMailLimitAreNamedInTheMailAndFlaggedInTheStatus() async throws {
         let smtp = FakeSMTPServer(); try await smtp.start()

@@ -20,6 +20,8 @@ public struct PreparedMail: Sendable {
     let connection: ConnectionRow?
     /// Token stored in `last_error_code` when the mail is accepted but incomplete (`attachments_omitted`); nil = complete.
     var warning: String? = nil
+    /// Bytes of `resendMemory` this mail still holds (manual resend with attachments); released by `deliver`, whatever its outcome.
+    public var heldMemory: Int = 0
 }
 
 /// Plain JSON values only (decoded from `safe_config_json`), immutable after creation.
@@ -51,11 +53,18 @@ public struct MailDispatcher: Sendable {
     /// Sends that carry attachments run at most `heavyConcurrent` at a time (each builds a ~1.4x copy of its attachments) and keep at most
     /// `heavyQueuedBytes` of attachment bytes waiting; beyond that the mail goes to `waiting-manual` (`busy`) instead of filling the 1024 MiB container.
     static let heavyConcurrent = 2, heavyQueuedBytes = 64 * 1024 * 1024
+    /// Process-wide byte budget for resends that open stored attachments (ciphertext + wire text + plaintext copies exist at once).
+    /// Reserved BEFORE the first byte is read from storage, so N parallel resends of large attachments cannot exhaust the heap;
+    /// the route answers 503 + Retry-After when it is exhausted. Default: 4 x the mail size limit = one full-size resend at a time.
+    public let resendMemory: MemoryBudget
+    /// Transient copies of one attachment while it is read and decrypted (ciphertext, wire string, parsed package, plaintext).
+    public static let resendCopyFactor = 4
     let heavy = AttachmentGate(maxConcurrent: MailDispatcher.heavyConcurrent, maxQueuedBytes: MailDispatcher.heavyQueuedBytes)
 
-    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, adminOrigin: String? = nil, maxMailBytes: Int = MailMessage.defaultMaxWireBytes, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(db: Database, secrets: any MailSecretProvider, allowedNets: [CIDR], allowInsecure: Bool, logger: Logger, adminOrigin: String? = nil, maxMailBytes: Int = MailMessage.defaultMaxWireBytes, now: @escaping @Sendable () -> Date = { Date() }, resendMemoryBytes: Int? = nil) {
         self.maxMailBytes = max(MailMessage.maxBytes, maxMailBytes); self.db = db; self.secrets = secrets; self.allowedNets = allowedNets; self.allowInsecure = allowInsecure; self.logger = logger; self.adminOrigin = adminOrigin; self.now = now
         queue = SendQueue(maxConcurrent: Self.maxConcurrent, maxQueued: Self.maxQueued)
+        resendMemory = MemoryBudget(limit: resendMemoryBytes ?? Self.resendCopyFactor * self.maxMailBytes)
     }
 
     private struct ConnQuery: Decodable { let kind: String; let safe_config_json: String; let credential_ref: String?; let enabled: Int }
@@ -130,8 +139,12 @@ public struct MailDispatcher: Sendable {
             guard let conn else { try await row(kind: kind, state: "waiting-manual", code: "no_connection", token: nil, id: id); return }
             let received = kind == "organisation" ? try await receivedAt(tx, submission: submission) : nil
             do {
-                var msg = try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: replyTo, template: template, notify: notify, isConfirmation: kind == "confirmation", values: values,
-                                            customer: customer, form: form, submission: submission)
+                let (rendered, shortened) = try MailTemplate.buildShorteningIfTooLarge(values: values) { v in
+                    try Self.renderMessage(adminOrigin: adminOrigin, now: now(), receivedAt: received, plan: plan, to: to, bcc: bcc, replyTo: replyTo, template: template, notify: notify, isConfirmation: kind == "confirmation", values: v,
+                                           customer: customer, form: form, submission: submission)
+                }
+                var msg = rendered
+                if shortened { logger.warning("mail body shortened (message too large)", metadata: ["submission": "\(submission.uuidString.lowercased())", "kind": "\(kind)"]) }
                 var warning: String? = nil
                 if kind == "organisation" && !notify {
                     let unavailable = attachments == nil ? try await storedAttachmentCount(tx, submission: submission) : 0
@@ -144,8 +157,10 @@ public struct MailDispatcher: Sendable {
                 let token = UUID()
                 try await row(kind: kind, state: "leased", code: nil, token: token, id: id)
                 out.append(PreparedMail(deliveryID: id, leaseToken: token, message: msg, connection: conn, warning: warning))
-            } catch is MailError {
-                try await row(kind: kind, state: "abandoned", code: "message_invalid", token: nil, id: id)
+            } catch let e as MailError {
+                let code = e == .tooLarge ? "message_too_large" : "message_invalid"
+                logger.warning("mail abandoned", metadata: ["submission": "\(submission.uuidString.lowercased())", "kind": "\(kind)", "code": "\(code)"])
+                try await row(kind: kind, state: "abandoned", code: code, token: nil, id: id)
             }
         }
 
@@ -291,6 +306,11 @@ public struct MailDispatcher: Sendable {
     }
 
     public func deliver(_ m: PreparedMail, beforeSend: (() async throws -> Bool)? = nil) async {
+        await deliverReleasingMemory(m, beforeSend: beforeSend)
+        if m.heldMemory > 0 { await resendMemory.release(m.heldMemory) }
+    }
+
+    private func deliverReleasingMemory(_ m: PreparedMail, beforeSend: (() async throws -> Bool)?) async {
         guard await queue.enter() else { await finish(m, ok: false, code: "busy"); return }
         // The lease started at `prepare`; waiting in the queue may have used it up (review M3). Renew it now, and only send while the row is
         // still ours: a row already turned `uncertain` must never be sent (a manual resend would then duplicate it).
@@ -398,6 +418,18 @@ public struct MailDispatcher: Sendable {
             return true
         }
         func leave() { if let w = waiters.first { waiters.removeFirst(); queuedBytes -= w.bytes; w.c.resume() } else { running -= 1 } }
+    }
+
+    /// Non-blocking byte reservation: `tryReserve` fails instead of waiting, so callers answer 503 and never queue large buffers.
+    public actor MemoryBudget {
+        public nonisolated let limit: Int
+        public private(set) var reserved = 0
+        public init(limit: Int) { self.limit = limit }
+        public func tryReserve(_ bytes: Int) -> Bool {
+            guard bytes >= 0, bytes <= limit - reserved else { return false }
+            reserved += bytes; return true
+        }
+        public func release(_ bytes: Int) { reserved = max(0, reserved - bytes) }
     }
 
     /// Bounded concurrency with a bounded backlog; beyond it a mail goes to `waiting-manual` (`busy`) instead of piling up in memory.

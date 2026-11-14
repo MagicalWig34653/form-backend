@@ -1,0 +1,14 @@
+# Coverage exclusions (SPDX-License-Identifier: AGPL-3.0-only)
+# One entry per line: <area>: <pattern> | <reason>. area = swift (regex on the file path), pwa (glob as in
+# pwa/vite.config.ts coverage.exclude; scripts/coverage-ratchet.sh checks both lists are identical) or php (regex on the path).
+# Every exclusion needs a reason; an entry without one makes the check fail. Do not exclude code merely because it is untested:
+# untested code belongs in the baseline (scripts/coverage-baseline.json), not here.
+swift: /\.build/ | Checked-out dependencies and generated build files, not our code.
+swift: /Vendor/ | Vendored third-party code; covered by its own upstream tests.
+swift: /Tests/ | Test code itself must not count towards the product coverage.
+swift: /Sources/App/main\.swift$ | Executable entry point (process bootstrap, signal handling); exercised only by the real end-to-end runs.
+pwa: src/**/*.test.ts | Test code itself.
+pwa: src/**/*.d.ts | Type declarations only, no executable code.
+pwa: src/test-setup.ts | Test harness setup.
+pwa: src/main.ts | Application bootstrap (mounts the root component into the document); covered by the Playwright specs.
+php: /tests/ | Test scripts themselves.

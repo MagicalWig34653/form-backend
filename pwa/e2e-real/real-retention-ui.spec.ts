@@ -5,8 +5,8 @@ import { addAuthenticator, env, loginAndSecure, registerPasskey, toOverview } fr
 
 // Retention panel with IMPORTED submissions in a real browser against the real backend, a real target MariaDB and a legacy import
 // (backend/e2e-retention-ui.sh; QA D945BDCD, card C174F624). The retention job runs every 2 s.
-// Form A (3 -> 5 -> 2 days): save without the checkbox, cancel in each dialog (no request), then the confirmed apply (two dialogs, because the
-//   period is shortened AND imported rows are included).
+// Form A (3 -> 5 -> 2 days): save without the checkbox, cancel in the dialog (no request), then the confirmed apply (ONE dialog naming both
+//   consequences, because the period is shortened AND imported rows are included).
 // Form B (3 days unchanged, only the checkbox): one dialog, exactly one PUT with applyToImported=true.
 // E2E_RETENTION_UI_WRONG=1 expects one wrong number (red proof, exit != 0).
 
@@ -123,7 +123,7 @@ test('imported submissions: dry run, save without the box, cancel, confirmed app
   await page.waitForTimeout(6_000);
   expect(total(formA)).toBe(totalA);
 
-  // cancel: shorten to 2 days with the box. First dialog "Speichern und löschen" -> Abbrechen: nothing is sent.
+  // cancel: shorten to 2 days with the box. The single dialog -> Abbrechen: nothing is sent.
   await days.fill('2');
   await page.getByLabel('Frist auch auf die importierten Einsendungen anwenden').check();
   const due2 = dueAt(formA, 2);
@@ -132,14 +132,6 @@ test('imported submissions: dry run, save without the box, cancel, confirmed app
   );
   await save(page).click();
   await expect(dialog(page)).toContainText('Aufbewahrung verkürzen');
-  await dialog(page).getByRole('button', { name: 'Abbrechen' }).click();
-  await expect(dialog(page)).toHaveCount(0);
-  await page.waitForTimeout(500);
-  expect(puts.real()).toHaveLength(1);
-  // second dialog "Anwenden und löschen" -> Abbrechen: still nothing is sent
-  await save(page).click();
-  await dialog(page).getByRole('button', { name: 'Speichern und löschen' }).click();
-  await expect(dialog(page)).toContainText('Importierte Einsendungen einbeziehen');
   await expect(dialog(page)).toContainText(`${due2} importierte Einsendungen`);
   await dialog(page).getByRole('button', { name: 'Abbrechen' }).click();
   await expect(dialog(page)).toHaveCount(0);
@@ -148,11 +140,10 @@ test('imported submissions: dry run, save without the box, cancel, confirmed app
   expect(period(formA)).toBe(5);
   expect(withoutDue(formA)).toBe(datedA);
 
-  // confirmed: both dialogs, exactly one more PUT with applyToImported=true
+  // confirmed: one dialog, exactly one more PUT with applyToImported=true
   await save(page).click();
   await dialog(page).getByRole('button', { name: 'Speichern und löschen' }).click();
-  await expect(dialog(page)).toContainText('Importierte Einsendungen einbeziehen');
-  await dialog(page).getByRole('button', { name: 'Anwenden und löschen' }).click();
+  await expect(dialog(page)).toHaveCount(0);
   await expect(page.getByText(/^Gespeichert · \d\d:\d\d$/)).toBeVisible();
   expect(puts.real()).toEqual([{ days: 5 }, { days: 2, applyToImported: true }]);
   expect(period(formA)).toBe(2);

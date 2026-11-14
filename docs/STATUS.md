@@ -139,6 +139,13 @@
 - Zeilen ohne `received_at` bekommen auch mit Häkchen keine Frist (bestehendes Serververhalten, im Test berücksichtigt).
 - Prüfung: Lauf grün (41 s), `E2E_RETENTION_UI_WRONG=1` rot, `check-e2e-rc.sh` grün, eslint/prettier/svelte-check 0, vitest RetentionPanel 6/6. CI-Schritt in `.github/workflows/ci.yml` (Ports 33739/33980).
 
+## Sicherheitsrunde XFF / Wiederversand-Speicher / Verifikationen (14.11.2026, Worktree-Branch `worktree-agent-ae40ed3de783feba1`, lokal committet, ungemergt, nicht gepusht; Todolino D98A9893, EE0E1DD9, 95195FD4, 26748F03, 8FA3A784, C6FCE0A3, A4EDE0BE)
+
+- D98A9893 behoben (`63c0a7b`): `ClientIPResolver` liest `X-Forwarded-For` nur von rechts (kein Gesamtlimit der Client-Kette mehr; nur >20 vertraute Hops in Folge fallen auf den Peer). Vorher fiel eine Kette mit mehr als 20 Eintraegen auf den Proxy-Peer zurueck = "kein Besucher benannt" (Legacy-Peer-Budget, kein Bann). Betraf Proxys, die XFF anhaengen; die nginx-Vorlage ueberschreibt XFF. Test `ClientIPTests.testLongClientControlledForwardedChain...` rot gegen alt, gruen nach Fix.
+- EE0E1DD9 behoben (`12f0be5`): `MailDispatcher.resendMemory` (`MemoryBudget`, Standard 4 x `FORM_MAIL_MAX_MB`), Resend reserviert 4 x `byte_count` je Anhang VOR Lesen/Entschluesseln, sonst 503 `resend_memory_exhausted` + `Retry-After: 5`; Klartext bleibt bis Zustellung reserviert (`PreparedMail.heldMemory`, `deliver` gibt frei, Fehlerpfade geben frei). Grenze: je Prozess, Faktor geschaetzt, nicht unter Last gemessen.
+- 95195FD4: nur Konzept `docs/decisions/0050-ingest-replay-signaturverbrauch.md` (Vorschlag, braucht Migration und Entscheidung Lino).
+- Verifiziert ohne Aenderung: 26748F03 und 8FA3A784 (Vendor-Patches vorhanden; Mutationsprobe: Patch entfernt = `testNestedSessionsDoNotLog...`, `testAbortAfterPrepareDoesNotLogSQL`, `testImportRunInNestedSession...` rot; Original gruen), A4EDE0BE (`DomainAdminTests` 7/7 gruen gegen MariaDB), C6FCE0A3 nginx-Teil (`deploy/proxy/test-template.sh` ok; setzt `X-Real-IP`). Mandanten-/Race-Tests: DB-Tests vorhanden (z. B. `RotationTests.testAccountKeyReplacementRacingRevoke...`, `FormRoutesTests`, `DomainAdminTests`); echter Browser/Playwright-Lauf nicht Teil dieses Pakets.
+
 ## API-Host-Eigentümer (14.11.2026, Worktree-Branch `worktree-agent-acdbad1e1851f594c`, lokal committet, ungemergt; Todolino A4EDE0BE)
 
 - Sicherheitsbefund (Opus, Abschnitt 3) behoben: `api_hosts.owner_customer_id` (Upgrade `0036-api-host-owner.sql`, in `MigrationRunner.upgrades`), `POST /api-hosts` und Domain-Anlage liefern Fremden 404 (kein 412/200-Orakel), Anhängen/Schalten nur Eigentümer oder `system.manage`. Bestand wird per Ersteller-Audit, sonst ältester Bindung zugeordnet (mehrdeutige Fälle: ADR 0045). ADR `docs/decisions/0045-api-host-eigentuemer.md`. PWA nutzt die Route nicht.
@@ -350,6 +357,12 @@
 - `scripts/docker-build.sh` baut `form-backend:<Commit>[-dirty]` + `:latest` (native Architektur, PWA bei Bedarf) und prüft das Image gegen echte Wegwerf-MariaDB: migrate, serve, `/healthz`, `/ready`, PWA-Index mit CSP, Kernpfad ohne Browser (Passkey-Login per echter WebAuthn-Assertion, Kunde, Kundenschlüssel, Formular, Release, SDK-Zugang, signierte Einsendung über die öffentliche Route, DB: Zeilen in `submissions`/`stored_objects`, kein Klartext im DB-Dump, Idempotenz). Aufräumen per `trap`; alte `form-backend:<hash>`-Tags bis auf die neuesten 3. Kein Push, kein Deploy.
 - DoD ergänzt (`docs/ENTWICKLUNG.md`, `AGENTS.md`): Image bauen, Smoke-Test, `IMAGE_TAG` in `post_progress`. Selbsttest: `scripts/test-docker-build.sh`. Übergabe: `docs/handoffs/Docker-Build.md`.
 - Grenze: Konto und Passkey werden per SQL angelegt; browserseitige Schlüsseleinrichtung (PRF, Wiederherstellungscode, Datenschlüssel-Zugriff), Entschlüsselung, Mail und nginx/TLS sind nicht Teil des Smoke-Tests.
+
+## Coverage in der CI, Stufe 1-2 (14.11.2026, Worktree-Branch `worktree-agent-ab5c32389cdabc71d`, lokal committet, nicht gepusht; Karte 22CA6CAD)
+
+- Messung: Swift `--enable-code-coverage` im Linux-amd64-Job (`scripts/coverage-swift.sh`), PWA `vitest --coverage` (v8, `src/**`), PHP-SDK pcov im PHP-8.4-Job (`scripts/coverage-php.sh`); Artefakte `coverage-swift|pwa|php`.
+- Ratsche: `scripts/coverage-ratchet.sh` gegen `scripts/coverage-baseline.json` (Toleranz 0,2 Punkte, Werte nur nach oben). Diff-Coverage >= 90 % für geänderte Zeilen bei Pull Requests (PWA und PHP erzwungen, Swift nur Hinweis). Ausschlüsse mit Begründung in `coverage-exclusions`.
+- Offen: nie in der CI gelaufen (Swift/PHP/Artefakte nur gegen Fixtures geprüft). Swift-Basis 93,5 ist vorläufig (macOS-Messung 94,0 minus Rand); PHP-Basis leer, nach dem ersten CI-Lauf mit `--update` eintragen. Übergabe: `docs/handoffs/Coverage-CI.md`.
 
 ## UI-Feinschliff: Note anheben (11.11.2026, Worktree-Branch `worktree-agent-aaf0eabd4286f8414`, lokal committet, main eingemergt, ungemergt in main)
 
@@ -1297,5 +1310,14 @@ beim Nutzer gemäß Handoff; externer Todolino-Status unverändert.
 - **Proxy-Betriebshärtung (11.11.2026, Todolino 2000434E):** Vorlage mit HSTS/Header, IP-gekürztem Log, logrotate 7 Tage, `check-headers.sh` und lokalem nginx-Container-Test (grün); BETRIEB.md zu internem Listener/Zweitfaktor ergänzt. Details `docs/handoffs/Proxy-Haertung.md`. Nicht gepusht/deployt.
 
 - **Review Astra 2, Rest (12.11.2026, Todolino A5EC4A54, Branch `agent/astra2-reste`, Worktree `~/Development/worktrees/fb-astra2`, nicht gemergt):** M1, M2, M5, M6, L1 umgesetzt (ADR 0042). `integration-test.sh` (FormAdmin/Ingest/Deploy) 266 Tests: 264 grün, 2 übersprungen (SFTP ohne Docker-Server); die zwei zunächst roten SDKDeployTests nach Korrektur einzeln 3/3 grün. Schema: 5 Spalten in `sdk_targets`, Upgrade 0033 ungeprüfter Bestandskandidat. Grenzen: `maxConcurrent` ohne Umgebungsvariable, Kontoerkennung nur Host+Benutzer, kein Lasttest (P10), kein SFTP-/Proxy-Differential. Automatische SDK-Updates nach Review und Merge freigebbar.
+
+## Betreiberweg-Abnahme (14.11.2026, Todolino C866085D)
+- 3 aufeinanderfolgende grüne Läufe von leerer Instanz mit dem veröffentlichten Image sha256:6a8c7070ad05caa18ff38f1876a748a8f59ce6ceb9c4f5b7f2eb8e94b953193b (95 bis 97 s; frühere Serie auf 2d3b4ee ebenfalls grün), zusätzlich ein Lauf mit dem echten Altdump (98 s). Protokoll: `docs/handoffs/Betreiberweg-Protokoll.md`, Anleitung `docs/MIGRATION-ANLEITUNG.md`. Harness: `backend/e2e-operator.sh`.
+- Offen: Image-Wechsel-Lauf mit aktuellem Vorgänger-Image nicht belegt; Rotation nach Cutover 409 (FF958178).
+
+## Aufbewahrung: ein Bestätigungsdialog (14.11.2026, Karte 1698259A; D945BDCD/C174F624/51C62CEB bereits vorher erledigt, siehe oben)
+
+- `RetentionPanel.svelte`: Verkürzen + Häkchen zeigt EINEN Dialog (Frist-Folge + importierte fällige), Knopf "Speichern und löschen"; nur Häkchen: "Anwenden und löschen". Neuer Unit-Test; `real-retention-ui.spec.ts` angepasst (nicht ausgeführt, braucht `backend/e2e-retention-ui.sh` mit Docker/MariaDB).
+- Geprüft: pwa lint, svelte-check, vitest 539/539 grün. Keine Backend-Änderung (51C62CEB `version_exists` ist schon im Code).
 
 > **Hinweis zum öffentlichen Export:** Verweise auf `docs/paritaet/` (Analyse des Altsystems), `docs/handoffs/` (interne Übergaben) und `.claude/agents/` zeigen auf Material, das in dieser Veröffentlichung bewusst fehlt. Maßgeblich sind README, `docs/BETRIEB.md`, `docs/decisions/` (ADR) und `contracts/`.

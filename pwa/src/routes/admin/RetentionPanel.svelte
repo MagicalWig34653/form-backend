@@ -84,28 +84,25 @@
       statusKind = 'error';
       return;
     }
-    if (
-      shortens &&
-      !(await confirmAction({
-        title: r.confirmTitle,
-        description: r.confirmBody.replace('{n}', String(target)),
-        confirmLabel: r.confirmLabel,
+    // One dialog naming every consequence (1698259A): shortening and/or including imported rows.
+    const importedText = r.importedConfirmBody
+      .replace('{n}', String(dueNowImported ?? 0))
+      .replace('{d}', String(target));
+    const shortenText = r.confirmBody.replace('{n}', String(target));
+    if (shortens || applyImported) {
+      const ok = await confirmAction({
+        title: shortens ? r.confirmTitle : r.importedConfirmTitle,
+        description:
+          shortens && applyImported
+            ? `${shortenText} ${importedText}`
+            : shortens
+              ? shortenText
+              : importedText,
+        confirmLabel: shortens ? r.confirmLabel : r.importedConfirmLabel,
         destructive: true,
-      }))
-    )
-      return;
-    if (
-      applyImported &&
-      !(await confirmAction({
-        title: r.importedConfirmTitle,
-        description: r.importedConfirmBody
-          .replace('{n}', String(dueNowImported ?? 0))
-          .replace('{d}', String(target)),
-        confirmLabel: r.importedConfirmLabel,
-        destructive: true,
-      }))
-    )
-      return;
+      });
+      if (!ok) return;
+    }
     busy = true;
     status = '';
     const res = applyImported

@@ -21,7 +21,7 @@ public extension Application {
 /// Route middleware for routes with large bodies. Vapor collects `body: .collect` inside the route responder, i.e. AFTER route
 /// middleware: everything here runs before a single body byte is buffered. Order: `preflight` (authentication, binding, cheap header
 /// checks; anything it throws ends the request, the body is drained and discarded by the server), declared length against `maxBytes`
-/// (413), reservation in the shared budget (503 + Retry-After). Without Content-Length but with chunked encoding the worst case
+/// (413), reservation in the shared budget (waits up to `BodyBudget.maxWait` for capacity, then 503 + Retry-After). Without Content-Length but with chunked encoding the worst case
 /// (`maxBytes`) is reserved; `.collect(maxSize:)` still stops the stream at the limit. Without either the body is empty.
 public struct BodyBudgetGate: AsyncMiddleware {
     public let maxBytes: Int
@@ -42,7 +42,7 @@ public struct BodyBudgetGate: AsyncMiddleware {
     public func respond(to req: Request, chainingTo next: AsyncResponder) async throws -> Response {
         try await preflight(req)
         let n = try Self.declaredBytes(req, maxBytes: maxBytes)
-        guard let lease = req.application.bodyBudget.reserve(bodyBytes: n) else { throw BodyBudgetExhausted() }
+        guard let lease = await req.application.bodyBudget.reserveWaiting(bodyBytes: n) else { throw BodyBudgetExhausted() }
         defer { lease.release() }
         return try await next.respond(to: req)
     }
