@@ -161,7 +161,8 @@ final class HTTPTests: XCTestCase {
             try await app.test(.GET, "admin/api/v1/race") { res async throws in
                 XCTAssertEqual(res.status, .conflict)
                 XCTAssertEqual(try JSONDecoder().decode(Problem.self, from: res.body).code, "conflict")
-                XCTAssertFalse(res.body.string.contains("1213"))
+                let body = res.body.string  // no internal detail; "1213" alone is not checked: a request id may contain those digits by chance
+                XCTAssertFalse(body.contains("errno") || body.contains("sqlstate") || body.lowercased().contains("mysql"), body)
             }
             try await app.test(.GET, "public/race") { res async in XCTAssertEqual(res.status, .internalServerError) }
         }
