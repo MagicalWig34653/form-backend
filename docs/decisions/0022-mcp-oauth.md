@@ -82,7 +82,7 @@ auch widerrufene/abgelaufene Grants bleiben als Nutzungsnachweis erhalten. Bei E
 HTTP 429. Gemeinsame Settings-Zeilensperre vor Zählung/Insert, Consent und Bereinigung
 serialisiert Replikas; Insert und bisheriges wertfreies Registrierungsaudit bleiben atomar.
 
-Ohne Grant endet die Registrierung nach 24 Stunden. Autorisierung/Consent lehnen sie
+Ohne Grant endet die Registrierung nach 24 Stunden (seit 14.11.2026: 1 Stunde, siehe Nachtrag unten). Autorisierung/Consent lehnen sie
 ab dieser Grenze ab; AuthMaintenance entfernt sie samt ausstehenden Consentanfragen
 in begrenzten Batches. Fehlendes historisches `created_at` gilt ohne Grant als abgelaufen.
 Audit `oauth.client.expire` enthält ausschließlich die Batchanzahl, keine Namen, Redirects,
@@ -96,3 +96,10 @@ Invalidierungssignal per BroadcastChannel und Storage-Event; empfangende Tabs sp
 sofort ohne Echo und verwerfen verspätete Identitäts-/Kundenantworten. Weder Konto-ID
 noch CSRF-Token/Schlüssel werden übertragen oder persistiert. Neue Tab-Initialisierung
 sperrt bestehende Tabs vorsorglich ebenfalls. Browser-/DB-Laufzeitabnahme bleibt separat.
+
+## Härtung der öffentlichen Registrierung (14.11.2026)
+
+Das IP-Budget der Registrierung (5/min) überschritt den globalen Stundendeckel (200): eine Adresse konnte ihn allein
+ausschöpfen. Jetzt 10 Registrierungen pro Stunde je Adresse, IPv6 auf das /64-Präfix normalisiert
+(`IPAddr.quotaKey`). Ungenutzte Clients (ohne jeden Grant) verfallen nach 1 Stunde statt 24 Stunden
+(`OAuthService.unusedClientTTL`, Bereinigung und Consent-Prüfung). Feste Konstanten, keine neuen Einstellungen.

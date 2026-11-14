@@ -5,6 +5,16 @@ import XCTest
 final class ClientIPTests: XCTestCase {
     private func r(_ cidrs: String...) -> ClientIPResolver { ClientIPResolver(trusted: cidrs.map { CIDR($0)! }) }
 
+    func testQuotaKeyReducesIPv6ToSlash64() {
+        XCTAssertEqual(IPAddr.quotaKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd"), IPAddr.quotaKey("2001:db8:1:2::1"))
+        XCTAssertNotEqual(IPAddr.quotaKey("2001:db8:1:2::1"), IPAddr.quotaKey("2001:db8:1:3::1"))
+        XCTAssertEqual(IPAddr.quotaKey("2001:db8:1:2:aaaa::1"), "2001:db8:1:2::/64")
+        XCTAssertEqual(IPAddr.quotaKey("203.0.113.9"), "203.0.113.9")
+        XCTAssertEqual(IPAddr.quotaKey("::ffff:203.0.113.9"), "203.0.113.9")
+        XCTAssertNotEqual(IPAddr.quotaKey("203.0.113.9"), IPAddr.quotaKey("203.0.113.10"))
+        XCTAssertEqual(IPAddr.quotaKey("unknown"), "unknown")
+    }
+
     func testCIDRParsingAndMembership() {
         let c = CIDR("10.0.0.0/8")!
         XCTAssertTrue(c.contains(IPAddr("10.255.1.2")!)); XCTAssertFalse(c.contains(IPAddr("11.0.0.1")!))

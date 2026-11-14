@@ -13,6 +13,11 @@ public struct OAuthFailure: Error, Sendable {
 
 /// Opaque credentials; all state transitions serialize on the grant (also across replicas).
 public struct OAuthService: Sendable {
+    /// A dynamically registered client that never received a consent grant is discarded after this time
+    /// (authorization must follow the registration within minutes; 1 h leaves ample margin).
+    public static let unusedClientTTL: TimeInterval = 3600
+    /// Dynamic registrations per client address (IPv6: per /64) and hour; the global hourly cap stays a separate setting.
+    public static let registrationsPerIPPerHour = 10
     let db: Database
     let issuer: String
     let now: @Sendable () -> Date

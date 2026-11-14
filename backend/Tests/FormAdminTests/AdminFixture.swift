@@ -25,7 +25,7 @@ struct AdminFixture {
     let deploy: DeployService
     var sql: SQLDatabase { Persistence.sql(app) }
 
-    static func with(webhookLimits: WebhookLimits = WebhookLimits(), singleConnection: Bool = false, secondFactorRequired: Bool = true, _ body: (AdminFixture) async throws -> Void) async throws {
+    static func with(webhookLimits: WebhookLimits = WebhookLimits(), singleConnection: Bool = false, secondFactorRequired: Bool = true, clientIP: @escaping @Sendable (Request) -> String = { _ in "203.0.113.9" }, _ body: (AdminFixture) async throws -> Void) async throws {
         let env = ProcessInfo.processInfo.environment
         guard let port = env["P4A_DB_PORT"].flatMap(Int.init), let pw = env["P4A_DB_PASSWORD"] else {
             throw XCTSkip("P4A_DB_PORT/P4A_DB_PASSWORD not set; run backend/integration-test.sh")
@@ -53,7 +53,7 @@ struct AdminFixture {
             _ = try await MigrationRunner(db: Persistence.sql(app)).runWithUpgrades(schemaFile: schema)   // what `migrate` applies
             try HTTPSetup.configure(app)
             let key = try StaticServerKey(Data(repeating: 7, count: 32))
-            var auth = AuthConfig(relyingParty: RelyingParty(rpID: "admin.example.test", origin: origin), clientIP: { _ in "203.0.113.9" })
+            var auth = AuthConfig(relyingParty: RelyingParty(rpID: "admin.example.test", origin: origin), clientIP: clientIP)
             auth.secondFactorRequired = secondFactorRequired
             auth.requestBudget = (100_000, 60)
             let guardian = FormAuth.register(app, config: auth, keys: key)

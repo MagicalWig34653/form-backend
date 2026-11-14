@@ -35,6 +35,17 @@ public struct IPAddr: Hashable, Sendable {
     }
 }
 
+extension IPAddr {
+    /// Key for per-client quotas: IPv4 (incl. mapped) as is; native IPv6 reduced to its /64 prefix, because one subscriber
+    /// normally controls a whole /64 and could otherwise rotate through 2^64 addresses. Unparseable input stays unchanged.
+    public static func quotaKey(_ text: String) -> String {
+        guard let ip = IPAddr(text) else { return text }
+        if ip.bytes[0..<10].allSatisfy({ $0 == 0 }) && ip.bytes[10] == 0xFF && ip.bytes[11] == 0xFF { return ip.text }
+        return IPAddr(bytes: CIDR.mask(ip.bytes, 64)).text + "/64"
+    }
+    init(bytes: [UInt8]) { self.bytes = bytes }
+}
+
 /// `a.b.c.d/n` or `x::/n` (a bare address means /32 or /128).
 public struct CIDR: Sendable, Equatable {
     let network: [UInt8]

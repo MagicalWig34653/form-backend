@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import Fluent
 import FormAuth
+import FormCore
 import FormPersistence
 import Foundation
 import SQLKit
@@ -50,7 +51,7 @@ enum OAuthRoutes {
             catch let e as OAuthFailure { return try failure(e) }
         }
         app.on(.POST, "oauth", "register", body: .collect(maxSize: "8kb")) { req async throws -> Response in
-            try await guardian.throttles.consume(.adminRoute, "oauth-register|" + guardian.config.clientIP(req), limit: 5, window: 60)
+            try await guardian.throttles.consume(.adminRoute, "oauth-register|" + IPAddr.quotaKey(guardian.config.clientIP(req)), limit: OAuthService.registrationsPerIPPerHour, window: 3600)
             do {
                 struct Input: Decodable { let client_name: String?; let redirect_uris: [String]; let token_endpoint_auth_method: String?; let grant_types: [String]?; let response_types: [String]? }
                 guard req.headers.contentType == .json else { throw OAuthFailure("invalid_client_metadata") }
@@ -107,7 +108,7 @@ enum OAuthRoutes {
                 guard p["response_type"] == "code", let client = p["client_id"], let redirect = p["redirect_uri"],
                       let challenge = p["code_challenge"], challenge.count == 43, challenge.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [45,95].contains($0) }),
                       p["code_challenge_method"] == "S256", p["resource"] == guardian.config.issuer + "/mcp/",
-                      let r = try await sql.raw("SELECT id,name,redirect_uris_json FROM oauth_clients WHERE client_identifier = \(bind: client) AND (created_at > \(bind: DB.time(now().addingTimeInterval(-86400))) OR EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.id))").first(decoding: Client.self),
+                      let r = try await sql.raw("SELECT id,name,redirect_uris_json FROM oauth_clients WHERE client_identifier = \(bind: client) AND (created_at > \(bind: DB.time(now().addingTimeInterval(-OAuthService.unusedClientTTL))) OR EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.id))").first(decoding: Client.self),
                       (try JSONDecoder().decode([String].self, from: Data(r.redirect_uris_json.utf8))).contains(redirect) else { throw OAuthFailure("invalid_request") }
                 let scopes = Set((p["scope"] ?? "").split(separator: " ").map(String.init)), state = p["state"] ?? ""
                 guard !scopes.isEmpty, scopes.isSubset(of: Set(TokenIdentity.scopeRights.keys)), state.utf8.count <= 1024 else { throw OAuthFailure("invalid_scope") }
@@ -140,7 +141,7 @@ enum OAuthRoutes {
                 _ = try await SystemSettings.lock(tx, at: DB.time(now()))
                 guard let p = try await tx.raw("SELECT * FROM oauth_authorization_requests WHERE id = \(bind: DB.bin(i.requestId)) AND session_id = \(bind: DB.bin(s.id)) FOR UPDATE").first(decoding: Pending.self), p.consumed_at == nil, p.expires_at > now(), p.resource == guardian.config.issuer + "/mcp/" else { throw Abort(.badRequest) }
                 struct Count: Decodable { let n: Int }
-                guard try await tx.raw("SELECT COUNT(*) AS n FROM oauth_clients c WHERE c.id = \(bind: p.client_id) AND (c.created_at > \(bind: DB.time(now().addingTimeInterval(-86400))) OR EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id))").first(decoding: Count.self)!.n == 1 else { throw Abort(.badRequest) }
+                guard try await tx.raw("SELECT COUNT(*) AS n FROM oauth_clients c WHERE c.id = \(bind: p.client_id) AND (c.created_at > \(bind: DB.time(now().addingTimeInterval(-OAuthService.unusedClientTTL))) OR EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id))").first(decoding: Count.self)!.n == 1 else { throw Abort(.badRequest) }
                 try await tx.raw("UPDATE oauth_authorization_requests SET consumed_at = \(bind: DB.time(now())) WHERE id = \(bind: p.id)").run()
                 var u = URLComponents(string: p.redirect_uri)!, values = [URLQueryItem(name: "iss", value: guardian.config.issuer), .init(name: "state", value: p.state_value)]
                 if i.approve {

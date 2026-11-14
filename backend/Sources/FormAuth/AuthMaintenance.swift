@@ -25,7 +25,7 @@ public enum AuthMaintenance {
                 let tx = conn as! SQLDatabase
                 _ = try await SystemSettings.lock(tx, at: t)
                 struct Client: Decodable { let id: Blob }
-                let clients = try await tx.raw("SELECT id FROM oauth_clients c WHERE (created_at IS NULL OR created_at <= \(bind: DB.time(now.addingTimeInterval(-86400)))) AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id) LIMIT \(literal: batch) FOR UPDATE").all(decoding: Client.self)
+                let clients = try await tx.raw("SELECT id FROM oauth_clients c WHERE (created_at IS NULL OR created_at <= \(bind: DB.time(now.addingTimeInterval(-OAuthService.unusedClientTTL)))) AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id) LIMIT \(literal: batch) FOR UPDATE").all(decoding: Client.self)
                 for client in clients {
                     try await tx.raw("DELETE FROM oauth_authorization_requests WHERE client_id = \(bind: client.id)").run()
                     try await tx.raw("DELETE FROM oauth_clients WHERE id = \(bind: client.id)").run()

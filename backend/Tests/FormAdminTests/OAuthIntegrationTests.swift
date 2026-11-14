@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 @testable import FormAdmin
 import FormAuth
+import FormCore
 import FormPersistence
 import Foundation
 import SQLKit
@@ -98,7 +99,7 @@ final class OAuthIntegrationTests: XCTestCase {
         try await AdminFixture.with { fx in
             let headers: HTTPHeaders = ["Content-Type": "application/json"]
             let body = ByteBuffer(string: "{\"client_name\":\"Synthetic\",\"redirect_uris\":[\"https://client.test/cb\"],\"token_endpoint_auth_method\":\"none\",\"unknown_metadata\":\"ignored\"}")
-            for _ in 0..<5 {
+            for _ in 0..<10 {
                 try await fx.app.test(.POST, "/oauth/register", headers: headers, body: body) { res in
                     XCTAssertEqual(res.status, .created)
                     XCTAssertNotNil(jsonObject(res)["client_id"])
@@ -111,6 +112,26 @@ final class OAuthIntegrationTests: XCTestCase {
             XCTAssertEqual(count, 0)
         }
     }
+    /// Repro of fb-sec t_oauthreg.py: one address must not be able to exhaust the global registration cap for everyone.
+    func testOneAddressCannotExhaustGlobalCapAndIPv6UsesSlash64() async throws {
+        try await AdminFixture.with(clientIP: { $0.headers.first(name: "X-Test-IP") ?? "203.0.113.9" }) { fx in
+            func post(_ ip: String, _ expected: HTTPStatus) async throws {
+                var h: HTTPHeaders = ["Content-Type": "application/json", "X-Test-IP": ip]
+                h.add(name: "Host", value: "localhost")
+                try await fx.app.test(.POST, "/oauth/register", headers: h, body: ByteBuffer(string: "{\"redirect_uris\":[\"https://client.test/cb\"]}")) {
+                    XCTAssertEqual($0.status, expected, ip)
+                }
+            }
+            // Rotating the low 64 bits does not buy a fresh quota.
+            for i in 0..<10 { try await post("2001:db8:aa:bb::\(i + 1)", .created) }
+            try await post("2001:db8:aa:bb:ffff:1:2:3", .tooManyRequests)
+            // A single attacker address stays far below the default global cap, other clients are still served.
+            XCTAssertLessThan(10 * 10, 200)
+            try await post("2001:db8:aa:cc::1", .created)
+            try await post("198.51.100.7", .created)
+        }
+    }
+
     func testAuditFailureRollsBackCodeConsumptionAndAccessExpires() async throws {
         try await AdminFixture.with(singleConnection: true) { fx in
             let s = try await seed(fx), service = OAuthService(db: fx.app.db(.mysql), issuer: AdminFixture.origin)
@@ -205,7 +226,7 @@ final class OAuthIntegrationTests: XCTestCase {
             let used = try await seed(fx)
             let old = UUID(), fresh = UUID(), edge = UUID()
             let now = Date()
-            for (id, age) in [(old, 86401.0), (fresh, 86399.0), (edge, 86400.0)] {
+            for (id, age) in [(old, 3601.0), (fresh, 3599.0), (edge, 3600.0)] {
                 try await fx.sql.raw("INSERT INTO oauth_clients (id,client_identifier,name,redirect_uris_json,created_at,origin) VALUES (\(bind: DB.bin(id)),\(bind: id.uuidString),'private synthetic name','[\"https://client.test/cb\"]',\(bind: DB.time(now.addingTimeInterval(-age))),'native')").run()
             }
             let user = try await fx.login(used.account), pending = UUID()
