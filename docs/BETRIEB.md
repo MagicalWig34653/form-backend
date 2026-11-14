@@ -128,9 +128,15 @@ Extern vorab bereitstellen:
   Der Resume-Beweis eines Ablaufs liest alle Objekte der Einsendung (alle Anhänge) auf einmal in den Speicher; bei vielen 20-MB-Anhängen
   entsprechend Container-Speicher einplanen. Das Ergebnis der Datenbank (`CONCAT`) muss in `max_allowed_packet` passen (Fehler 1301 = Rollback, kein
   halb geschriebenes Objekt).
-- Mails (Standard „mit allen Angaben“, ADR 0041) enthalten keine Anhänge; ein Anhang von 19,9 MB verändert Mailgröße und Zustellung nicht (Test
-  `MailEndToEndTests.testFullMailForSubmissionWithAttachmentAbove16MiB…`: 454 Byte Mail, beide Zustellungen `smtp-accepted`, Anhang vollständig
-  gespeichert). Ein SMTP-Größenlimit des Mailservers ist dadurch für Anhänge nicht erreichbar; das Praxisteam sieht Anhänge im Backend.
+- Mails an das Team tragen die hochgeladenen Dateien als Anhang (ADR 0049, Entscheidung Lino 14.11.2026: das Praxisteam hat keinen Backend-Zugang; wie im
+  Altsystem). `multipart/mixed`, Dateiname und Typ aus dem Upload (Umlaute RFC 2231), Bestätigungsmail ohne Anhang. Grenze je Mail: `FORM_MAIL_MAX_MB`
+  (Standard 30, 10 bis 100; Sendeform inkl. Base64, ein 19,9-MB-Anhang ≈ 26,9 MB). Auf das Limit des Mailproviders abstimmen (z. B. 25, wenn der Provider
+  25 MB annimmt; dann wird eine 19,9-MB-Datei nicht angehängt). Passt eine Datei nicht, geht die Mail trotzdem raus: sie nennt die Datei mit Name und Größe,
+  die Zustellzeile steht auf `smtp-accepted` mit `last_error_code = attachments_omitted` (Mail-Reiter/Zustellungen). Wiederversand und verzögerte Flow-Mails
+  hängen die Dateien (noch) nicht an, sie nennen sie nur im Text und tragen dasselbe Token. Speicher: die Sendedaten (≈ 1,4-faches der Anhangsbytes) entstehen erst
+  beim Senden, höchstens 2 Sendungen mit Anhang gleichzeitig, höchstens 64 MiB Anhangsbytes in der Warteschlange, danach `waiting-manual` (`busy`). Klartext
+  nur im Speicher: nie in Tabellen, Logs oder auf Platte. Mail-Proxy: Altprotokoll (`mailAttachment`/`mailAttachmentName`, Base64), ein Anhang je Mail. Belege:
+  `MailEndToEndTests.testTeamMailCarriesTheUploadByteForByteUpTo19Point9MB`, `…testFilesBeyondTheMailLimit…`, `MailAttachmentTests`, E2E `backend/e2e-mail-attachment.sh` (Mailpit, SHA-256).
 - DB-Netzwerkzugriff von allen App-/Migrations-Nodes und vom Client für Backup/Restore.
   DB-Host muss im Container auflösbar sein; `localhost` bezeichnet dort den Container.
 - TLS-Reverse-Proxy, öffentliche HTTPS-Origin und passende Passkey-RP-ID. Proxy-Anforderungen unten.

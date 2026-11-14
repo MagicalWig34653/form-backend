@@ -90,4 +90,5 @@ HEALTHCHECK_URL	Update und Health	text:httpurl?				500		envOnly	0	URL der Bereit
 WAIT_SECONDS	Update und Health	int	600	Sekunden	1	999999		envOnly	0	Maximale Wartezeit auf einen gesunden Rollout.
 FORM_ADMIN_REQUEST_LIMIT_IP	Limits	int	600		1	100000		envOnly	0	Admin-API-Anfragen je Minute und Client-IP (alle Anfragen, auch anonyme); Neustart nötig.
 FORM_ADMIN_REQUEST_LIMIT_ACCOUNT	Limits	int	300		1	100000		envOnly	0	Admin-API-Anfragen je Minute und angemeldetem Konto; Neustart nötig.
+FORM_MAIL_MAX_MB	Limits	int	30	MiB	10	100		envOnly	0	Größe einer ganzen Mail mit Anhängen (Base64 eingerechnet); zu große Anhänge werden in der Mail genannt statt angehängt; muss zum Limit des Mail-Providers passen; Neustart nötig.
 FORM_BODY_BUDGET_MB	Limits	int	128	MiB	64	8192		envOnly	0	Reservierter Speicher für Request-Bodies in Bearbeitung (Einsende-API, große Admin-Bodies); höchstens das halbe Containerlimit; Neustart nötig.
