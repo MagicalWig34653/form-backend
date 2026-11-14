@@ -53,12 +53,12 @@ Legacy-Fallback gewünscht ist. Ein bewusst gesetzter Leerwert bleibt eine Vertr
 Nur bekannte Proxy-Peers dürfen Forwarded-Header liefern; am äußeren Proxy überschreiben.
 Für das öffentliche Dashboard wird bei vertrauenswürdigem Peer genau ein `X-Forwarded-Host`
 und `X-Forwarded-Proto: https` verlangt, sonst der originale `Host` ausgewertet. Für den
-Statistik-/Ingest-Hostvertrag zusätzlich `X-Real-IP` aus dem verifizierten Client setzen.
+Statistik-/Ingest-Hostvertrag zusätzlich `X-Real-IP` aus dem verifizierten Client setzen (das Backend wertet `X-Real-IP` auch für die Client-IP aus, wenn `X-Forwarded-For` fehlt).
 
 **Client-IP der Einsende-Sperren (Karte 1BEEDE0F).** Ban-Zähler (`ingest_abuse_ips`), `abuse.blockedNets` und das Budget
 `ingest.requestsPerMinute` zählen die Adresse, die `ClientIPResolver` am öffentlichen Listener liefert: Ist der TCP-Peer in
 `FORM_PUBLIC_TRUSTED_PROXIES` (bzw. `FORM_TRUSTED_PROXIES`), gilt der erste nicht vertrauenswürdige Eintrag von rechts in
-`X-Forwarded-For`; sonst der Peer, Header werden ignoriert. IPv6 zählt je /64. **Ohne gesetzte Proxy-CIDRs sieht das Backend
+`X-Forwarded-For`, sonst `X-Real-IP`; sonst der Peer, Header werden ignoriert. IPv6 zählt je /64. **Ohne gesetzte Proxy-CIDRs sieht das Backend
 nur die Proxy-Adresse, und alle Besucher teilen eine Sperre und ein Budget.** Der Proxy muss `X-Forwarded-For` auf
 `$remote_addr` überschreiben (Vorlage tut das). Ruft ein Kunden-Webserver (PHP-SDK) das Backend auf, sendet das SDK seit
 ADR 0048 die Besucher-IP signiert mit (`X-Kubus-Client-IP` + Ed25519 des Formularschlüssels, gebunden an die Request-Signatur).
@@ -69,6 +69,27 @@ Besucheranspruch, damit ein erbeuteter Schlüssel nicht mit wechselnden Fantasie
 prüfen; im SDK hinter einem Proxy `trustedProxies` setzen, sonst sieht es nur die Proxy-Adresse). Mit Alt-SDK oder ohne
 `trustedProxies` bleibt das alte Verhalten (ein Zähler für die ganze Website): dort `abuse.threshold` hoch lassen. Prüfen:
 `ingest_abuse_ips` füllt sich pro Besucher, nicht mit einer Zeile je Webserver.
+
+**Alte Website-Einbindungen (Legacy-API, ADR 0047 Nachtrag).** Das Alt-SDK sendet keine signierte Besucher-IP; seine Köpfe
+`CLIENTIP-ENCRYPT`/`CLIENTUA-ENCRYPT` werden ignoriert und sperren niemanden (Auswertung erst nach Import der Alt-Schlüssel,
+eigene Folgekarte "Legacy: CLIENTIP-ENCRYPT auswerten (nach Alt-Schlüssel-Import)"). Formulare ohne Signaturschlüssel
+(importierte) werden bei normalem Verhalten nie abgelehnt (200, Feldfehler 412). Grundsatz: alte Einbindungen laufen ohne
+Änderung der Website, und eine ganze Website wird nie wegen der Adresse ihres Servers gesperrt.
+- **Reihenfolge der IP-Quellen** (alle Pfade, `ClientIPResolver`): Ist der TCP-Peer in `FORM_PUBLIC_TRUSTED_PROXIES`, gilt
+  1. `X-Forwarded-For` von rechts (erster nicht vertrauter Eintrag), sonst 2. `X-Real-IP` (genau ein gültiger Wert), sonst
+  3. die Peer-Adresse. Header eines nicht vertrauten Peers werden nie gelesen (kein Spoofing). Die nginx-Vorlage
+  (`deploy/proxy/nginx.conf.example`) setzt beide Header auf `$remote_addr`.
+- **Besucher aufgelöst** (vertrauter Proxy nennt eine nicht vertraute Besucher-IP): Besucherbudget `ingest.requestsPerMinute`
+  (Standard 60 je Minute) und Besucherbann (`abuse.threshold`) je Besucher, wie bisher.
+- **Server-zu-Server** (kein Besucher benannt: Peer ist der Webserver der Website, der Normalfall beim Alt-SDK): alle Besucher
+  der Website teilen sich ein Peer-Budget je (Formular, Peer) `ingest.legacyPeerRequestsPerMinute` (Standard 600, 0 = aus,
+  `FORM_INGEST_LEGACY_PEER_REQUESTS_PER_MINUTE`) **anstelle** von `ingest.requestsPerMinute`. Es gibt keinen Bann und keine
+  `abuse.blockedNets`-Sperre allein auf Peer-Identität; fehlgeschlagene Prüfungen (z. B. Turnstile) zählen ohne Besucher-IP
+  nicht zum Bann (die Anfrage selbst wird weiter 412/406 beantwortet). Gilt nur für Legacy-Pfade; `/api/v2/submit/` unverändert.
+  Config-Aufrufe (`getFormData`) haben denselben Mechanismus mit eigenem Zähler.
+`ingest.peerRequestsPerMinute` (Standard 1200, 0 = aus) betrifft nur Anfragen mit signiertem Besucheranspruch und greift auf
+Legacy-Pfaden nicht. Prüfung: Tests `testLegacy*` in `IngestDBTests`, `ClientIPTests`, E2E `backend/e2e-legacy.sh` (lokal; braucht
+das alte Repo `../form-backend_bvk` und ist deshalb nicht in der CI).
 
 Beide Proxy-Aliase zeigen auf dieselben Tasks, sind **keine Netzwerk-Isolation**:
 `<stack>-public:8080` und `<stack>-internal:8081` (geänderte ENV-Ports entsprechend verwenden).
@@ -132,8 +153,12 @@ Extern vorab bereitstellen:
   Altsystem). `multipart/mixed`, Dateiname und Typ aus dem Upload (Umlaute RFC 2231), Bestätigungsmail ohne Anhang. Grenze je Mail: `FORM_MAIL_MAX_MB`
   (Standard 30, 10 bis 100; Sendeform inkl. Base64, ein 19,9-MB-Anhang ≈ 26,9 MB). Auf das Limit des Mailproviders abstimmen (z. B. 25, wenn der Provider
   25 MB annimmt; dann wird eine 19,9-MB-Datei nicht angehängt). Passt eine Datei nicht, geht die Mail trotzdem raus: sie nennt die Datei mit Name und Größe,
-  die Zustellzeile steht auf `smtp-accepted` mit `last_error_code = attachments_omitted` (Mail-Reiter/Zustellungen). Wiederversand und verzögerte Flow-Mails
-  hängen die Dateien (noch) nicht an, sie nennen sie nur im Text und tragen dasselbe Token. Speicher: die Sendedaten (≈ 1,4-faches der Anhangsbytes) entstehen erst
+  die Zustellzeile steht auf `smtp-accepted` mit `last_error_code = attachments_omitted` (Mail-Reiter/Zustellungen). Der manuelle Wiederversand (Erneut senden in
+  der Einsendung) hängt die Dateien wieder an (wie ALT): der Browser entschlüsselt die Einsendung und reicht zusätzlich den Inhaltsschlüssel jeder Datei
+  (`attachmentKeys`), der Server öffnet seine gespeicherten Objekte nur im Speicher (gleiche Größengrenze, gleiche Sendebegrenzung). Fehlt ein Schlüssel oder ein
+  Objekt (gelöscht, Aufbewahrung), geht die Mail trotzdem raus, nennt die Datei als „nicht beigefügt“ und trägt `attachments_omitted`. Flow-Mails haben kein
+  Gegenstück in ALT (ALT kennt keine Flows) und sind nicht wiederholbar (kein unveränderliches Versandmanifest); sie nennen vorhandene Anhänge nur im Text und
+  tragen dasselbe Token. Speicher: die Sendedaten (≈ 1,4-faches der Anhangsbytes) entstehen erst
   beim Senden, höchstens 2 Sendungen mit Anhang gleichzeitig, höchstens 64 MiB Anhangsbytes in der Warteschlange, danach `waiting-manual` (`busy`). Klartext
   nur im Speicher: nie in Tabellen, Logs oder auf Platte. Mail-Proxy: Altprotokoll (`mailAttachment`/`mailAttachmentName`, Base64), ein Anhang je Mail. Belege:
   `MailEndToEndTests.testTeamMailCarriesTheUploadByteForByteUpTo19Point9MB`, `…testFilesBeyondTheMailLimit…`, `MailAttachmentTests`, E2E `backend/e2e-mail-attachment.sh` (Mailpit, SHA-256).
